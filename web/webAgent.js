@@ -242,6 +242,76 @@ function extractSearchPattern(text, fallbackText = '') {
   return token || '';
 }
 
+function getEditTargetScore(path, sourceText = '', latestUserPrompt = '') {
+  let score = 0;
+  const lowerPath = String(path || '').toLowerCase();
+  const filename = lowerPath.split('/').pop() || '';
+  const source = `${sourceText} ${latestUserPrompt}`.toLowerCase();
+
+  if (filename && source.includes(filename)) score += 8;
+  if (lowerPath && source.includes(lowerPath)) score += 10;
+
+  if (/\.(js|ts|jsx|tsx|py|go|java|php|rb)$/.test(lowerPath)) score += 2;
+  if (/^(comandos|commands|cmds|src\/commands|plugins)\//.test(lowerPath)) score += 4;
+  if (/^(core|utils|lib|helpers)\//.test(lowerPath)) score -= 3;
+  if (/resolver|database|config|index/.test(filename)) score -= 1;
+
+  return score;
+}
+
+function pickWriteTarget(sourceText, conversationMessages, state) {
+  const latestUserPrompt = getLatestUserPrompt(conversationMessages);
+  const available = state.readOrder.filter(path => state.readContents[path]);
+  if (!available.length) return '';
+
+  const mentioned = [
+    ...extractMentionedPaths(sourceText, state.fileTree),
+    ...extractMentionedPaths(latestUserPrompt, state.fileTree),
+  ];
+
+  for (const path of mentioned) {
+    if (state.readContents[path]) return path;
+  }
+
+  let bestPath = available[0];
+  let bestScore = -Infinity;
+
+  for (const path of available) {
+    const score = getEditTargetScore(path, sourceText, latestUserPrompt);
+    if (score > bestScore) {
+      bestScore = score;
+      bestPath = path;
+    }
+  }
+
+  return bestPath;
+}
+
+function buildForcedWritePrompt(state, conversationMessages, sourceText = '') {
+  const path = pickWriteTarget(sourceText, conversationMessages, state) || state.lastReadPath || 'archivo-leido';
+  const content = state.readContents[path] || state.lastReadContent || '';
+  const supportPaths = state.readOrder
+    .filter(item => item !== path && state.readContents[item])
+    .slice(-2);
+
+  return [
+    `Ya leiste ${path} y ya identificaste el cambio.`,
+    'No describas el fix.',
+    'Responde AHORA SOLO con un JSON valido de write_file.',
+    `El path debe ser exactamente "${path}".`,
+    'El campo content debe incluir el archivo COMPLETO ya corregido.',
+    'Si de verdad necesitas otro archivo auxiliar, usa read_file para ese archivo. Si no, emite write_file ya.',
+    '',
+    `Archivo objetivo actual (${path}):`,
+    content,
+    ...supportPaths.flatMap(item => [
+      '',
+      `Archivo auxiliar ya leido (${item}):`,
+      state.readContents[item],
+    ]),
+  ].join('\n');
+}
+
 function getFilesByGlob(fileTree, { pattern, path }) {
   const regex = globToRegExp(pattern || '**/*');
   return fileTree
@@ -266,7 +336,7 @@ async function searchTextInRepo(ctx, { pattern, path, glob }) {
 
   for (const file of candidates) {
     try {
-      const current = await githubApi.readFile(ctx.token, ctx.owner, ctx.repo, file.path);
+      const current = await readRepoFile(ctx, file.path);
       const lines = current.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 
       for (let i = 0; i < lines.length; i++) {
@@ -322,13 +392,20 @@ async function attemptAutomaticRecovery(sourceText, conversationMessages, ctx, s
   return null;
 }
 
+async function readRepoFile(ctx, path) {
+  if (!ctx.fileCache.has(path)) {
+    ctx.fileCache.set(path, githubApi.readFile(ctx.token, ctx.owner, ctx.repo, path));
+  }
+  return ctx.fileCache.get(path);
+}
+
 async function executeTool(tool, args, ctx) {
   ctx.onEvent({ type: 'tool', name: tool, path: args.path || args.query || '' });
 
   try {
     switch (tool) {
       case 'read_file': {
-        const file = await githubApi.readFile(ctx.token, ctx.owner, ctx.repo, args.path);
+        const file = await readRepoFile(ctx, args.path);
         ctx.onEvent({ type: 'tool_done', content: `${args.path} leido` });
         return file.content;
       }
@@ -523,6 +600,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     email: user.githubEmail,
     authorName: user.githubUsername || user.githubName || user.username || 'Adonix',
     fileTree,
+    fileCache: new Map(),
     onEvent,
   };
   const loopState = {
@@ -532,6 +610,9 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     lastReadPath: '',
     lastReadContent: '',
     readCounts: {},
+    readContents: {},
+    readOrder: [],
+    fileTree,
   };
 
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -712,7 +793,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       modelMessages.push({ role: 'assistant', content: answer });
       modelMessages.push({
         role: 'user',
-        content: buildForcedWritePrompt(loopState),
+        content: buildForcedWritePrompt(loopState, modelMessages, parsed.content || answer),
       });
       continue;
     }
@@ -792,11 +873,18 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       const toolResult = await executeTool(parsed.tool, parsed.args, toolCtx);
       if (parsed.tool === 'read_file' && parsed.args?.path) {
         loopState.lastReadContent = toolResult;
+        loopState.readContents[parsed.args.path] = toolResult;
+        if (!loopState.readOrder.includes(parsed.args.path)) {
+          loopState.readOrder.push(parsed.args.path);
+        }
         loopState.readCounts[parsed.args.path] = (loopState.readCounts[parsed.args.path] || 0) + 1;
 
         if (loopState.readCounts[parsed.args.path] >= 3) {
           modelMessages.push({ role: 'assistant', content: answer });
-          modelMessages.push({ role: 'user', content: buildForcedWritePrompt(loopState) });
+          modelMessages.push({
+            role: 'user',
+            content: buildForcedWritePrompt(loopState, modelMessages, `${thinkingContent}\n${answer}`.trim()),
+          });
           continue;
         }
       }
