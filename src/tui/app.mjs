@@ -26,17 +26,17 @@ const SPIN_MS = 80;
 const MIN_SPIN = ['⠁', '⠂', '⠄', '⡀', '⢀', '⠠', '⠐', '⠈'];
 
 const C = {
-  bg:       'white',
-  text:     '#18181b',
-  sub:      '#71717a',
+  bg:       undefined,
+  text:     '#ffffff',
+  sub:      '#d4d4d8',
   muted:    '#a1a1aa',
-  faint:    '#d4d4d8',
-  ghost:    '#e5e7eb',
-  blue:     '#3b82f6',
-  purple:   '#7c3aed',
-  green:    '#16a34a',
-  amber:    '#d97706',
-  red:      '#dc2626',
+  faint:    '#71717a',
+  ghost:    '#52525b',
+  blue:     '#60a5fa',
+  purple:   '#a78bfa',
+  green:    '#4ade80',
+  amber:    '#fbbf24',
+  red:      '#f87171',
 };
 
 class UIStore extends EventEmitter {
@@ -160,19 +160,18 @@ function Banner({ model, resumed }) {
     flexDirection: 'column',
     paddingLeft: 2,
     paddingTop: 1,
-    bgColor: C.bg,
   },
     h(Box, null,
-      h(Text, { bold: true, color: C.text, bgColor: C.bg },
+      h(Text, { bold: true, color: C.text },
         '◆  ' + APP_NAME.toLowerCase()),
-      h(Text, { color: C.ghost, bgColor: C.bg }, '    '),
-      h(Text, { color: C.muted, bgColor: C.bg }, model),
+      h(Text, { color: C.ghost }, '    '),
+      h(Text, { color: C.muted }, model),
     ),
     h(Box, null,
-      h(Text, { color: C.faint, bgColor: C.bg },
+      h(Text, { color: C.faint },
         resumed ? 'sesión resumida' : 'sesión nueva'),
-      h(Text, { color: C.ghost, bgColor: C.bg }, '  ·  '),
-      h(Text, { color: C.faint, bgColor: C.bg }, '/help'),
+      h(Text, { color: C.ghost }, '  ·  '),
+      h(Text, { color: C.faint }, '/help'),
     ),
   );
 }
@@ -191,11 +190,11 @@ function SpinnerLine({ label, started }) {
 
   const elapsedStr = elapsed > 1000 ? '  ' + formatElapsed(elapsed) : '';
 
-  return h(Box, { paddingLeft: 2, bgColor: C.bg },
-    h(Text, { color: C.muted, bgColor: C.bg }, MIN_SPIN[frame]),
-    h(Text, { color: C.muted, bgColor: C.bg }, '  ' + label),
+  return h(Box, { paddingLeft: 2 },
+    h(Text, { color: C.muted }, MIN_SPIN[frame]),
+    h(Text, { color: C.muted }, '  ' + label),
     elapsedStr
-      ? h(Text, { color: C.faint, bgColor: C.bg }, elapsedStr)
+      ? h(Text, { color: C.faint }, elapsedStr)
       : null,
   );
 }
@@ -211,20 +210,20 @@ function EventLine({ kind, title, detail }) {
   };
   const { sym, color } = icons[kind] || icons.info;
 
-  return h(Box, { paddingLeft: 2, bgColor: C.bg },
-    h(Text, { color, bgColor: C.bg }, sym),
-    h(Text, { color: C.faint, bgColor: C.bg }, ' '),
-    h(Text, { color: C.sub, bgColor: C.bg }, title),
+  return h(Box, { paddingLeft: 2 },
+    h(Text, { color }, sym),
+    h(Text, { color: C.faint }, ' '),
+    h(Text, { color: C.sub }, title),
     detail
-      ? h(Text, { color: C.muted, bgColor: C.bg }, '  ' + detail)
+      ? h(Text, { color: C.muted }, '  ' + detail)
       : null,
   );
 }
 
 function UserMessage({ text }) {
-  return h(Box, { paddingLeft: 2, marginTop: 1, bgColor: C.bg },
-    h(Text, { color: C.blue, bold: true, bgColor: C.bg }, '› '),
-    h(Text, { color: C.text, bgColor: C.bg, wrap: 'wrap' }, text),
+  return h(Box, { paddingLeft: 2, marginTop: 1 },
+    h(Text, { color: C.blue, bold: true }, '› '),
+    h(Text, { color: C.text, wrap: 'wrap' }, text),
   );
 }
 
@@ -247,16 +246,16 @@ function ThinkingBlock({ text, elapsed, live }) {
     ? 'pensando…'
     : 'pensó  ' + elapsed + 's';
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 2, bgColor: C.bg },
-    h(Text, { color: C.faint, bgColor: C.bg },
+  return h(Box, { flexDirection: 'column', paddingLeft: 2 },
+    h(Text, { color: C.faint },
       '○  ' + label),
     lines.length > 0
       ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
         ...lines.map((line, i) =>
-          h(Text, { key: String(i), color: C.ghost, bgColor: C.bg, wrap: 'wrap' }, line),
+          h(Text, { key: String(i), color: C.ghost, wrap: 'wrap' }, line),
         ),
         truncated
-          ? h(Text, { color: C.ghost, bgColor: C.bg },
+          ? h(Text, { color: C.ghost },
             '·  ' + (total - MAX_THINKING_LINES) + ' más')
           : null,
       )
@@ -266,17 +265,17 @@ function ThinkingBlock({ text, elapsed, live }) {
 
 function AnswerBlock({ text, live }) {
   if (!text) return null;
-  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1, bgColor: C.bg },
-    h(Text, { color: C.text, bgColor: C.bg, wrap: 'wrap' }, text),
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
+    h(Text, { color: C.text, wrap: 'wrap' }, text),
     live
-      ? h(Text, { color: C.blue, bgColor: C.bg }, '▎')
+      ? h(Text, { color: C.blue }, '▎')
       : null,
   );
 }
 
 function SystemMsg({ text }) {
-  return h(Box, { paddingLeft: 2, bgColor: C.bg },
-    h(Text, { color: C.muted, bgColor: C.bg, wrap: 'wrap' }, text),
+  return h(Box, { paddingLeft: 2 },
+    h(Text, { color: C.muted, wrap: 'wrap' }, text),
   );
 }
 
@@ -286,23 +285,23 @@ function ConfirmBar({ title, detail }) {
     .filter(l => l.trim())
     .slice(0, 8);
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 1, bgColor: C.bg },
+  return h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 1 },
     h(Box, null,
-      h(Text, { color: C.amber, bold: true, bgColor: C.bg }, '! '),
-      h(Text, { color: C.text, bold: true, bgColor: C.bg }, title),
+      h(Text, { color: C.amber, bold: true }, '! '),
+      h(Text, { color: C.text, bold: true }, title),
     ),
     detailLines.length > 0
       ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
         ...detailLines.map((line, i) =>
-          h(Text, { key: String(i), color: C.sub, bgColor: C.bg, wrap: 'wrap' }, line),
+          h(Text, { key: String(i), color: C.sub, wrap: 'wrap' }, line),
         ),
       )
       : null,
     h(Box, { marginTop: 1 },
-      h(Text, { color: C.green, bold: true, bgColor: C.bg }, 's'),
-      h(Text, { color: C.muted, bgColor: C.bg }, ' aceptar   '),
-      h(Text, { color: C.red, bold: true, bgColor: C.bg }, 'n'),
-      h(Text, { color: C.muted, bgColor: C.bg }, ' rechazar'),
+      h(Text, { color: C.green, bold: true }, 's'),
+      h(Text, { color: C.muted }, ' aceptar   '),
+      h(Text, { color: C.red, bold: true }, 'n'),
+      h(Text, { color: C.muted }, ' rechazar'),
     ),
   );
 }
@@ -347,15 +346,15 @@ function InputBar({ onSubmit, model }) {
     }
   });
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 1, paddingBottom: 1, bgColor: C.bg },
+  return h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 1, paddingBottom: 1 },
     h(Box, null,
-      h(Text, { color: C.blue, bold: true, bgColor: C.bg }, '› '),
-      h(Text, { color: C.text, bgColor: C.bg }, value),
-      h(Text, { color: C.blue, bgColor: C.bg }, '▎'),
+      h(Text, { color: C.blue, bold: true }, '› '),
+      h(Text, { color: C.text }, value),
+      h(Text, { color: C.blue }, '▎'),
     ),
     h(Box, null,
-      h(Text, { color: C.faint, bgColor: C.bg }, model),
-      h(Text, { color: C.ghost, bgColor: C.bg }, '  ·  /help  ·  esc'),
+      h(Text, { color: C.faint }, model),
+      h(Text, { color: C.ghost }, '  ·  /help  ·  esc'),
     ),
   );
 }
@@ -395,7 +394,7 @@ function App({ store, state, onSubmit }) {
   const showInput = !store.processing && !store.confirmRequest;
   const showConfirm = !!store.confirmRequest;
 
-  return h(Box, { flexDirection: 'column', bgColor: C.bg },
+  return h(Box, { flexDirection: 'column' },
     h(Static, { items: store.items }, (item) =>
       h(Box, { key: item.id, flexDirection: 'column' },
         h(StaticItem, { item }),
