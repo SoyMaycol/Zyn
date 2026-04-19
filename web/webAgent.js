@@ -71,13 +71,29 @@ async function executeTool(tool, args, ctx) {
           ctx.onEvent({ type: 'tool_error', content: msg });
           return msg;
         }
-        await githubApi.writeFile(ctx.token, ctx.owner, ctx.repo, args.path, args.content, {
+        const writeResult = await githubApi.writeFile(
+          ctx.token,
+          ctx.owner,
+          ctx.repo,
+          args.path,
+          args.content,
+          {
           name: ctx.authorName,
           email: ctx.email,
-        });
-        const fname = args.path.split('/').pop();
-        ctx.onEvent({ type: 'tool_done', content: `Commit: Update ${fname}` });
-        return `Archivo ${args.path} actualizado y commiteado.`;
+          },
+        );
+        const shortSha = writeResult.commitSha.slice(0, 7);
+        const commitLabel = shortSha
+          ? `${writeResult.commitMessage} · ${shortSha}`
+          : writeResult.commitMessage;
+        ctx.onEvent({ type: 'tool_done', content: `Commit real: ${commitLabel}` });
+        return [
+          `Archivo ${writeResult.path} actualizado y commiteado.`,
+          `Commit real: ${writeResult.commitMessage}`,
+          writeResult.commitSha ? `SHA: ${writeResult.commitSha}` : '',
+          writeResult.commitUrl ? `URL: ${writeResult.commitUrl}` : '',
+          `Autor: ${writeResult.authorName} <${writeResult.authorEmail}>`,
+        ].filter(Boolean).join('\n');
       }
       case 'list_dir': {
         const dir = (args.path || '').replace(/\/$/, '');

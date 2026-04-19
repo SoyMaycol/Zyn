@@ -97,11 +97,20 @@ async function writeFile(token, owner, repo, filePath, content, author = {}) {
   };
   if (sha) body.sha = sha;
 
-  return ghFetch(`/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, token, {
+  const result = await ghFetch(`/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, token, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+
+  return {
+    path: result.content?.path || filePath,
+    commitMessage: result.commit?.message || body.message,
+    commitSha: result.commit?.sha || '',
+    commitUrl: result.commit?.html_url || '',
+    authorName: result.commit?.committer?.name || body.committer.name,
+    authorEmail: result.commit?.committer?.email || body.committer.email,
+  };
 }
 
 module.exports = {
