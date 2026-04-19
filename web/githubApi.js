@@ -1,9 +1,13 @@
 const BASE = 'https://api.github.com';
 
+function encodePath(filePath) {
+  return filePath.split('/').map(encodeURIComponent).join('/');
+}
+
 async function ghFetch(urlPath, token, options = {}) {
   const res = await fetch(`${BASE}${urlPath}`, {
     headers: {
-      Authorization: `token ${token}`,
+      Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github.v3+json',
       'User-Agent': 'Adonix-Web',
       ...options.headers,
@@ -11,10 +15,22 @@ async function ghFetch(urlPath, token, options = {}) {
     ...options,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error('Token de GitHub inválido o expirado. Reconfigura en ajustes.');
+    }
     const text = await res.text().catch(() => '');
     throw new Error(`GitHub ${res.status}: ${text.slice(0, 200)}`);
   }
   return res.json();
+}
+
+async function validateToken(token) {
+  try {
+    await ghFetch('/user', token);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function listRepos(token) {
@@ -32,7 +48,6 @@ async function listRepos(token) {
 }
 
 async function getTree(token, owner, repo) {
-  // Obtener rama default
   const repoData = await ghFetch(`/repos/${owner}/${repo}`, token);
   const branch = repoData.default_branch || 'main';
   const data = await ghFetch(
@@ -45,7 +60,7 @@ async function getTree(token, owner, repo) {
 }
 
 async function readFile(token, owner, repo, filePath) {
-  const data = await ghFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, token);
+  const data = await ghFetch(`/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, token);
   return {
     content: Buffer.from(data.content, 'base64').toString('utf8'),
     sha: data.sha,
@@ -56,7 +71,7 @@ async function writeFile(token, owner, repo, filePath, content, email) {
   let sha;
   try {
     const existing = await ghFetch(
-      `/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`,
+      `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`,
       token,
     );
     sha = existing.sha;
@@ -73,11 +88,11 @@ async function writeFile(token, owner, repo, filePath, content, email) {
   };
   if (sha) body.sha = sha;
 
-  return ghFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, token, {
+  return ghFetch(`/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, token, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
 
-module.exports = { listRepos, getTree, readFile, writeFile };
+module.exports = { listRepos, getTree, readFile, writeFile, validateToken };

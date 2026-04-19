@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const store = require('./store');
 const githubApi = require('./githubApi');
 const { runWebAgent } = require('./webAgent');
+const { MODELS, DEFAULT_MODEL_KEY } = require('../src/config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -77,10 +78,31 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
 
 // ─── Settings ────────────────────────────────────────
 
-app.put('/api/settings', requireAuth, (req, res) => {
-  const { githubToken, githubEmail } = req.body;
-  store.updateUser(req.session.userId, { githubToken, githubEmail });
-  res.json({ success: true });
+app.put('/api/settings', requireAuth, async (req, res) => {
+  try {
+    const { githubToken, githubEmail } = req.body;
+    if (githubToken) {
+      const valid = await githubApi.validateToken(githubToken);
+      if (!valid) {
+        return res.status(400).json({ error: 'Token de GitHub inválido o expirado' });
+      }
+    }
+    store.updateUser(req.session.userId, { githubToken, githubEmail });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Models ──────────────────────────────────────────
+
+app.get('/api/models', requireAuth, (req, res) => {
+  const models = Object.entries(MODELS).map(([key, val]) => ({
+    key,
+    label: val.label,
+    provider: val.provider,
+  }));
+  res.json({ models, default: DEFAULT_MODEL_KEY });
 });
 
 // ─── GitHub ──────────────────────────────────────────
@@ -133,6 +155,18 @@ app.get('/api/chats/:id', requireAuth, (req, res) => {
   res.json(chat);
 });
 
+app.put('/api/chats/:id/settings', requireAuth, (req, res) => {
+  const chat = store.getChat(req.params.id);
+  if (!chat || chat.userId !== req.session.userId) {
+    return res.status(404).json({ error: 'Chat no encontrado' });
+  }
+  const { activeModel, concuerdo } = req.body;
+  if (activeModel !== undefined) chat.activeModel = activeModel;
+  if (concuerdo !== undefined) chat.concuerdo = concuerdo;
+  store.saveChat(chat);
+  res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo });
+});
+
 app.delete('/api/chats/:id', requireAuth, (req, res) => {
   const chat = store.getChat(req.params.id);
   if (!chat || chat.userId !== req.session.userId) {
@@ -160,31 +194,37 @@ app.post('/api/chats/:id/send', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Mensaje vacio' });
   }
 
-  // Agregar mensaje del usuario
   chat.messages.push({ role: 'user', content: message.trim(), ts: Date.now() });
   store.saveChat(chat);
 
-  // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
+  let aborted = false;
+  req.on('close', () => { aborted = true; });
+
   try {
     await runWebAgent({
       chatData: chat,
       user,
       onEvent: (event) => {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
+        if (!aborted) res.write(`data: ${JSON.stringify(event)}\n\n`);
       },
+      isAborted: () => aborted,
     });
   } catch (err) {
-    res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+    if (!aborted) {
+      res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
+    }
   }
 
-  res.write('data: [DONE]\n\n');
-  res.end();
+  if (!aborted) {
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }
 });
 
 // ─── SPA fallback ────────────────────────────────────
