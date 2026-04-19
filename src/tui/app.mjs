@@ -16,7 +16,6 @@ const {
   APP_NAME,
   DEFAULT_MODEL_KEY,
   MODELS,
-  THINK_FRAMES,
 } = require('../config');
 
 const h = React.createElement;
@@ -27,14 +26,15 @@ const SPIN_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '�
 
 const T = {
   bg:          '#0d0d0d',
-  surface:     '#141414',
-  surfaceHi:   '#1a1a1a',
-  text:        '#e0e0e0',
-  textDim:     '#999999',
-  textMuted:   '#666666',
-  textGhost:   '#444444',
+  surface:     '#161616',
+  surfaceHi:   '#1e1e1e',
+  text:        '#ececec',
+  textDim:     '#a0a0a0',
+  textMuted:   '#707070',
+  textGhost:   '#484848',
   textInvis:   '#2a2a2a',
   accent:      '#d4a054',
+  accentSoft:  '#c49450',
   accentDim:   '#8a6a3a',
   green:       '#6aab6a',
   greenDim:    '#3a6a3a',
@@ -48,12 +48,11 @@ const T = {
   blueDim:     '#334466',
   cyan:        '#66bbbb',
   cyanDim:     '#336666',
-  border:      '#222222',
+  border:      '#252525',
   borderLight: '#333333',
+  userBubble:  '#1c1c1c',
+  aiBubble:    '#141414',
 };
-
-const SEP = '─';
-const VERT = '│';
 
 class UIStore extends EventEmitter {
   constructor() {
@@ -144,7 +143,6 @@ class UIStore extends EventEmitter {
   }
 }
 
-
 function stripAnsi(str) {
   return str.replace(/\x1b\[[0-9;]*m/g, '');
 }
@@ -179,26 +177,19 @@ function useDimensions() {
   return dims;
 }
 
-
-function Divider({ width }) {
-  const w = width || 60;
-  return h(Box, { paddingLeft: 2 },
-    h(Text, { color: T.textInvis }, SEP.repeat(w)),
-  );
-}
-
 function Banner({ model, resumed, width }) {
-  const w = width || 60;
-  return h(Box, { flexDirection: 'column', paddingLeft: 2, paddingTop: 1, paddingBottom: 1 },
-    h(Box, {},
-      h(Text, { color: T.accent, bold: true }, ' ▌ '),
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, paddingTop: 1, paddingBottom: 1 },
+    h(Box, { gap: 1 },
+      h(Text, { color: T.accent, bold: true }, '●'),
       h(Text, { color: T.text, bold: true }, APP_NAME),
-      h(Text, { color: T.textMuted }, '  '),
+    ),
+    h(Box, { paddingLeft: 2 },
+      h(Text, { color: T.textGhost }, resumed ? 'session resumed' : 'new session'),
+      h(Text, { color: T.textGhost }, '  ·  '),
       h(Text, { color: T.textMuted }, model),
     ),
-    h(Box, {},
-      h(Text, { color: T.textGhost }, '  ' + (resumed ? 'session resumed' : 'new session')),
-      h(Text, { color: T.textInvis }, '   ' + SEP.repeat(Math.max(10, w - 30))),
+    h(Box, { paddingTop: 1, paddingLeft: 0 },
+      h(Text, { color: T.textInvis }, '  ' + '─'.repeat(Math.max(20, Math.min(width - 6, 80)))),
     ),
   );
 }
@@ -217,35 +208,42 @@ function SpinnerLine({ label, started }) {
 
   const elapsedStr = elapsed > 1500 ? formatElapsed(elapsed) : '';
 
-  return h(Box, { paddingLeft: 2, gap: 2 },
-    h(Text, { color: T.accent }, SPIN_FRAMES[frame]),
+  return h(Box, { paddingLeft: 5, gap: 1 },
+    h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame]),
     h(Text, { color: T.textMuted }, label),
-    elapsedStr ? h(Text, { color: T.textGhost }, ' ' + elapsedStr) : null,
+    elapsedStr ? h(Text, { color: T.textGhost }, elapsedStr) : null,
   );
 }
 
 function EventLine({ kind, title, detail }) {
   const cfg = {
-    info:    { sym: '·',  color: T.textGhost },
-    think:   { sym: '◐',  color: T.textGhost },
-    tool:    { sym: '⤳',  color: T.purple },
-    ok:      { sym: '✓',  color: T.green },
-    warn:    { sym: '▲',  color: T.amber },
-    error:   { sym: '✕',  color: T.red },
+    info:    { sym: '·', color: T.textGhost },
+    think:   { sym: '◐', color: T.textGhost },
+    tool:    { sym: '⤳', color: T.purple },
+    ok:      { sym: '✓', color: T.green },
+    warn:    { sym: '▲', color: T.amber },
+    error:   { sym: '✕', color: T.red },
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
-  return h(Box, { paddingLeft: 2, gap: 2 },
+  return h(Box, { paddingLeft: 5, gap: 1 },
     h(Text, { color }, sym),
     h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted }, title),
-    detail ? h(Text, { color: T.textGhost }, ' ' + detail) : null,
+    detail ? h(Text, { color: T.textGhost }, detail) : null,
   );
 }
 
-function UserMessage({ text, width }) {
-  return h(Box, { paddingLeft: 2, marginTop: 1, gap: 1 },
-    h(Text, { color: T.accent, bold: true }, '  ▌'),
-    h(Text, { color: T.text, wrap: 'wrap' }, text),
+function UserMessage({ text }) {
+  return h(Box, { paddingLeft: 3, paddingRight: 3, marginTop: 1, marginBottom: 0, flexDirection: 'row' },
+    h(Box, { flexDirection: 'column' },
+      h(Box, { gap: 1, marginBottom: 0 },
+        h(Text, { color: T.accent, bold: true }, '⦿'),
+        h(Text, { color: T.textDim, bold: true }, 'You'),
+      ),
+      h(Box, { paddingLeft: 2 },
+        h(Text, { color: T.text, wrap: 'wrap' }, text),
+      ),
+    ),
   );
 }
 
@@ -264,37 +262,41 @@ function ThinkingBlock({ text, elapsed, live, width }) {
   const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '◐';
 
   const label = live
-    ? ` ${pulseChar}  thinking...`
-    : ` ◐  thought ${elapsed}s`;
+    ? pulseChar + '  thinking...'
+    : '◐  thought ' + elapsed + 's';
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 1 },
+  return h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 1 },
     h(Text, { color: T.textGhost }, label),
     lines.length > 0
-      ? h(Box, { flexDirection: 'column', paddingLeft: 3, borderStyle: 'none' },
+      ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
           ...lines.map((line, i) =>
             h(Text, { key: String(i), color: T.textInvis, wrap: 'wrap' }, line),
           ),
-          more > 0 ? h(Text, { color: T.textGhost }, `   · · ·  ${more} more lines`) : null,
+          more > 0 ? h(Text, { color: T.textGhost }, '··· ' + more + ' more lines') : null,
         )
       : null,
   );
 }
 
-function AnswerBlock({ text, live, width }) {
+function AnswerBlock({ text, live }) {
   if (!text) return null;
   const lines = text.split('\n');
-  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
-    ...lines.map((line, i) =>
-      h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line),
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, paddingRight: 3, marginTop: 1 },
+    h(Box, { gap: 1, marginBottom: 0 },
+      h(Text, { color: T.accentSoft, bold: true }, '◉'),
+      h(Text, { color: T.textDim, bold: true }, APP_NAME),
     ),
-    live
-      ? h(Text, { color: T.accent }, '▎')
-      : null,
+    h(Box, { flexDirection: 'column', paddingLeft: 2 },
+      ...lines.map((line, i) =>
+        h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line),
+      ),
+      live ? h(Text, { color: T.accent }, '▎') : null,
+    ),
   );
 }
 
 function SystemMsg({ text }) {
-  return h(Box, { flexDirection: 'column', paddingLeft: 2 },
+  return h(Box, { flexDirection: 'column', paddingLeft: 5 },
     ...text.split('\n').map((line, i) =>
       h(Text, { key: String(i), color: T.textMuted, wrap: 'wrap' }, line),
     ),
@@ -304,77 +306,60 @@ function SystemMsg({ text }) {
 function ConfirmBar({ title, detail }) {
   const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 8);
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 1 },
-    h(Box, { gap: 2 },
-      h(Text, { color: T.amber, bold: true }, '  ?'),
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
+    h(Box, { gap: 1 },
+      h(Text, { color: T.amber, bold: true }, '?'),
       h(Text, { color: T.text, bold: true }, title),
     ),
     detailLines.length > 0
-      ? h(Box, { flexDirection: 'column', paddingLeft: 4 },
+      ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
           ...detailLines.map((line, i) =>
             h(Text, { key: String(i), color: T.textDim, wrap: 'wrap' }, line),
           ),
         )
       : null,
-    h(Box, { marginTop: 1, paddingLeft: 2, gap: 3 },
-      h(Text, { color: T.green, bold: true }, ' y'),
+    h(Box, { marginTop: 1, paddingLeft: 2, gap: 2 },
+      h(Text, { color: T.green, bold: true }, 'y'),
       h(Text, { color: T.textGhost }, 'allow'),
       h(Text, { color: T.textInvis }, '·'),
-      h(Text, { color: T.red, bold: true }, ' n'),
+      h(Text, { color: T.red, bold: true }, 'n'),
       h(Text, { color: T.textGhost }, 'deny'),
     ),
   );
 }
 
-function StatusIndicator({ processing }) {
-  if (!processing) return null;
-
+function StatusBar({ model, processing, width }) {
   const [frame, setFrame] = useState(0);
+
   useEffect(() => {
+    if (!processing) return;
     const t = setInterval(() => setFrame(f => (f + 1) % SPIN_FRAMES.length), SPIN_MS);
     return () => clearInterval(t);
-  }, []);
+  }, [processing]);
 
-  return h(Box, {},
-    h(Text, { color: T.accent }, SPIN_FRAMES[frame]),
-  );
-}
+  const line = '─'.repeat(Math.max(10, Math.min(width - 4, 120)));
 
-function StatusBar({ model, processing, width }) {
-  const items = [
-    h(Text, { key: 'name', color: T.accent, bold: true }, ` ${APP_NAME}`),
-    h(Text, { key: 'sep1', color: T.textInvis }, ' ─ '),
-    h(Text, { key: 'model', color: T.textMuted }, model),
-  ];
-
-  if (processing) {
-    items.push(h(StatusIndicator, { key: 'status', processing }));
-  }
-
-  const spacerCount = Math.max(2, Math.floor((width - 40) / 2));
-
-  const rightItems = [
-    h(Text, { key: 'rsep', color: T.textInvis }, ' '.repeat(spacerCount)),
-    h(Text, { key: 'esc', color: T.textGhost }, 'esc'),
-    h(Text, { key: 'rsep2', color: T.textInvis }, ' to exit'),
-  ];
-
-  return h(Box, {
-    paddingLeft: 1,
-    paddingRight: 1,
-    borderStyle: 'single',
-    borderColor: T.borderLight,
-  },
-    ...items,
-    ...rightItems,
+  return h(Box, { flexDirection: 'column', paddingLeft: 1, paddingRight: 1 },
+    h(Box, {},
+      h(Text, { color: T.textInvis }, line),
+    ),
+    h(Box, { paddingLeft: 1, paddingTop: 0, gap: 1 },
+      h(Text, { color: T.accent }, '●'),
+      h(Text, { color: T.textGhost }, model),
+      processing
+        ? h(Text, { color: T.accentSoft }, '  ' + SPIN_FRAMES[frame])
+        : null,
+      h(Text, { color: T.textInvis }, '  '),
+      h(Text, { color: T.textInvis }, 'esc to exit'),
+    ),
   );
 }
 
 function StaticItem({ item, width }) {
   switch (item.type) {
     case 'banner':   return h(Banner,        { model: item.model, resumed: item.resumed, width });
-    case 'divider':  return h(Divider,       { width });
-    case 'user':     return h(UserMessage,   { text: item.text, width });
+    case 'divider':  return h(Box, { paddingLeft: 2 }, h(Text, { color: T.textInvis }, ' '));
+    case 'user':     return h(UserMessage,   { text: item.text });
     case 'thinking': return h(ThinkingBlock, { text: item.text, elapsed: item.elapsed, width });
     case 'answer':   return h(AnswerBlock,   { text: item.text, width });
     case 'event':    return h(EventLine,     { kind: item.kind, title: item.title, detail: item.detail });
@@ -383,7 +368,7 @@ function StaticItem({ item, width }) {
   }
 }
 
-function InputBar({ onSubmit, model }) {
+function InputBar({ onSubmit }) {
   const [value, setValue] = useState('');
 
   useInput((input, key) => {
@@ -406,20 +391,17 @@ function InputBar({ onSubmit, model }) {
 
   const hasText = value.trim().length > 0;
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 1, paddingRight: 1 },
-    h(Box, {},
-      h(Text, { color: T.accent, bold: true }, ' > '),
-      h(Text, { color: hasText ? T.text : T.textGhost }, value),
-      h(Text, { color: T.accent }, hasText ? '' : '▎'),
-    ),
+  return h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0 },
+    h(Text, { color: T.textGhost }, '› '),
+    h(Text, { color: hasText ? T.text : T.textGhost }, hasText ? value : 'Send a message...'),
+    h(Text, { color: T.accent }, hasText ? '' : '▎'),
   );
 }
-
 
 function App({ store, state, onSubmit }) {
   useStore(store);
   const { exit } = useApp();
-  const { width, height } = useDimensions();
+  const { width } = useDimensions();
 
   const modelKey   = state?.activeModel || DEFAULT_MODEL_KEY;
   const modelLabel = (MODELS[modelKey]?.label || modelKey).toLowerCase();
@@ -468,7 +450,7 @@ function App({ store, state, onSubmit }) {
 
   if (showInput) {
     dynamicArea.push(
-      h(InputBar, { key: 'input', onSubmit: handleInput, model: modelLabel })
+      h(InputBar, { key: 'input', onSubmit: handleInput })
     );
   }
 
@@ -484,7 +466,6 @@ function App({ store, state, onSubmit }) {
     h(StatusBar, { model: modelLabel, processing: store.processing, width }),
   );
 }
-
 
 function getUiBindings(store, state) {
   return {
@@ -507,7 +488,6 @@ function getUiBindings(store, state) {
     paint: (text) => text,
   };
 }
-
 
 export async function startTUI(options = {}) {
   const { state, resumed } = await loadOrCreateSessionState(null, options);
