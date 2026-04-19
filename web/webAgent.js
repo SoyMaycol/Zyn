@@ -7,11 +7,11 @@ const store = require('./store');
 
 const MAX_STEPS = 15;
 const CONCUERDO_TIMEOUT = 30000;
+const BUFFER_CHECK = 12;
 const WEB_SKILLS = ['core', 'web-agent', 'code-style', 'reasoning', 'methodology'];
 
 function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
   const skills = buildSkillsPrompt({ include: WEB_SKILLS });
-
   const treeLines = fileTree
     .filter(f => !f.path.includes('node_modules/') && !f.path.includes('.git/'))
     .slice(0, 200)
@@ -36,12 +36,146 @@ function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
     parts.push(
       '',
       '# Modo Concuerdo (ACTIVO)',
-      `Trabajas en colaboracion con ${otherKeys.length} modelos: ${otherLabels}.`,
-      'Si el usuario pregunta, confirma que SI trabajas junto a otros modelos.',
+      `Trabajas junto a ${otherKeys.length} modelos: ${otherLabels}.`,
+      'Si el usuario pregunta, confirma que trabajas en equipo con otros modelos.',
     );
   }
 
   return parts.join('\n');
+}
+
+async function executeTool(tool, args, ctx) {
+  ctx.onEvent({ type: 'tool', name: tool, path: args.path || args.query || '' });
+
+  try {
+    switch (tool) {
+      case 'read_file': {
+        const file = await githubApi.readFile(ctx.token, ctx.owner, ctx.repo, args.path);
+        ctx.onEvent({ type: 'tool_done', content: `${args.path} leido` });
+        return file.content;
+      }
+      case 'write_file': {
+        if (!args.content || args.content.length < 2) {
+          const msg = 'Error: contenido vacio. Lee el archivo primero con read_file.';
+          ctx.onEvent({ type: 'tool_error', content: msg });
+          return msg;
+        }
+        await githubApi.writeFile(ctx.token, ctx.owner, ctx.repo, args.path, args.content, ctx.email);
+        const fname = args.path.split('/').pop();
+        ctx.onEvent({ type: 'tool_done', content: `Commit: Update ${fname}` });
+        return `Archivo ${args.path} actualizado y commiteado.`;
+      }
+      case 'list_dir': {
+        const dir = (args.path || '').replace(/\/$/, '');
+        const items = ctx.fileTree
+          .filter(f => dir ? f.path.startsWith(dir + '/') : true)
+          .slice(0, 100)
+          .map(f => f.path);
+        ctx.onEvent({ type: 'tool_done', content: `${items.length} archivos` });
+        return items.join('\n') || 'Directorio vacio';
+      }
+      case 'search_text':
+      case 'glob_files': {
+        const pattern = (args.pattern || args.glob || '').toLowerCase();
+        const matches = ctx.fileTree
+          .filter(f => f.path.toLowerCase().includes(pattern))
+          .slice(0, 50)
+          .map(f => f.path);
+        ctx.onEvent({ type: 'tool_done', content: `${matches.length} resultados` });
+        return matches.join('\n') || 'Sin resultados';
+      }
+      case 'file_info': {
+        const info = ctx.fileTree.find(f => f.path === args.path);
+        if (!info) {
+          ctx.onEvent({ type: 'tool_error', content: 'Archivo no encontrado' });
+          return 'Archivo no encontrado en el repo.';
+        }
+        ctx.onEvent({ type: 'tool_done', content: args.path });
+        return `path: ${info.path}\nsize: ${info.size} bytes`;
+      }
+      default: {
+        const msg = `Herramienta "${tool}" no disponible en modo web.`;
+        ctx.onEvent({ type: 'tool_done', content: msg });
+        return msg;
+      }
+    }
+  } catch (err) {
+    const msg = `Error: ${err.message}`;
+    ctx.onEvent({ type: 'tool_error', content: msg });
+    return msg;
+  }
+}
+
+async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted) {
+  const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
+  if (!otherKeys.length) return null;
+
+  onEvent({ type: 'concuerdo_start', models: otherKeys.map(k => MODELS[k].label) });
+
+  const withTimeout = (p) => Promise.race([
+    p,
+    new Promise(r => setTimeout(() => r(null), CONCUERDO_TIMEOUT)),
+  ]);
+
+  const results = await Promise.allSettled(
+    otherKeys.map(k => withTimeout(chatSilent({ messages: modelMessages, modelKey: k }).catch(() => null)))
+  );
+
+  const extras = [];
+  for (let i = 0; i < results.length; i++) {
+    if (isAborted?.()) return null;
+    const val = results[i].status === 'fulfilled' ? results[i].value : null;
+    const label = MODELS[otherKeys[i]]?.label || otherKeys[i];
+
+    if (val?.answer?.trim()) {
+      const altParsed = parseAgentResponse(val.answer);
+      if (altParsed.type === 'final' && altParsed.content?.trim()) {
+        extras.push({ content: altParsed.content, label });
+        onEvent({ type: 'concuerdo_model', label, status: 'ok' });
+      } else {
+        onEvent({ type: 'concuerdo_model', label, status: 'skip' });
+      }
+    } else {
+      onEvent({ type: 'concuerdo_model', label, status: 'timeout' });
+    }
+  }
+
+  if (!extras.length) return null;
+
+  onEvent({ type: 'synth_start' });
+  const primaryLabel = MODELS[primaryKey]?.label || primaryKey;
+  const synthMessages = [
+    {
+      role: 'system',
+      content: 'Eres Adonix. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.',
+    },
+    {
+      role: 'user',
+      content: [
+        `Respuesta de ${primaryLabel}:\n${primaryContent}`,
+        ...extras.map(e => `\nRespuesta de ${e.label}:\n${e.content}`),
+        '\nCrea la respuesta final unificada:',
+      ].join('\n'),
+    },
+  ];
+
+  try {
+    let synthAnswer = '';
+    await chat({
+      messages: synthMessages,
+      modelKey: primaryKey,
+      onChunk: (delta, phase) => {
+        if (isAborted?.()) return;
+        if (phase !== 'thinking') {
+          synthAnswer += delta;
+          onEvent({ type: 'synth_delta', content: delta });
+        }
+      },
+    });
+    return synthAnswer.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 async function runWebAgent({ chatData, user, onEvent, isAborted }) {
@@ -65,21 +199,30 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     concuerdo,
     activeModel: modelKey,
   });
+
   const modelMessages = [
     { role: 'system', content: systemPrompt },
     ...history.map(m => ({ role: m.role, content: m.content })),
   ];
+
+  const toolCtx = {
+    token: user.githubToken,
+    owner: repoOwner,
+    repo: repoName,
+    email: user.githubEmail,
+    fileTree,
+    onEvent,
+  };
 
   for (let step = 0; step < MAX_STEPS; step++) {
     if (isAborted?.()) return;
 
     let answer = '';
     let thinkingContent = '';
-
-    onEvent({
-      type: 'thinking_start',
-      content: step === 0 ? 'Pensando...' : `Paso ${step + 1}...`,
-    });
+    let thinkStarted = false;
+    let thinkStart = 0;
+    let streamStarted = false;
+    let isToolBuf = false;
 
     try {
       const result = await chat({
@@ -87,11 +230,38 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
         modelKey,
         onChunk: (delta, phase) => {
           if (isAborted?.()) return;
+
           if (phase === 'thinking') {
+            if (!thinkStarted) {
+              thinkStarted = true;
+              thinkStart = Date.now();
+              onEvent({ type: 'thinking_start' });
+            }
             thinkingContent += delta;
             onEvent({ type: 'thinking_delta', content: delta });
-          } else {
-            answer += delta;
+            return;
+          }
+
+          answer += delta;
+
+          // Buffer initial chars to detect tool calls vs text
+          if (!streamStarted && !isToolBuf) {
+            const trimmed = answer.trimStart();
+            if (trimmed.length < BUFFER_CHECK) return;
+
+            if (trimmed[0] === '{' || trimmed.startsWith('```')) {
+              // JSON tool call — buffer silently
+              isToolBuf = true;
+              return;
+            }
+
+            // Text response — flush buffer and start streaming
+            streamStarted = true;
+            onEvent({ type: 'delta', content: answer });
+            return;
+          }
+
+          if (streamStarted) {
             onEvent({ type: 'delta', content: delta });
           }
         },
@@ -102,154 +272,38 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       return;
     }
 
-    if (thinkingContent) {
-      onEvent({ type: 'thinking_end', content: thinkingContent });
+    if (thinkStarted) {
+      const dur = ((Date.now() - thinkStart) / 1000).toFixed(1);
+      onEvent({ type: 'thinking_end', duration: dur });
     }
 
     const parsed = parseAgentResponse(answer);
 
-    if (parsed.type === 'final' && concuerdo) {
-      const otherKeys = Object.keys(MODELS).filter(k => k !== modelKey);
-
-      if (otherKeys.length > 0) {
-        onEvent({ type: 'concuerdo_start', models: otherKeys.map(k => MODELS[k].label) });
-
-        const withTimeout = (promise) => Promise.race([
-          promise,
-          new Promise(r => setTimeout(() => r(null), CONCUERDO_TIMEOUT)),
-        ]);
-
-        const secondaryPromises = otherKeys.map(k =>
-          withTimeout(chatSilent({ messages: modelMessages, modelKey: k }).catch(() => null))
-        );
-
-        const settled = await Promise.allSettled(secondaryPromises);
-        const extras = [];
-
-        for (let i = 0; i < settled.length; i++) {
-          if (isAborted?.()) return;
-          const val = settled[i].status === 'fulfilled' ? settled[i].value : null;
-          const label = MODELS[otherKeys[i]]?.label || otherKeys[i];
-
-          if (val?.answer?.trim()) {
-            const altParsed = parseAgentResponse(val.answer);
-            if (altParsed.type === 'final' && altParsed.content?.trim()) {
-              extras.push({ content: altParsed.content, label });
-              onEvent({ type: 'concuerdo_model', label, status: 'ok' });
-            } else {
-              onEvent({ type: 'concuerdo_model', label, status: 'skip' });
-            }
-          } else {
-            onEvent({ type: 'concuerdo_model', label, status: 'timeout' });
-          }
-        }
-
-        if (extras.length > 0) {
-          onEvent({ type: 'concuerdo_synthesis', content: 'Sintetizando respuestas...' });
-
-          const synthMessages = [
-            {
-              role: 'system',
-              content: [
-                'Eres Adonix. Varios modelos analizaron la misma pregunta.',
-                'Crea UNA SOLA respuesta final unificada.',
-                'Integra perspectivas unicas. Se directo. Responde en español.',
-                'NO menciones que sintetizas ni que hay multiples modelos.',
-              ].join('\n'),
-            },
-            {
-              role: 'user',
-              content: [
-                `Respuesta de ${modelLabel}:\n${parsed.content}`,
-                '',
-                ...extras.map(e => `Respuesta de ${e.label}:\n${e.content}`),
-                '',
-                'Crea la respuesta final unificada:',
-              ].join('\n'),
-            },
-          ];
-
-          try {
-            let synthAnswer = '';
-            onEvent({ type: 'synth_start' });
-            await chat({
-              messages: synthMessages,
-              modelKey,
-              onChunk: (delta, phase) => {
-                if (isAborted?.()) return;
-                if (phase !== 'thinking') {
-                  synthAnswer += delta;
-                  onEvent({ type: 'synth_delta', content: delta });
-                }
-              },
-            });
-            if (synthAnswer.trim()) {
-              chatData.messages.push({
-                role: 'assistant',
-                content: synthAnswer.trim(),
-                ts: Date.now(),
-              });
-              store.saveChat(chatData);
-              onEvent({ type: 'done', content: synthAnswer.trim() });
-              return;
-            }
-          } catch {
-            // Fallo de sintesis — usar respuesta primaria
-          }
+    // ── Final response ──
+    if (parsed.type === 'final') {
+      if (concuerdo) {
+        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted);
+        if (synthResult) {
+          chatData.messages.push({ role: 'assistant', content: synthResult, ts: Date.now() });
+          store.saveChat(chatData);
+          onEvent({ type: 'done', content: synthResult });
+          return;
         }
       }
-    }
 
-    if (parsed.type === 'final') {
-      chatData.messages.push({
-        role: 'assistant',
-        content: parsed.content,
-        ts: Date.now(),
-      });
+      chatData.messages.push({ role: 'assistant', content: parsed.content, ts: Date.now() });
       store.saveChat(chatData);
       onEvent({ type: 'done', content: parsed.content });
       return;
     }
 
+    // ── Tool call ──
     if (parsed.type === 'tool') {
-      const { tool, args } = parsed;
-      onEvent({ type: 'tool', name: tool, path: args.path || '' });
+      if (streamStarted) onEvent({ type: 'clear_stream' });
 
-      let toolResult;
-      try {
-        if (tool === 'read_file') {
-          const file = await githubApi.readFile(
-            user.githubToken, repoOwner, repoName, args.path,
-          );
-          toolResult = file.content;
-          onEvent({ type: 'tool_done', content: `📄 ${args.path} leido` });
-        } else if (tool === 'write_file') {
-          if (!args.content || args.content.length < 2) {
-            toolResult = 'Error: contenido vacio o demasiado corto. Lee el archivo primero con read_file.';
-            onEvent({ type: 'tool_error', content: toolResult });
-          } else {
-            await githubApi.writeFile(
-              user.githubToken, repoOwner, repoName,
-              args.path, args.content, user.githubEmail,
-            );
-            toolResult = `Archivo ${args.path} actualizado y commiteado en GitHub.`;
-            const fname = args.path.split('/').pop();
-            onEvent({ type: 'tool_done', content: `✅ Commit: Update ${fname}` });
-          }
-        } else {
-          toolResult = `Herramienta "${tool}" no disponible en modo web. Usa read_file o write_file.`;
-          onEvent({ type: 'tool_done', content: toolResult });
-        }
-      } catch (err) {
-        toolResult = `Error: ${err.message}`;
-        onEvent({ type: 'tool_error', content: toolResult });
-      }
-
+      const toolResult = await executeTool(parsed.tool, parsed.args, toolCtx);
       modelMessages.push({ role: 'assistant', content: answer });
-      modelMessages.push({
-        role: 'user',
-        content: `TOOL_RESULT [${tool}]:\n${toolResult}`,
-      });
+      modelMessages.push({ role: 'user', content: `TOOL_RESULT [${parsed.tool}]:\n${toolResult}` });
     }
   }
 

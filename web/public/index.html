@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Adonix</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
       theme: {
@@ -13,6 +13,9 @@
           fontFamily: {
             mono: ['JetBrains Mono', 'monospace'],
             sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            surface: { 50: '#fafafa', 100: '#f5f5f5', 200: '#e5e5e5' },
           },
         },
       },
@@ -23,7 +26,7 @@
     body { overscroll-behavior: none; }
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 2px; }
     .no-scroll { overflow: hidden; }
 
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -32,94 +35,93 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .fade-in { animation: fadeIn 0.15s ease; }
     .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-    .cursor-blink::after { content: '\25CB'; animation: blink 1s step-end infinite; color: #10b981; margin-left: 2px; }
+    .cursor-blink::after { content: '\25CF'; animation: blink 1s step-end infinite; color: #10b981; margin-left: 2px; font-size: 8px; }
     .spinner { animation: spin 0.8s linear infinite; display: inline-block; }
 
     .toast { animation: fadeIn 0.2s ease, fadeOut 0.2s ease 2.3s forwards; }
     @keyframes fadeOut { to { opacity: 0; } }
 
-    .msg-content pre { background: #111; border: 1px solid #262626; border-radius: 8px; padding: 12px; margin: 8px 0; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; color: #ccc; }
-    .msg-content code { background: #1a1a1a; color: #e5e5e5; padding: 1px 5px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-    .msg-content pre code { background: none; padding: 0; }
-    .msg-content p { margin: 3px 0; }
-    .msg-content ul, .msg-content ol { margin: 4px 0; padding-left: 18px; }
-    .msg-content li { margin: 2px 0; }
-    .msg-content h1, .msg-content h2, .msg-content h3 { font-weight: 600; margin: 10px 0 4px; color: #fff; }
-    .msg-content a { color: #10b981; text-decoration: underline; }
-    .msg-content strong { color: #fff; }
-    .msg-content blockquote { border-left: 2px solid #333; padding-left: 10px; color: #777; margin: 6px 0; }
+    .msg pre { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; margin: 8px 0; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; color: #d4d4d4; }
+    .msg code { background: #f0f0f0; color: #1a1a1a; padding: 1px 5px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+    .msg pre code { background: none; padding: 0; color: #d4d4d4; }
+    .msg p { margin: 3px 0; }
+    .msg ul, .msg ol { margin: 4px 0; padding-left: 18px; }
+    .msg li { margin: 2px 0; }
+    .msg h1, .msg h2, .msg h3 { font-weight: 600; margin: 10px 0 4px; color: #1a1a1a; }
+    .msg a { color: #059669; text-decoration: underline; }
+    .msg strong { color: #1a1a1a; font-weight: 600; }
+    .msg blockquote { border-left: 2px solid #d4d4d4; padding-left: 10px; color: #737373; margin: 6px 0; }
 
     .sidebar-slide { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-
-    textarea { font-family: 'JetBrains Mono', monospace; }
+    textarea { font-family: 'Inter', sans-serif; }
   </style>
 </head>
-<body class="bg-[#0a0a0a] font-mono text-[#e5e5e5] min-h-screen">
+<body class="bg-surface-50 font-sans text-neutral-900 min-h-screen">
 
-  <!-- ─── AUTH ─── -->
+  <!-- AUTH -->
   <div id="authScreen" class="min-h-screen flex items-center justify-center px-5">
     <div class="w-full max-w-xs fade-in">
       <div class="text-center mb-8">
-        <div class="w-12 h-12 rounded-xl bg-[#141414] border border-[#262626] flex items-center justify-center mx-auto mb-4">
-          <span class="text-emerald-500 font-bold text-lg">A</span>
+        <div class="w-12 h-12 rounded-xl bg-white border border-neutral-200 flex items-center justify-center mx-auto mb-4 shadow-sm">
+          <span class="text-emerald-600 font-bold text-lg">A</span>
         </div>
-        <h1 class="text-base font-semibold tracking-tight text-white">Adonix</h1>
-        <p class="text-[11px] text-[#555] mt-1">agente de ingeniería de software</p>
+        <h1 class="text-base font-semibold tracking-tight">Adonix</h1>
+        <p class="text-[11px] text-neutral-400 mt-1">agente de ingenieria de software</p>
       </div>
       <div class="space-y-2.5">
         <input id="authUser" type="text" placeholder="usuario" autocomplete="username"
-          class="w-full px-3 py-2.5 rounded-lg bg-[#141414] border border-[#262626] text-sm focus:border-[#444] outline-none transition-colors placeholder-[#333]">
-        <input id="authPass" type="password" placeholder="contraseña" autocomplete="current-password"
-          class="w-full px-3 py-2.5 rounded-lg bg-[#141414] border border-[#262626] text-sm focus:border-[#444] outline-none transition-colors placeholder-[#333]">
+          class="w-full px-3 py-2.5 rounded-xl bg-white border border-neutral-200 text-sm focus:border-neutral-400 outline-none transition-colors placeholder-neutral-300">
+        <input id="authPass" type="password" placeholder="contrasena" autocomplete="current-password"
+          class="w-full px-3 py-2.5 rounded-xl bg-white border border-neutral-200 text-sm focus:border-neutral-400 outline-none transition-colors placeholder-neutral-300">
         <button id="authBtn" onclick="doAuth()"
-          class="w-full py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500 active:scale-[0.98] transition-all">
+          class="w-full py-2.5 rounded-xl bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-800 active:scale-[0.98] transition-all">
           Entrar
         </button>
       </div>
-      <p class="text-center mt-4 text-[11px] text-[#444]">
-        <span id="authToggle" class="cursor-pointer hover:text-[#777] transition-colors" onclick="toggleAuthMode()">
-          ¿No tienes cuenta? Regístrate
+      <p class="text-center mt-4 text-[11px] text-neutral-400">
+        <span id="authToggle" class="cursor-pointer hover:text-neutral-600 transition-colors" onclick="toggleAuthMode()">
+          No tienes cuenta? Registrate
         </span>
       </p>
-      <p id="authError" class="text-center mt-3 text-[11px] text-red-400 hidden"></p>
+      <p id="authError" class="text-center mt-3 text-[11px] text-red-500 hidden"></p>
     </div>
   </div>
 
-  <!-- ─── APP ─── -->
+  <!-- APP -->
   <div id="appScreen" class="hidden min-h-screen">
-    <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden" onclick="toggleSidebar()"></div>
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/30 z-40 hidden" onclick="toggleSidebar()"></div>
 
     <!-- Sidebar -->
-    <aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-[#0e0e0e] border-r border-[#1a1a1a] z-50 flex flex-col sidebar-slide -translate-x-full lg:translate-x-0">
-      <div class="px-4 pt-4 pb-3 border-b border-[#1a1a1a]">
+    <aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-white border-r border-neutral-200 z-50 flex flex-col sidebar-slide -translate-x-full lg:translate-x-0">
+      <div class="px-4 pt-4 pb-3 border-b border-neutral-100">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-emerald-500 font-bold text-sm">◉</span>
-            <span class="font-semibold text-xs text-[#ccc]">Adonix</span>
+            <span class="text-emerald-600 font-bold text-sm">A</span>
+            <span class="font-semibold text-xs text-neutral-700">Adonix</span>
           </div>
-          <button onclick="toggleSidebar()" class="w-6 h-6 rounded hover:bg-[#1a1a1a] flex items-center justify-center transition-colors lg:hidden text-[#555] text-xs">✕</button>
+          <button onclick="toggleSidebar()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors lg:hidden text-neutral-400 text-xs">✕</button>
         </div>
       </div>
 
       <div class="px-3 py-2">
-        <button onclick="showRepoSelector()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[#222] hover:bg-[#161616] text-[11px] transition-colors text-[#888]">
+        <button onclick="showRepoSelector()" class="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-[11px] transition-colors text-neutral-500">
           <span class="text-emerald-600">+</span> Nuevo chat
         </button>
       </div>
 
       <div class="flex-1 overflow-y-auto px-2 py-1 space-y-0.5" id="chatList">
-        <p class="text-[11px] text-[#333] px-2 py-4 text-center">Sin chats</p>
+        <p class="text-[11px] text-neutral-300 px-2 py-4 text-center">Sin chats</p>
       </div>
 
-      <div class="px-3 py-3 border-t border-[#1a1a1a]">
+      <div class="px-3 py-3 border-t border-neutral-100">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <div class="w-6 h-6 rounded bg-[#161616] border border-[#262626] flex items-center justify-center text-[9px] text-emerald-500 font-bold" id="userAvatar">U</div>
-            <span id="userName" class="text-[11px] text-[#888]">user</span>
+            <div class="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold" id="userAvatar">U</div>
+            <span id="userName" class="text-[11px] text-neutral-500">user</span>
           </div>
           <div class="flex items-center gap-0.5">
-            <button onclick="openSettings()" class="w-6 h-6 rounded hover:bg-[#1a1a1a] flex items-center justify-center transition-colors text-[#444] text-[10px]" title="Ajustes">⚙</button>
-            <button onclick="doLogout()" class="w-6 h-6 rounded hover:bg-[#1a1a1a] flex items-center justify-center transition-colors text-[#444] text-[10px]" title="Salir">↗</button>
+            <button onclick="openSettings()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Ajustes">⚙</button>
+            <button onclick="doLogout()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Salir">↗</button>
           </div>
         </div>
       </div>
@@ -127,20 +129,20 @@
 
     <!-- Main -->
     <main class="lg:ml-64 min-h-screen flex flex-col">
-      <div class="sticky top-0 z-30 bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-[#1a1a1a] px-4 py-2 flex items-center justify-between">
+      <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-neutral-100 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <button onclick="toggleSidebar()" class="w-7 h-7 rounded hover:bg-[#1a1a1a] flex items-center justify-center transition-colors lg:hidden text-[#555] text-sm">☰</button>
-          <h2 id="chatTitle" class="text-[11px] font-medium text-[#888] truncate max-w-[200px]">Adonix</h2>
+          <button onclick="toggleSidebar()" class="w-7 h-7 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors lg:hidden text-neutral-400 text-sm">☰</button>
+          <h2 id="chatTitle" class="text-[12px] font-medium text-neutral-600 truncate max-w-[200px]">Adonix</h2>
         </div>
         <div class="flex items-center gap-1.5">
           <div class="relative" id="modelWrap">
-            <button onclick="toggleModelMenu()" id="modelBtn" class="hidden items-center gap-1 px-2 py-1 rounded hover:bg-[#1a1a1a] text-[10px] text-[#555] transition-colors">
+            <button onclick="toggleModelMenu()" id="modelBtn" class="hidden items-center gap-1 px-2.5 py-1 rounded-lg hover:bg-neutral-100 text-[10px] text-neutral-500 transition-colors border border-transparent hover:border-neutral-200">
               <span id="modelLabel"></span>
               <span class="text-[8px]">▼</span>
             </button>
-            <div id="modelMenu" class="hidden absolute top-full right-0 mt-1 w-52 bg-[#141414] border border-[#262626] rounded-lg overflow-hidden shadow-2xl z-50"></div>
+            <div id="modelMenu" class="hidden absolute top-full right-0 mt-1 w-52 bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-lg z-50"></div>
           </div>
-          <button id="concuerdoBtn" onclick="toggleConcuerdo()" class="hidden px-2 py-1 rounded text-[10px] transition-all text-[#333] hover:text-[#555]" title="Modo Concuerdo">
+          <button id="concuerdoBtn" onclick="toggleConcuerdo()" class="hidden px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent" title="Modo Concuerdo">
             ⊕ concuerdo
           </button>
         </div>
@@ -149,10 +151,10 @@
       <!-- Empty state -->
       <div id="emptyState" class="flex-1 flex items-center justify-center px-5">
         <div class="text-center max-w-xs">
-          <div class="text-5xl mb-4 opacity-10">◇</div>
-          <h3 class="font-medium text-sm text-[#666] mb-1">Selecciona un repositorio</h3>
-          <p class="text-[11px] text-[#444] leading-relaxed mb-5">Conecta un repo de GitHub para empezar</p>
-          <button onclick="showRepoSelector()" class="px-4 py-2 rounded-lg bg-[#141414] border border-[#262626] text-[11px] text-[#888] hover:bg-[#1a1a1a] transition-colors">
+          <div class="text-5xl mb-4 opacity-5">◇</div>
+          <h3 class="font-medium text-sm text-neutral-500 mb-1">Selecciona un repositorio</h3>
+          <p class="text-[11px] text-neutral-400 leading-relaxed mb-5">Conecta un repo de GitHub para empezar a trabajar</p>
+          <button onclick="showRepoSelector()" class="px-4 py-2 rounded-xl bg-white border border-neutral-200 text-[11px] text-neutral-600 hover:bg-neutral-50 transition-colors shadow-sm">
             Seleccionar repo
           </button>
         </div>
@@ -162,63 +164,63 @@
       <div id="chatView" class="hidden flex-1 flex flex-col">
         <div id="messagesArea" class="flex-1 overflow-y-auto pb-2"></div>
 
-        <div id="slashMenu" class="hidden mx-4 mb-1 bg-[#141414] border border-[#262626] rounded-lg overflow-hidden shadow-2xl"></div>
+        <div id="slashMenu" class="hidden mx-4 mb-1 bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-lg"></div>
 
-        <div class="border-t border-[#1a1a1a] px-4 py-3">
+        <div class="border-t border-neutral-100 px-4 py-3 bg-white">
           <div class="flex items-end gap-2 max-w-3xl mx-auto">
             <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje... (/ para comandos)"
-              class="flex-1 px-3 py-2.5 rounded-lg bg-[#141414] border border-[#1e1e1e] text-[13px] resize-none focus:border-[#333] outline-none transition-colors placeholder-[#2a2a2a] leading-relaxed"
+              class="flex-1 px-3.5 py-2.5 rounded-xl bg-neutral-50 border border-neutral-200 text-[13px] resize-none focus:border-neutral-400 focus:bg-white outline-none transition-all placeholder-neutral-300 leading-relaxed"
               onkeydown="handleInputKey(event)" oninput="handleInputChange(this)"></textarea>
             <button id="sendBtn" onclick="sendMessage()"
-              class="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-500 active:scale-[0.95] transition-all shrink-0 disabled:opacity-20 disabled:pointer-events-none text-sm font-bold">
+              class="w-9 h-9 rounded-xl bg-neutral-900 text-white flex items-center justify-center hover:bg-neutral-800 active:scale-[0.95] transition-all shrink-0 disabled:opacity-20 disabled:pointer-events-none text-sm font-bold">
               ↑
             </button>
           </div>
-          <div id="statusBar" class="max-w-3xl mx-auto mt-1.5 text-[10px] text-[#333] truncate"></div>
+          <div id="statusBar" class="max-w-3xl mx-auto mt-1.5 text-[10px] text-neutral-300 truncate"></div>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- ─── REPO SHEET ─── -->
+  <!-- REPO SHEET -->
   <div id="repoSheet" class="fixed inset-0 z-[100] hidden">
-    <div class="absolute inset-0 bg-black/60" onclick="closeRepoSheet()"></div>
-    <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-[#111] rounded-t-2xl max-h-[80vh] flex flex-col slide-up border-t border-[#262626]">
-      <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[#1e1e1e]">
-        <h3 class="font-medium text-sm text-[#ccc]">Repositorios</h3>
-        <button onclick="closeRepoSheet()" class="w-7 h-7 rounded bg-[#1a1a1a] flex items-center justify-center hover:bg-[#222] transition-colors text-[#555] text-xs">✕</button>
+    <div class="absolute inset-0 bg-black/30" onclick="closeRepoSheet()"></div>
+    <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-white rounded-t-2xl max-h-[80vh] flex flex-col slide-up border-t border-neutral-200 shadow-xl">
+      <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-neutral-100">
+        <h3 class="font-medium text-sm">Repositorios</h3>
+        <button onclick="closeRepoSheet()" class="w-7 h-7 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors text-neutral-500 text-xs">✕</button>
       </div>
       <div class="px-4 py-2">
         <input id="repoSearch" type="text" placeholder="buscar..." oninput="filterRepos()"
-          class="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#262626] text-sm focus:border-[#333] outline-none placeholder-[#333]">
+          class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
       </div>
       <div id="repoList" class="overflow-y-auto flex-1 px-4 pb-4 space-y-0.5">
-        <div class="text-center py-8 text-[#444] text-[11px]">Cargando...</div>
+        <div class="text-center py-8 text-neutral-400 text-[11px]">Cargando...</div>
       </div>
     </div>
   </div>
 
-  <!-- ─── SETTINGS SHEET ─── -->
+  <!-- SETTINGS SHEET -->
   <div id="settingsSheet" class="fixed inset-0 z-[100] hidden">
-    <div class="absolute inset-0 bg-black/60" onclick="closeSettings()"></div>
-    <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-[#111] rounded-t-2xl max-h-[80vh] flex flex-col slide-up border-t border-[#262626]">
-      <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-[#1e1e1e]">
-        <h3 class="font-medium text-sm text-[#ccc]">Ajustes</h3>
-        <button onclick="closeSettings()" class="w-7 h-7 rounded bg-[#1a1a1a] flex items-center justify-center hover:bg-[#222] transition-colors text-[#555] text-xs">✕</button>
+    <div class="absolute inset-0 bg-black/30" onclick="closeSettings()"></div>
+    <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-white rounded-t-2xl max-h-[80vh] flex flex-col slide-up border-t border-neutral-200 shadow-xl">
+      <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-neutral-100">
+        <h3 class="font-medium text-sm">Ajustes</h3>
+        <button onclick="closeSettings()" class="w-7 h-7 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors text-neutral-500 text-xs">✕</button>
       </div>
       <div class="p-4 space-y-4">
         <div>
-          <label class="text-[11px] text-[#555] mb-1.5 block">Token de GitHub</label>
+          <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">Token de GitHub</label>
           <input id="setToken" type="password" placeholder="ghp_xxxxxxxxxxxx"
-            class="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#262626] text-sm focus:border-[#333] outline-none placeholder-[#333]">
-          <p class="text-[10px] text-[#333] mt-1">Permisos: repo, read:user</p>
+            class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
+          <p class="text-[10px] text-neutral-300 mt-1">Permisos: repo, read:user</p>
         </div>
         <div>
-          <label class="text-[11px] text-[#555] mb-1.5 block">Email de GitHub</label>
+          <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">Email de GitHub</label>
           <input id="setEmail" type="email" placeholder="tu@email.com"
-            class="w-full px-3 py-2 rounded-lg bg-[#161616] border border-[#262626] text-sm focus:border-[#333] outline-none placeholder-[#333]">
+            class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
         </div>
-        <button onclick="saveSettings()" class="w-full py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500 active:scale-[0.98] transition-all">
+        <button onclick="saveSettings()" class="w-full py-2.5 rounded-xl bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-800 active:scale-[0.98] transition-all">
           Guardar
         </button>
       </div>
@@ -229,7 +231,6 @@
   <div id="toastContainer" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] flex flex-col items-center"></div>
 
   <script>
-    // ─── State ─────────────────────────────────────────
     let authMode = 'login';
     let currentUser = null;
     let currentChatId = null;
@@ -243,11 +244,10 @@
     const SLASH_COMMANDS = [
       { cmd: '/concuerdo', desc: 'Toggle modo concuerdo', icon: '⊕' },
       { cmd: '/model', desc: 'Cambiar modelo de IA', icon: '◈' },
-      { cmd: '/clear', desc: 'Limpiar mensajes del chat', icon: '⌧' },
-      { cmd: '/help', desc: 'Ver comandos disponibles', icon: '?' },
+      { cmd: '/clear', desc: 'Limpiar mensajes', icon: '⌧' },
+      { cmd: '/help', desc: 'Ver comandos', icon: '?' },
     ];
 
-    // ─── Helpers ───────────────────────────────────────
     function $(id) { return document.getElementById(id); }
 
     async function api(url, opts = {}) {
@@ -257,7 +257,7 @@
       });
       if (res.status === 401 && !url.includes('/auth/')) {
         showAuth();
-        throw new Error('Sesión expirada');
+        throw new Error('Sesion expirada');
       }
       return res;
     }
@@ -265,20 +265,20 @@
     function showToast(msg) {
       const c = $('toastContainer');
       const t = document.createElement('div');
-      t.className = 'toast bg-[#1a1a1a] border border-[#262626] text-[#ccc] text-[11px] px-4 py-2.5 rounded-lg shadow-lg text-center mb-2';
+      t.className = 'toast bg-neutral-900 text-white text-[11px] px-4 py-2.5 rounded-2xl shadow-lg text-center mb-2';
       t.textContent = msg;
       c.appendChild(t);
       setTimeout(() => t.remove(), 2500);
     }
 
-    function escapeHtml(text) {
+    function esc(text) {
       const d = document.createElement('div');
       d.textContent = text;
       return d.innerHTML;
     }
 
-    function renderMarkdown(text) {
-      let h = escapeHtml(text);
+    function md(text) {
+      let h = esc(text);
       h = h.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
       h = h.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
       h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -297,13 +297,11 @@
       return '<p>' + h + '</p>';
     }
 
-    // ─── Auth ──────────────────────────────────────────
+    // Auth
     function toggleAuthMode() {
       authMode = authMode === 'login' ? 'register' : 'login';
       $('authBtn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
-      $('authToggle').textContent = authMode === 'login'
-        ? '¿No tienes cuenta? Regístrate'
-        : '¿Ya tienes cuenta? Inicia sesión';
+      $('authToggle').textContent = authMode === 'login' ? 'No tienes cuenta? Registrate' : 'Ya tienes cuenta? Inicia sesion';
       $('authError').classList.add('hidden');
     }
 
@@ -315,10 +313,7 @@
       $('authBtn').textContent = '...';
       try {
         const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-        const res = await api(endpoint, {
-          method: 'POST',
-          body: JSON.stringify({ username, password }),
-        });
+        const res = await api(endpoint, { method: 'POST', body: JSON.stringify({ username, password }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         currentUser = data;
@@ -359,18 +354,13 @@
       loadModels();
     }
 
-    // ─── Sidebar ───────────────────────────────────────
+    // Sidebar
     function toggleSidebar() {
       const sb = $('sidebar');
       const ov = $('sidebarOverlay');
       const open = !sb.classList.contains('-translate-x-full');
-      if (open) {
-        sb.classList.add('-translate-x-full');
-        ov.classList.add('hidden');
-      } else {
-        sb.classList.remove('-translate-x-full');
-        ov.classList.remove('hidden');
-      }
+      sb.classList.toggle('-translate-x-full', open);
+      ov.classList.toggle('hidden', open);
     }
 
     async function loadChats() {
@@ -384,16 +374,16 @@
     function renderChatList(chats) {
       const el = $('chatList');
       if (!chats.length) {
-        el.innerHTML = '<p class="text-[11px] text-[#333] px-2 py-4 text-center">Sin chats</p>';
+        el.innerHTML = '<p class="text-[11px] text-neutral-300 px-2 py-4 text-center">Sin chats</p>';
         return;
       }
       el.innerHTML = chats.map(c => `
-        <div class="group flex items-center rounded-lg hover:bg-[#161616] transition-colors ${c.id === currentChatId ? 'bg-[#161616]' : ''}">
+        <div class="group flex items-center rounded-xl hover:bg-neutral-50 transition-colors ${c.id === currentChatId ? 'bg-neutral-50' : ''}">
           <button onclick="openChat('${c.id}')" class="flex-1 text-left px-3 py-2 min-w-0">
-            <p class="text-[11px] font-medium text-[#999] truncate">${escapeHtml(c.title)}</p>
-            <p class="text-[10px] text-[#444] truncate mt-0.5">${escapeHtml(c.lastMessage || 'Sin mensajes')}</p>
+            <p class="text-[11px] font-medium text-neutral-700 truncate">${esc(c.title)}</p>
+            <p class="text-[10px] text-neutral-400 truncate mt-0.5">${esc(c.lastMessage || 'Sin mensajes')}</p>
           </button>
-          <button onclick="event.stopPropagation(); deleteChat('${c.id}')" class="hidden group-hover:flex w-6 h-6 rounded items-center justify-center text-[#444] hover:text-red-400 text-[10px] mr-1 shrink-0 transition-colors">✕</button>
+          <button onclick="event.stopPropagation(); deleteChat('${c.id}')" class="hidden group-hover:flex w-6 h-6 rounded items-center justify-center text-neutral-300 hover:text-red-400 text-[10px] mr-1 shrink-0 transition-colors">✕</button>
         </div>
       `).join('');
     }
@@ -413,15 +403,14 @@
         updateModelUI();
         renderMessages(chat.messages);
         loadChats();
-        // Close sidebar on mobile
         if (window.innerWidth < 1024) toggleSidebar();
-      } catch (err) {
+      } catch {
         showToast('Error abriendo chat');
       }
     }
 
     async function deleteChat(chatId) {
-      if (!confirm('¿Eliminar este chat?')) return;
+      if (!confirm('Eliminar este chat?')) return;
       try {
         await api(`/api/chats/${chatId}`, { method: 'DELETE' });
         if (chatId === currentChatId) {
@@ -440,7 +429,7 @@
       }
     }
 
-    // ─── Models ────────────────────────────────────────
+    // Models
     async function loadModels() {
       try {
         const res = await api('/api/models');
@@ -452,15 +441,12 @@
 
     function toggleModelMenu() {
       const menu = $('modelMenu');
-      if (!menu.classList.contains('hidden')) {
-        menu.classList.add('hidden');
-        return;
-      }
+      if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
       const active = chatSettings.activeModel || defaultModel;
       menu.innerHTML = models.map(m => `
-        <button onclick="selectModel('${m.key}')" class="w-full text-left px-3 py-2 text-[11px] hover:bg-[#1a1a1a] transition-colors flex items-center justify-between ${m.key === active ? 'text-emerald-500' : 'text-[#888]'}">
-          <span>${escapeHtml(m.label)}</span>
-          ${m.key === active ? '<span class="text-emerald-500">✓</span>' : ''}
+        <button onclick="selectModel('${m.key}')" class="w-full text-left px-3 py-2.5 text-[11px] hover:bg-neutral-50 transition-colors flex items-center justify-between ${m.key === active ? 'text-emerald-600 font-medium' : 'text-neutral-600'}">
+          <span>${esc(m.label)}</span>
+          ${m.key === active ? '<span class="text-emerald-600">✓</span>' : ''}
         </button>
       `).join('');
       menu.classList.remove('hidden');
@@ -476,12 +462,8 @@
       chatSettings.activeModel = key;
       updateModelUI();
       try {
-        await api(`/api/chats/${currentChatId}/settings`, {
-          method: 'PUT',
-          body: JSON.stringify({ activeModel: key }),
-        });
-        const label = models.find(m => m.key === key)?.label || key;
-        showToast(`Modelo: ${label}`);
+        await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ activeModel: key }) });
+        showToast(`Modelo: ${models.find(m => m.key === key)?.label || key}`);
       } catch {}
     }
 
@@ -490,10 +472,7 @@
       chatSettings.concuerdo = !chatSettings.concuerdo;
       updateModelUI();
       try {
-        await api(`/api/chats/${currentChatId}/settings`, {
-          method: 'PUT',
-          body: JSON.stringify({ concuerdo: chatSettings.concuerdo }),
-        });
+        await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ concuerdo: chatSettings.concuerdo }) });
         showToast(chatSettings.concuerdo ? 'Concuerdo activado' : 'Concuerdo desactivado');
       } catch {}
     }
@@ -502,40 +481,35 @@
       const active = chatSettings.activeModel || defaultModel;
       const label = models.find(m => m.key === active)?.label || active;
       $('modelLabel').textContent = label.toLowerCase();
-
       const btn = $('concuerdoBtn');
       if (chatSettings.concuerdo) {
-        btn.className = 'flex px-2 py-1 rounded text-[10px] transition-all bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+        btn.className = 'flex px-2.5 py-1 rounded-lg text-[10px] transition-all bg-emerald-50 text-emerald-600 border border-emerald-200';
       } else {
-        btn.className = 'flex px-2 py-1 rounded text-[10px] transition-all text-[#333] hover:text-[#555]';
+        btn.className = 'flex px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent';
       }
-
-      // Status bar
       const modelNames = models.map(m => m.label.toLowerCase()).join(', ');
-      $('statusBar').textContent = chatSettings.concuerdo
-        ? `⊕ concuerdo · ${modelNames}`
-        : label.toLowerCase();
+      $('statusBar').textContent = chatSettings.concuerdo ? `⊕ concuerdo · ${modelNames}` : label.toLowerCase();
     }
 
-    // ─── Messages ──────────────────────────────────────
+    // Messages
     function renderMessages(messages) {
       const area = $('messagesArea');
       area.innerHTML = messages.map(m => {
-        if (m.role === 'user') return userMsgHtml(m.content);
-        return assistantMsgHtml(m.content);
+        if (m.role === 'user') return userHtml(m.content);
+        return assistantHtml(m.content);
       }).join('');
       area.scrollTop = area.scrollHeight;
     }
 
-    function userMsgHtml(content) {
-      return `<div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto flex gap-3"><span class="text-emerald-600 shrink-0 mt-0.5 text-sm font-bold">›</span><div class="text-[13px] leading-relaxed whitespace-pre-wrap break-words">${escapeHtml(content)}</div></div></div>`;
+    function userHtml(content) {
+      return `<div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto flex gap-3"><span class="text-emerald-600 shrink-0 mt-0.5 text-sm font-bold">›</span><div class="text-[13px] leading-relaxed whitespace-pre-wrap break-words text-neutral-800">${esc(content)}</div></div></div>`;
     }
 
-    function assistantMsgHtml(content) {
-      return `<div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto"><div class="flex items-center gap-1.5 mb-1"><span class="text-amber-500 text-xs">◉</span><span class="text-[10px] text-[#555] font-medium">Adonix</span></div><div class="msg-content text-[13px] leading-relaxed text-[#bbb] pl-[18px]">${renderMarkdown(content)}</div></div></div>`;
+    function assistantHtml(content) {
+      return `<div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto"><div class="flex items-center gap-1.5 mb-1"><span class="text-orange-500 text-xs font-bold">◉</span><span class="text-[10px] text-neutral-400 font-medium">Adonix</span></div><div class="msg text-[13px] leading-relaxed text-neutral-600 pl-[18px]">${md(content)}</div></div></div>`;
     }
 
-    // ─── Slash Commands ────────────────────────────────
+    // Slash Commands
     function showSlashMenu(filter) {
       const filtered = SLASH_COMMANDS.filter(c => c.cmd.startsWith(filter));
       if (!filtered.length) { hideSlashMenu(); return; }
@@ -543,10 +517,10 @@
       const menu = $('slashMenu');
       menu.innerHTML = filtered.map((c, i) => `
         <button data-slash-idx="${i}" onclick="executeSlashCommand('${c.cmd}')"
-          class="w-full text-left px-3 py-2 text-[11px] flex items-center gap-2 transition-colors ${i === 0 ? 'bg-[#1a1a1a] text-[#ccc]' : 'text-[#666] hover:bg-[#1a1a1a]'}">
-          <span class="text-[#444] w-4 text-center">${c.icon}</span>
+          class="w-full text-left px-3 py-2 text-[11px] flex items-center gap-2 transition-colors ${i === 0 ? 'bg-neutral-50 text-neutral-900' : 'text-neutral-500 hover:bg-neutral-50'}">
+          <span class="text-neutral-400 w-4 text-center">${c.icon}</span>
           <span class="font-medium">${c.cmd}</span>
-          <span class="text-[#444] ml-auto">${c.desc}</span>
+          <span class="text-neutral-400 ml-auto">${c.desc}</span>
         </button>
       `).join('');
       menu.classList.remove('hidden');
@@ -563,42 +537,36 @@
       const items = menu._items;
       if (!items?.length) return;
       const btns = menu.querySelectorAll('button');
-      btns[slashIdx]?.classList.remove('bg-[#1a1a1a]', 'text-[#ccc]');
-      btns[slashIdx]?.classList.add('text-[#666]');
+      btns[slashIdx]?.classList.remove('bg-neutral-50', 'text-neutral-900');
+      btns[slashIdx]?.classList.add('text-neutral-500');
       slashIdx = (slashIdx + dir + items.length) % items.length;
-      btns[slashIdx]?.classList.add('bg-[#1a1a1a]', 'text-[#ccc]');
-      btns[slashIdx]?.classList.remove('text-[#666]');
+      btns[slashIdx]?.classList.add('bg-neutral-50', 'text-neutral-900');
+      btns[slashIdx]?.classList.remove('text-neutral-500');
     }
 
     function executeSlashCommand(cmd) {
       hideSlashMenu();
       $('chatInput').value = '';
       autoResize($('chatInput'));
-
-      if (cmd === '/concuerdo') {
-        toggleConcuerdo();
-      } else if (cmd === '/model') {
-        toggleModelMenu();
-      } else if (cmd === '/clear') {
-        $('messagesArea').innerHTML = '';
-        showToast('Chat limpiado');
-      } else if (cmd === '/help') {
+      if (cmd === '/concuerdo') toggleConcuerdo();
+      else if (cmd === '/model') toggleModelMenu();
+      else if (cmd === '/clear') { $('messagesArea').innerHTML = ''; showToast('Chat limpiado'); }
+      else if (cmd === '/help') {
         const area = $('messagesArea');
-        const helpHtml = SLASH_COMMANDS.map(c => `<span class="text-emerald-600">${c.cmd}</span> — ${c.desc}`).join('<br>');
+        const helpHtml = SLASH_COMMANDS.map(c => `<span class="text-emerald-600 font-medium">${c.cmd}</span> <span class="text-neutral-400">—</span> ${c.desc}`).join('<br>');
         area.insertAdjacentHTML('beforeend', `
           <div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto">
-            <div class="text-[11px] text-[#666] leading-relaxed bg-[#111] border border-[#1e1e1e] rounded-lg px-4 py-3">${helpHtml}</div>
+            <div class="text-[11px] text-neutral-500 leading-relaxed bg-white border border-neutral-200 rounded-xl px-4 py-3">${helpHtml}</div>
           </div></div>
         `);
         area.scrollTop = area.scrollHeight;
       }
     }
 
-    // ─── Input ─────────────────────────────────────────
+    // Input
     function handleInputKey(e) {
       const menu = $('slashMenu');
       const menuVisible = !menu.classList.contains('hidden');
-
       if (menuVisible) {
         if (e.key === 'ArrowDown') { e.preventDefault(); navigateSlash(1); return; }
         if (e.key === 'ArrowUp') { e.preventDefault(); navigateSlash(-1); return; }
@@ -610,7 +578,6 @@
         }
         if (e.key === 'Escape') { hideSlashMenu(); return; }
       }
-
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         const val = $('chatInput').value.trim();
@@ -625,11 +592,8 @@
     function handleInputChange(el) {
       autoResize(el);
       const val = el.value;
-      if (val.startsWith('/') && !val.includes(' ')) {
-        showSlashMenu(val);
-      } else {
-        hideSlashMenu();
-      }
+      if (val.startsWith('/') && !val.includes(' ')) showSlashMenu(val);
+      else hideSlashMenu();
     }
 
     function autoResize(el) {
@@ -637,7 +601,7 @@
       el.style.height = Math.min(el.scrollHeight, 150) + 'px';
     }
 
-    // ─── Send & Stream ────────────────────────────────
+    // Send & Stream
     async function sendMessage() {
       const input = $('chatInput');
       const message = input.value.trim();
@@ -650,41 +614,36 @@
       $('sendBtn').disabled = true;
 
       const area = $('messagesArea');
-      area.insertAdjacentHTML('beforeend', userMsgHtml(message));
+      area.insertAdjacentHTML('beforeend', userHtml(message));
       area.scrollTop = area.scrollHeight;
 
       const sid = 's' + Date.now();
       let streamContent = '';
-      let thinkContent = '';
-      let thinkStart = 0;
       let synthContent = '';
       let isSynth = false;
-      let toolCounter = 0;
 
-      // Create stream container
       area.insertAdjacentHTML('beforeend', `
         <div id="${sid}" class="fade-in">
-          <div id="${sid}-events" class="space-y-0.5"></div>
+          <div id="${sid}-ev" class="space-y-0.5"></div>
           <div id="${sid}-resp" class="px-4 py-3">
             <div class="max-w-3xl mx-auto">
               <div class="flex items-center gap-1.5 mb-1">
-                <span class="text-amber-500 text-xs">◉</span>
-                <span class="text-[10px] text-[#555] font-medium">Adonix</span>
-                <span id="${sid}-model" class="text-[9px] text-[#333]"></span>
+                <span class="text-orange-500 text-xs font-bold">◉</span>
+                <span class="text-[10px] text-neutral-400 font-medium">Adonix</span>
+                <span id="${sid}-model" class="text-[9px] text-neutral-300"></span>
               </div>
-              <div id="${sid}-content" class="msg-content text-[13px] leading-relaxed text-[#bbb] pl-[18px] cursor-blink">
-              </div>
+              <div id="${sid}-c" class="msg text-[13px] leading-relaxed text-neutral-600 pl-[18px] cursor-blink"></div>
             </div>
           </div>
         </div>
       `);
       area.scrollTop = area.scrollHeight;
 
-      const eventsEl = $(`${sid}-events`);
-      const contentEl = $(`${sid}-content`);
+      const evEl = $(`${sid}-ev`);
+      const cEl = $(`${sid}-c`);
 
-      function addEvent(html) {
-        eventsEl.insertAdjacentHTML('beforeend', `<div class="px-4 py-0.5 fade-in"><div class="max-w-3xl mx-auto pl-[18px] text-[11px]">${html}</div></div>`);
+      function addEv(html) {
+        evEl.insertAdjacentHTML('beforeend', `<div class="px-4 py-0.5 fade-in"><div class="max-w-3xl mx-auto pl-[18px] text-[11px]">${html}</div></div>`);
         area.scrollTop = area.scrollHeight;
       }
 
@@ -715,109 +674,115 @@
             try { ev = JSON.parse(raw); } catch { continue; }
 
             switch (ev.type) {
-              case 'model_info': {
-                const lbl = ev.label || ev.model;
-                $(`${sid}-model`).textContent = lbl;
+              case 'model_info':
+                $(`${sid}-model`).textContent = ev.label || ev.model;
                 break;
-              }
+
               case 'status':
-                addEvent(`<span class="text-[#444]">${escapeHtml(ev.content)}</span>`);
+                addEv(`<span class="text-neutral-400">${esc(ev.content)}</span>`);
                 break;
+
               case 'thinking_start':
-                thinkContent = '';
-                thinkStart = Date.now();
-                addEvent(`<span id="${sid}-think" class="text-[#444]"><span class="spinner">◐</span> pensando...</span>`);
+                addEv(`<span id="${sid}-think" class="text-neutral-400"><span class="spinner">◐</span> pensando...</span>`);
                 break;
+
               case 'thinking_delta':
-                thinkContent += ev.content;
                 break;
+
               case 'thinking_end': {
-                const dur = ((Date.now() - thinkStart) / 1000).toFixed(1);
                 const thinkEl = $(`${sid}-think`);
                 if (thinkEl) {
-                  const parent = thinkEl.closest('.px-4');
-                  const escaped = escapeHtml(thinkContent).replace(/\n/g, '<br>');
-                  parent.innerHTML = `<div class="max-w-3xl mx-auto pl-[18px] text-[11px]">
-                    <button onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.arr').textContent = this.nextElementSibling.classList.contains('hidden') ? '▸' : '▾'" class="text-[#444] hover:text-[#666] flex items-center gap-1">
-                      <span class="arr">▸</span> pensó ${dur}s
-                    </button>
-                    <div class="hidden text-[#444] mt-1 pl-3 border-l border-[#222] leading-relaxed max-h-32 overflow-y-auto">${escaped}</div>
-                  </div>`;
+                  const p = thinkEl.closest('.px-4');
+                  p.innerHTML = `<div class="max-w-3xl mx-auto pl-[18px] text-[11px]"><span class="text-neutral-300">pensó ${ev.duration || '?'}s</span></div>`;
                 }
                 break;
               }
+
               case 'tool': {
-                const tid = `tool-${sid}-${toolCounter++}`;
-                addEvent(`<span id="${tid}" class="flex items-center gap-1.5 text-[#555]"><span class="text-amber-600">⚡</span> ${escapeHtml(ev.name)}${ev.path ? ': ' + escapeHtml(ev.path) : ''} <span id="${tid}-s" class="spinner text-[#444]">◌</span></span>`);
+                const tid = `t-${sid}-${Date.now()}`;
+                addEv(`<span id="${tid}" class="flex items-center gap-1.5 text-neutral-500"><span class="text-amber-500">⚡</span> ${esc(ev.name)}${ev.path ? ': ' + esc(ev.path) : ''} <span id="${tid}-s" class="spinner text-neutral-400">◌</span></span>`);
                 break;
               }
+
               case 'tool_done': {
-                const lastTool = eventsEl.querySelector(`[id^="tool-${sid}-"]:last-of-type [id$="-s"]`);
-                if (lastTool) { lastTool.className = 'text-emerald-600'; lastTool.textContent = '✓'; }
-                addEvent(`<span class="text-[#444]">${escapeHtml(ev.content)}</span>`);
-                streamContent = '';
-                contentEl.classList.add('cursor-blink');
+                const allSpinners = evEl.querySelectorAll('.spinner');
+                const last = allSpinners[allSpinners.length - 1];
+                if (last) { last.className = 'text-emerald-600'; last.textContent = '✓'; }
+                addEv(`<span class="text-neutral-400">${esc(ev.content)}</span>`);
                 break;
               }
+
               case 'tool_error': {
-                const lastToolE = eventsEl.querySelector(`[id^="tool-${sid}-"]:last-of-type [id$="-s"]`);
-                if (lastToolE) { lastToolE.className = 'text-red-400'; lastToolE.textContent = '✗'; }
-                addEvent(`<span class="text-red-400">${escapeHtml(ev.content)}</span>`);
+                const allSpinnersE = evEl.querySelectorAll('.spinner');
+                const lastE = allSpinnersE[allSpinnersE.length - 1];
+                if (lastE) { lastE.className = 'text-red-500'; lastE.textContent = '✗'; }
+                addEv(`<span class="text-red-500">${esc(ev.content)}</span>`);
                 break;
               }
+
+              case 'clear_stream':
+                streamContent = '';
+                cEl.innerHTML = '';
+                cEl.classList.add('cursor-blink');
+                break;
+
               case 'delta':
                 streamContent += ev.content;
-                contentEl.innerHTML = renderMarkdown(streamContent);
-                contentEl.classList.remove('cursor-blink');
+                cEl.innerHTML = md(streamContent);
+                cEl.classList.remove('cursor-blink');
                 area.scrollTop = area.scrollHeight;
                 break;
+
               case 'concuerdo_start':
-                addEvent(`<span class="text-amber-500/70 flex items-center gap-1"><span>⊕</span> concuerdo: ${ev.models?.map(escapeHtml).join(', ') || '...'}</span>`);
+                addEv(`<span class="text-emerald-600 flex items-center gap-1"><span>⊕</span> concuerdo: ${ev.models?.map(esc).join(', ') || '...'}</span>`);
                 break;
+
               case 'concuerdo_model': {
-                const statusIcon = ev.status === 'ok' ? '<span class="text-emerald-600">✓</span>' : ev.status === 'timeout' ? '<span class="text-[#444]">⏱</span>' : '<span class="text-[#444]">—</span>';
-                addEvent(`<span class="text-[#444]">&nbsp;&nbsp;${statusIcon} ${escapeHtml(ev.label)}</span>`);
+                const si = ev.status === 'ok' ? '<span class="text-emerald-600">✓</span>' : ev.status === 'timeout' ? '<span class="text-neutral-300">⏱</span>' : '<span class="text-neutral-300">—</span>';
+                addEv(`<span class="text-neutral-400">&nbsp;&nbsp;${si} ${esc(ev.label)}</span>`);
                 break;
               }
-              case 'concuerdo_synthesis':
-                addEvent(`<span class="text-amber-500/70"><span class="spinner">◐</span> sintetizando...</span>`);
-                break;
+
               case 'synth_start':
                 isSynth = true;
                 synthContent = '';
-                contentEl.innerHTML = '';
-                contentEl.classList.add('cursor-blink');
+                cEl.innerHTML = '';
+                cEl.classList.add('cursor-blink');
+                addEv(`<span class="text-emerald-600"><span class="spinner">◐</span> sintetizando...</span>`);
                 break;
+
               case 'synth_delta':
                 synthContent += ev.content;
-                contentEl.innerHTML = renderMarkdown(synthContent);
-                contentEl.classList.remove('cursor-blink');
+                cEl.innerHTML = md(synthContent);
+                cEl.classList.remove('cursor-blink');
                 area.scrollTop = area.scrollHeight;
                 break;
+
               case 'done':
-                contentEl.innerHTML = renderMarkdown(isSynth ? synthContent || ev.content : ev.content || streamContent);
-                contentEl.classList.remove('cursor-blink');
+                cEl.innerHTML = md(isSynth ? synthContent || ev.content : ev.content || streamContent);
+                cEl.classList.remove('cursor-blink');
                 area.scrollTop = area.scrollHeight;
                 break;
+
               case 'error':
-                contentEl.innerHTML = `<span class="text-red-400 text-[12px]">${escapeHtml(ev.content)}</span>`;
-                contentEl.classList.remove('cursor-blink');
+                cEl.innerHTML = `<span class="text-red-500 text-[12px]">${esc(ev.content)}</span>`;
+                cEl.classList.remove('cursor-blink');
                 break;
             }
           }
         }
       } catch (err) {
-        contentEl.innerHTML = `<span class="text-red-400 text-[12px]">Error: ${escapeHtml(err.message)}</span>`;
-        contentEl.classList.remove('cursor-blink');
+        cEl.innerHTML = `<span class="text-red-500 text-[12px]">Error: ${esc(err.message)}</span>`;
+        cEl.classList.remove('cursor-blink');
       } finally {
         isStreaming = false;
         $('sendBtn').disabled = false;
-        contentEl.classList.remove('cursor-blink');
+        cEl.classList.remove('cursor-blink');
         loadChats();
       }
     }
 
-    // ─── Repo Selector ─────────────────────────────────
+    // Repo Selector
     async function showRepoSelector() {
       $('repoSheet').classList.remove('hidden');
       document.body.classList.add('no-scroll');
@@ -830,8 +795,8 @@
         } catch (err) {
           $('repoList').innerHTML = `
             <div class="text-center py-8">
-              <p class="text-[11px] text-red-400">${escapeHtml(err.message)}</p>
-              <button onclick="closeRepoSheet(); openSettings()" class="mt-3 px-4 py-2 rounded-lg bg-[#1a1a1a] text-[11px] text-[#888]">Configurar token</button>
+              <p class="text-[11px] text-red-500">${esc(err.message)}</p>
+              <button onclick="closeRepoSheet(); openSettings()" class="mt-3 px-4 py-2 rounded-xl bg-neutral-100 text-[11px] text-neutral-600">Configurar token</button>
             </div>`;
           return;
         }
@@ -852,15 +817,15 @@
     function renderRepos(list) {
       $('repoList').innerHTML = list.map(r => `
         <button onclick="selectRepo('${r.owner}', '${r.name}')"
-          class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-[#1a1a1a] transition-colors">
+          class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-neutral-50 transition-colors">
           <div class="flex items-center gap-2.5">
-            <span class="text-[#444] shrink-0 text-xs">${r.private ? '◆' : '◇'}</span>
+            <span class="text-neutral-300 shrink-0 text-xs">${r.private ? '◆' : '◇'}</span>
             <div class="min-w-0 flex-1">
-              <p class="text-[12px] font-medium text-[#ccc] truncate">${escapeHtml(r.fullName)}</p>
+              <p class="text-[12px] font-medium text-neutral-700 truncate">${esc(r.fullName)}</p>
               <div class="flex items-center gap-2 mt-0.5">
-                ${r.language ? `<span class="text-[10px] text-[#555]">${escapeHtml(r.language)}</span>` : ''}
+                ${r.language ? `<span class="text-[10px] text-neutral-400">${esc(r.language)}</span>` : ''}
                 ${r.private ? '<span class="text-[10px] text-amber-600">privado</span>' : ''}
-                <span class="text-[10px] text-[#333]">${timeAgo(r.updatedAt)}</span>
+                <span class="text-[10px] text-neutral-300">${timeAgo(r.updatedAt)}</span>
               </div>
             </div>
           </div>
@@ -871,18 +836,15 @@
     async function selectRepo(owner, name) {
       closeRepoSheet();
       try {
-        const res = await api('/api/chats', {
-          method: 'POST',
-          body: JSON.stringify({ repoOwner: owner, repoName: name }),
-        });
+        const res = await api('/api/chats', { method: 'POST', body: JSON.stringify({ repoOwner: owner, repoName: name }) });
         const chat = await res.json();
         openChat(chat.id);
-      } catch (err) {
+      } catch {
         showToast('Error creando chat');
       }
     }
 
-    // ─── Settings ──────────────────────────────────────
+    // Settings
     function openSettings() {
       $('settingsSheet').classList.remove('hidden');
       document.body.classList.add('no-scroll');
@@ -899,15 +861,12 @@
       const githubEmail = $('setEmail').value.trim();
       if (!githubToken) { showToast('Token requerido'); return; }
       try {
-        const res = await api('/api/settings', {
-          method: 'PUT',
-          body: JSON.stringify({ githubToken, githubEmail }),
-        });
+        const res = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ githubToken, githubEmail }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         repos = [];
         closeSettings();
-        showToast('Token guardado ✓');
+        showToast('Token guardado');
         currentUser.hasGithub = true;
         currentUser.githubEmail = githubEmail;
       } catch (err) {
@@ -915,7 +874,6 @@
       }
     }
 
-    // ─── Utils ─────────────────────────────────────────
     function timeAgo(dateStr) {
       const diff = Date.now() - new Date(dateStr).getTime();
       const mins = Math.floor(diff / 60000);
@@ -927,7 +885,7 @@
       return `${Math.floor(days / 30)}mo`;
     }
 
-    // ─── Init ──────────────────────────────────────────
+    // Init
     async function init() {
       try {
         const res = await fetch('/api/auth/me');
@@ -945,11 +903,7 @@
 
     $('authUser').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPass').focus(); });
     $('authPass').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
-
-    // Close model menu on outside click
-    document.addEventListener('click', e => {
-      if (!$('modelWrap').contains(e.target)) $('modelMenu').classList.add('hidden');
-    });
+    document.addEventListener('click', e => { if (!$('modelWrap').contains(e.target)) $('modelMenu').classList.add('hidden'); });
 
     init();
   </script>
