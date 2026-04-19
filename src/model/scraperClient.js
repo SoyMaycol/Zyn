@@ -36,4 +36,16 @@ async function chat({ messages, onChunk, modelKey }) {
   };
 }
 
-module.exports = { chat, buildPromptFromMessages };
+async function chatSilent({ messages, modelKey }) {
+  const prompt = buildPromptFromMessages(messages);
+  const key = modelKey || DEFAULT_MODEL_KEY;
+  const provider = MODELS[key]?.provider || 'qwen';
+
+  const result = provider === 'deepseek'
+    ? await deepseek(prompt, () => {})
+    : await qwen(prompt, () => {});
+
+  return { answer: result.text || '' };
+}
+
+module.exports = { chat, chatSilent, buildPromptFromMessages };

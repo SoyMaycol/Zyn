@@ -3,9 +3,10 @@ const {
   KEEP_RECENT_MESSAGES,
   MAX_HISTORY_CHARS,
   MAX_TOOL_STEPS,
+  MODELS,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
-const { chat } = require('../model/scraperClient');
+const { chat, chatSilent } = require('../model/scraperClient');
 const {
   buildConversationMessages,
   buildSystemPrompt,
@@ -242,10 +243,36 @@ async function runAgentTurn(input, state, ui) {
       buildSystemPrompt(state.cwd),
     );
 
-    const raw = await requestModel(messages, state, ui, {
+    const primaryPromise = requestModel(messages, state, ui, {
       label: step === 0 ? 'Pensando' : `Paso ${step + 1}`,
     });
-    const parsed = parseAgentResponse(raw);
+
+    let secondaryPromise = null;
+    if (state.concuerdo) {
+      const altKey = (state.activeModel || DEFAULT_MODEL_KEY) === 'qwen' ? 'deepseek' : 'qwen';
+      secondaryPromise = chatSilent({ messages, modelKey: altKey }).catch(() => null);
+    }
+
+    const raw = await primaryPromise;
+    let parsed = parseAgentResponse(raw);
+
+    if (secondaryPromise) {
+      const altResult = await secondaryPromise;
+      if (altResult?.answer) {
+        const altKey = (state.activeModel || DEFAULT_MODEL_KEY) === 'qwen' ? 'deepseek' : 'qwen';
+        const altParsed = parseAgentResponse(altResult.answer);
+
+        if (parsed.type === 'final' && altParsed.type === 'tool') {
+          ui.logEvent(state, 'info', `${MODELS[altKey].label} sugiere ${altParsed.tool}`);
+          parsed = altParsed;
+        } else if (parsed.type === 'final' && altParsed.type === 'final' && altParsed.content?.trim()) {
+          ui.logEvent(state, 'info', `Perspectiva de ${MODELS[altKey].label} integrada`);
+          parsed = { type: 'final', content: parsed.content + '\n\n---\n' + altParsed.content };
+        } else if (parsed.type === 'tool' && altParsed.type === 'tool') {
+          ui.logEvent(state, 'info', `${MODELS[altKey].label} concuerda: ${altParsed.tool}`);
+        }
+      }
+    }
 
     if (parsed.type === 'final') {
       const content = parsed.content.trim();

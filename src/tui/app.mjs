@@ -5,7 +5,7 @@ import { EventEmitter } from 'events';
 
 const require = createRequire(import.meta.url);
 const { runAgentTurn } = require('../core/agent');
-const { handleLocalCommand } = require('../cli/commands');
+const { handleLocalCommand, SLASH_COMMANDS } = require('../cli/commands');
 const {
   loadOrCreateSessionState,
   applyLoadedState,
@@ -548,8 +548,14 @@ function InputBar({ onSubmit, processing }) {
   const [value, setValue] = useState('');
   const [cursor, setCursor] = useState(0);
   const [histIdx, setHistIdx] = useState(-1);
+  const [suggestIdx, setSuggestIdx] = useState(0);
   const historyRef = useRef([]);
   const savedRef = useRef('');
+
+  const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
+  const suggestions = showSuggestions
+    ? SLASH_COMMANDS.filter(c => ('/' + c.name).startsWith(value.toLowerCase()))
+    : [];
 
   useInput((input, key) => {
     if (key.return) {
@@ -560,8 +566,31 @@ function InputBar({ onSubmit, processing }) {
       setValue('');
       setCursor(0);
       setHistIdx(-1);
+      setSuggestIdx(0);
       onSubmit(text);
       return;
+    }
+
+    if (key.tab && suggestions.length > 0) {
+      const cmd = suggestions[suggestIdx] || suggestions[0];
+      if (cmd) {
+        const completed = `/${cmd.name} `;
+        setValue(completed);
+        setCursor(completed.length);
+        setSuggestIdx(0);
+      }
+      return;
+    }
+
+    if (showSuggestions && suggestions.length > 0) {
+      if (key.upArrow) {
+        setSuggestIdx(i => Math.max(0, i - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSuggestIdx(i => Math.min(suggestions.length - 1, i + 1));
+        return;
+      }
     }
 
     if (key.upArrow) {
@@ -622,12 +651,14 @@ function InputBar({ onSubmit, processing }) {
       if (cursor === 0) return;
       setValue(v => v.slice(0, cursor - 1) + v.slice(cursor));
       setCursor(c => Math.max(0, c - 1));
+      setSuggestIdx(0);
       return;
     }
 
     if (input && !key.ctrl && !key.meta) {
       setValue(v => v.slice(0, cursor) + input + v.slice(cursor));
       setCursor(c => c + input.length);
+      setSuggestIdx(0);
     }
   });
 
@@ -639,7 +670,7 @@ function InputBar({ onSubmit, processing }) {
   const promptColor = processing ? T.amber : T.accent;
   const placeholder = processing ? ' En cola — escribe y se procesará después...' : ' Escribe un mensaje...';
 
-  return h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0, marginTop: 1 },
+  const inputLine = h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0, marginTop: 1 },
     h(Text, { color: promptColor }, processing ? '\u{1F4E9} ' : '\u276f '),
     hasText
       ? h(Box, {},
@@ -651,6 +682,32 @@ function InputBar({ onSubmit, processing }) {
           h(Text, { color: promptColor, inverse: true }, ' '),
           h(Text, { color: T.textGhost }, placeholder),
         ),
+  );
+
+  if (suggestions.length === 0) return inputLine;
+
+  const safeIdx = Math.min(suggestIdx, suggestions.length - 1);
+  const visible = suggestions.slice(0, 8);
+
+  return h(Box, { flexDirection: 'column' },
+    inputLine,
+    h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 0 },
+      ...visible.map((cmd, i) =>
+        h(Box, { key: cmd.name },
+          h(Text, {
+            color: i === safeIdx ? T.accent : T.textMuted,
+            bold: i === safeIdx,
+          }, i === safeIdx ? '\u25b8 ' : '  '),
+          h(Text, {
+            color: i === safeIdx ? T.accent : T.textMuted,
+          }, `/${cmd.name}`),
+          h(Text, { color: T.textGhost }, `  ${cmd.desc}`),
+        ),
+      ),
+      h(Box, { paddingTop: 0 },
+        h(Text, { color: T.textInvis }, 'Tab completar \u00b7 \u2191\u2193 navegar'),
+      ),
+    ),
   );
 }
 

@@ -4,7 +4,7 @@ const { buildSkillsPrompt } = require('./skills');
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
   'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url',
+  'fetch_url', 'web_search', 'web_read',
 ]);
 
 function buildSystemPrompt(cwd) {
@@ -96,6 +96,8 @@ const TOOL_ARG_KEYS = {
   append_file: ['path', 'content'],
   replace_in_file: ['path', 'search', 'replace', 'all'],
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
+  web_search: ['query'],
+  web_read: ['url'],
 };
 
 const LONG_VALUE_ARG = {

@@ -26,6 +26,8 @@ const TOOL_DEFINITIONS = [
   { name: 'append_file', usage: '{ path, content }' },
   { name: 'replace_in_file', usage: '{ path, search, replace, all? }' },
   { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
+  { name: 'web_search', usage: '{ query }' },
+  { name: 'web_read', usage: '{ url }' },
 ];
 
 function getToolPromptText() {
@@ -81,6 +83,15 @@ function getToolPromptText() {
     '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
+    '',
+    'web_search { query }',
+    '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
+    '  Ejemplo: {"type":"tool","tool":"web_search","args":{"query":"como usar puppeteer node"}}',
+    '',
+    'web_read { url }',
+    '  Descarga una pagina web y la convierte a texto legible (sin HTML).',
+    '  Ideal para leer articulos, documentacion o contenido de paginas.',
+    '  Ejemplo: {"type":"tool","tool":"web_read","args":{"url":"https://docs.example.com/guide"}}',
   ].join('\n');
 }
 
@@ -117,6 +128,12 @@ function describeToolCall(call) {
       const cleanedUrl = cleanUrl(call.args.url || '');
       const sel = call.args.selector ? ` → ${shortText(call.args.selector, 30)}` : '';
       return `Fetch ${shortText(cleanedUrl, 50)}${sel}`;
+    }
+    case 'web_search':
+      return `Buscando "${shortText(call.args.query || '', 50)}"`;
+    case 'web_read': {
+      const readUrl = cleanUrl(call.args.url || '');
+      return `Leyendo ${shortText(readUrl, 60)}`;
     }
     default:
       return call.tool;
@@ -510,6 +527,26 @@ function cleanUrl(raw) {
   return url;
 }
 
+function stripHtmlToText(html) {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<(br|hr)\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function cleanCommand(raw) {
   let cmd = raw.trim();
   if (/^`[^`]+`$/.test(cmd)) {
@@ -621,6 +658,96 @@ async function fetchUrlTool(args, state, paint) {
   return truncateText(parts.join('\n'));
 }
 
+async function webSearchTool(args, state, paint) {
+  const query = (args.query || '').trim();
+  if (!query) throw new Error('web_search requiere query');
+
+  const allowed = await askConfirmation(
+    state.rl, 'Buscar en la web', query, paint, state,
+  );
+  if (!allowed) return 'Busqueda cancelada.';
+
+  const axios = require('axios');
+  const cheerio = require('cheerio');
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+    timeout: 15000,
+    responseType: 'text',
+  });
+
+  const $ = cheerio.load(res.data);
+  const results = [];
+
+  $('.result').each((i, el) => {
+    if (i >= 10) return false;
+    const title = $(el).find('.result__a').text().trim();
+    const snippet = $(el).find('.result__snippet').text().trim();
+    const href = $(el).find('.result__url').attr('href')
+      || $(el).find('.result__a').attr('href') || '';
+    if (title) results.push(`${i + 1}. ${title}\n   ${href}\n   ${snippet}`);
+  });
+
+  return results.length > 0
+    ? `Resultados para: ${query}\n\n${results.join('\n\n')}`
+    : 'Sin resultados para esa busqueda.';
+}
+
+async function webReadTool(args, state, paint) {
+  const rawUrl = (args.url || '').trim();
+  if (!rawUrl) throw new Error('web_read requiere url');
+
+  const url = cleanUrl(rawUrl);
+  let parsed;
+  try { parsed = new URL(url); } catch { throw new Error(`URL invalida: ${url}`); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Solo se permite http y https');
+  }
+
+  const allowed = await askConfirmation(
+    state.rl, 'Leer pagina web', url, paint, state,
+  );
+  if (!allowed) return 'Lectura cancelada.';
+
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+    timeout: 15000,
+    maxContentLength: 1024000,
+    maxRedirects: 5,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+
+  const body = typeof res.data === 'string'
+    ? res.data
+    : JSON.stringify(res.data, null, 2);
+  const ct = res.headers['content-type'] || '';
+
+  let text;
+  if (ct.includes('application/json')) {
+    text = body;
+  } else if (ct.includes('text/html') || ct.includes('text/xml')) {
+    text = stripHtmlToText(body);
+  } else {
+    text = body;
+  }
+
+  return truncateText(`URL: ${url}\nStatus: ${res.status}\n\n${text}`);
+}
+
 async function executeToolCall(call, state, ui) {
   ui.logEvent(state, 'tool', describeToolCall(call));
 
@@ -660,6 +787,12 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'fetch_url':
       result = await fetchUrlTool(call.args, state, ui.paint);
+      break;
+    case 'web_search':
+      result = await webSearchTool(call.args, state, ui.paint);
+      break;
+    case 'web_read':
+      result = await webReadTool(call.args, state, ui.paint);
       break;
     default:
       throw new Error(`Herramienta no soportada: ${call.tool}`);

@@ -13,6 +13,29 @@ const {
   loadSessionState,
   saveState,
 } = require('../utils/sessionStorage');
+
+const SLASH_COMMANDS = [
+  { name: 'help', desc: 'ayuda' },
+  { name: 'status', desc: 'estado actual' },
+  { name: 'history', desc: 'acciones recientes' },
+  { name: 'memory', desc: 'memoria resumida' },
+  { name: 'session', desc: 'sesion actual' },
+  { name: 'sessions', desc: 'listar sesiones' },
+  { name: 'new', desc: 'nueva sesion' },
+  { name: 'resume', desc: 'reanudar sesion' },
+  { name: 'title', desc: 'renombrar sesion' },
+  { name: 'model', desc: 'ver/cambiar modelo' },
+  { name: 'models', desc: 'listar modelos' },
+  { name: 'auto', desc: 'auto-aprobacion' },
+  { name: 'concuerdo', desc: 'modo dual — ambos modelos' },
+  { name: 'tools', desc: 'herramientas' },
+  { name: 'skills', desc: 'skills del agente' },
+  { name: 'reset', desc: 'reiniciar contexto' },
+  { name: 'cwd', desc: 'directorio' },
+  { name: 'transcript', desc: 'ver transcript' },
+  { name: 'export', desc: 'exportar a txt' },
+  { name: 'exit', desc: 'salir' },
+];
 const {
   exportTranscriptText,
   formatTranscriptPreview,
@@ -68,6 +91,7 @@ function printHelp() {
   console.log(`    /transcript  ${m('ver transcript')}`);
   console.log(`    /export [X]  ${m('exportar a txt')}`);
   console.log(`    /auto [X]    ${m('auto-aprobacion')}`);
+  console.log(`    /concuerdo   ${m('modo dual — ambos modelos')}`);
   console.log(`    /model [X]   ${m('ver/cambiar modelo')}`);
   console.log(`    /reset       ${m('reiniciar contexto')}`);
   console.log(`    /cwd [X]     ${m('directorio')}`);
@@ -218,6 +242,23 @@ async function handleLocalCommand(input, state, deps) {
     return true;
   }
 
+  if (commandName === 'concuerdo') {
+    state.concuerdo = !state.concuerdo;
+    await saveState(state);
+    const keys = Object.keys(MODELS);
+    const modelNames = keys.map(k => MODELS[k].label).join(' + ');
+    await appendTranscriptEntry(state.sessionId, {
+      type: 'system',
+      content: `Modo concuerdo: ${state.concuerdo ? 'on' : 'off'}`,
+    });
+    if (state.concuerdo) {
+      console.log(`Modo concuerdo activado — ${modelNames} trabajan juntos.`);
+    } else {
+      console.log('Modo concuerdo desactivado.');
+    }
+    return true;
+  }
+
   if (commandName === 'tools') {
     printTools();
     return true;
@@ -287,6 +328,7 @@ async function handleLocalCommand(input, state, deps) {
 }
 
 module.exports = {
+  SLASH_COMMANDS,
   handleLocalCommand,
   parseSlashCommand,
   printHelp,
