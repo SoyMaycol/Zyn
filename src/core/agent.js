@@ -12,6 +12,7 @@ const {
   buildToolErrorMessage,
   buildToolResultMessage,
   parseAgentResponse,
+  sanitizeArgsForModel,
 } = require('./prompts');
 const {
   executeToolCall,
@@ -40,6 +41,7 @@ async function requestModel(messages, state, ui, options = {}) {
     const result = await Promise.race([
       chat({
         messages,
+        modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
         onChunk: (delta, phase) => {
           if (phase === 'thinking') {
             if (!thinkingStarted) {
@@ -185,7 +187,7 @@ async function runAgentTurn(input, state, ui) {
   if (state.turnCount === 1 && state.title === 'Nueva sesion') {
     state.title = shortText(input, 60) || state.title;
   }
-  ui.logEvent(state, 'info', `Turno ${state.turnCount}`, shortText(input, 120));
+  ui.logEvent(state, 'info', `Turno ${state.turnCount}`);
 
   const directAction = parseDirectAction(input);
   if (directAction) {
@@ -221,11 +223,14 @@ async function runAgentTurn(input, state, ui) {
     content: input,
   });
 
+  let lastFingerprint = '';
+  let repeatCount = 0;
+
   for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
     const messages = buildConversationMessages(
       state,
       turnMessages,
-      buildSystemPrompt(state.cwd, getToolPromptText()),
+      buildSystemPrompt(state.cwd),
     );
 
     const raw = await requestModel(messages, state, ui, {
@@ -249,13 +254,29 @@ async function runAgentTurn(input, state, ui) {
       };
     }
 
+    const fingerprint = `${parsed.tool}:${parsed.args?.path || ''}:${(parsed.args?.content || parsed.args?.search || '').length}`;
+    if (fingerprint === lastFingerprint) {
+      repeatCount += 1;
+      if (repeatCount >= 2) {
+        ui.logEvent(state, 'warn', 'Loop detectado', `${parsed.tool} repetido ${repeatCount + 1}x`);
+        turnMessages.push({
+          role: 'user',
+          content: 'ATENCION: Estas repitiendo la misma operacion. La operacion anterior ya fue exitosa. Responde con type=final confirmando lo que hiciste.',
+        });
+        continue;
+      }
+    } else {
+      lastFingerprint = fingerprint;
+      repeatCount = 0;
+    }
+
     turnMessages.push({
       role: 'assistant',
       content: JSON.stringify(
         {
           type: 'tool',
           tool: parsed.tool,
-          args: parsed.args,
+          args: sanitizeArgsForModel(parsed),
         },
         null,
         2,

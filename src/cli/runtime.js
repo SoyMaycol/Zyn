@@ -166,8 +166,103 @@ async function runInteractiveChat(options = {}) {
   }
 }
 
+async function runTest() {
+  const { MODELS } = require('../config');
+  const { deepseek } = require('../model/deepseekScraper');
+
+  const C = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    accent: '\x1b[38;5;179m',
+    green: '\x1b[32m',
+    red: '\x1b[31m',
+    cyan: '\x1b[36m',
+    gray: '\x1b[90m',
+    white: '\x1b[97m',
+    purple: '\x1b[35m',
+  };
+
+  const ok = (t) => `${C.green}✓${C.reset} ${t}`;
+  const fail = (t) => `${C.red}✗${C.reset} ${t}`;
+  const title = (t) => `${C.accent}${C.bold}${t}${C.reset}`;
+  const dim = (t) => `${C.gray}${t}${C.reset}`;
+
+  console.log('');
+  console.log(`  ${title('● Adonix Test Suite')}`);
+  console.log(`  ${dim('─'.repeat(40))}`);
+  console.log('');
+
+  console.log(`  ${C.cyan}[1/4]${C.reset} Config y modelos`);
+  const modelKeys = Object.keys(MODELS);
+  if (modelKeys.includes('qwen') && modelKeys.includes('deepseek')) {
+    console.log(`    ${ok('Modelos registrados: ' + modelKeys.join(', '))}`);
+    console.log(`    ${ok('DeepSeek V3.2 provider: ' + MODELS.deepseek.provider)}`);
+  } else {
+    console.log(`    ${fail('Faltan modelos esperados')}`);
+  }
+  console.log('');
+
+  console.log(`  ${C.cyan}[2/4]${C.reset} Modulos cargables`);
+  const modules = [
+    ['core/agent', '../core/agent'],
+    ['core/prompts', '../core/prompts'],
+    ['tools/index', '../tools/index'],
+    ['model/scraperClient', '../model/scraperClient'],
+    ['model/deepseekScraper', '../model/deepseekScraper'],
+    ['model/qwenScraper', '../model/qwenScraper'],
+  ];
+  for (const [name, path] of modules) {
+    try {
+      require(path);
+      console.log(`    ${ok(name)}`);
+    } catch (err) {
+      console.log(`    ${fail(name + ': ' + err.message)}`);
+    }
+  }
+  console.log('');
+
+  console.log(`  ${C.cyan}[3/4]${C.reset} TUI (ESM import)`);
+  try {
+    await import('../tui/app.mjs');
+    console.log(`    ${ok('tui/app.mjs cargado correctamente')}`);
+  } catch (err) {
+    console.log(`    ${fail('tui/app.mjs: ' + err.message)}`);
+  }
+  console.log('');
+
+  console.log(`  ${C.cyan}[4/4]${C.reset} DeepSeek V3.2 — stream en vivo`);
+  console.log(`    ${dim('Enviando: "que modelo eres?"')}`);
+  process.stdout.write(`    ${C.purple}`);
+  try {
+    const startMs = Date.now();
+    let totalChars = 0;
+    await deepseek('que modelo eres? responde en 1 linea corta', (text) => {
+      process.stdout.write(text);
+      totalChars += text.length;
+    });
+    const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+    process.stdout.write(C.reset + '\n');
+    console.log(`    ${ok(`${totalChars} chars en ${elapsed}s`)}`);
+  } catch (err) {
+    process.stdout.write(C.reset + '\n');
+    console.log(`    ${fail(err.message)}`);
+  }
+
+  console.log('');
+  console.log(`  ${dim('─'.repeat(40))}`);
+  console.log(`  ${title('Test completado')}`);
+  console.log('');
+}
+
 async function main() {
   const rawArgs = process.argv.slice(2);
+
+  if (rawArgs[0] === 'test') {
+    await runTest();
+    return;
+  }
+
   const options = {
     forceNew: false,
     sessionId: null,

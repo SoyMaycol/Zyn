@@ -22,17 +22,17 @@ const h = React.createElement;
 const MAX_THINKING_LINES = 20;
 const SPIN_MS = 80;
 
-const SPIN_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
 
 const T = {
   bg:          '#0d0d0d',
-  surface:     '#161616',
-  surfaceHi:   '#1e1e1e',
-  text:        '#ececec',
-  textDim:     '#a0a0a0',
-  textMuted:   '#707070',
-  textGhost:   '#484848',
-  textInvis:   '#2a2a2a',
+  surface:     '#1a1a1a',
+  surfaceHi:   '#222222',
+  text:        '#ffffff',
+  textDim:     '#cccccc',
+  textMuted:   '#999999',
+  textGhost:   '#666666',
+  textInvis:   '#333333',
   accent:      '#d4a054',
   accentSoft:  '#c49450',
   accentDim:   '#8a6a3a',
@@ -46,12 +46,11 @@ const T = {
   purpleDim:   '#5a446a',
   blue:        '#6699cc',
   blueDim:     '#334466',
-  cyan:        '#66bbbb',
+  cyan:        '#66cccc',
   cyanDim:     '#336666',
-  border:      '#252525',
-  borderLight: '#333333',
-  userBubble:  '#1c1c1c',
-  aiBubble:    '#141414',
+  border:      '#2a2a2a',
+  borderLight: '#383838',
+  codeBg:      '#111111',
 };
 
 class UIStore extends EventEmitter {
@@ -177,20 +176,168 @@ function useDimensions() {
   return dims;
 }
 
-function Banner({ model, resumed, width }) {
-  return h(Box, { flexDirection: 'column', paddingLeft: 3, paddingTop: 1, paddingBottom: 1 },
-    h(Box, { gap: 1 },
-      h(Text, { color: T.accent, bold: true }, '●'),
-      h(Text, { color: T.text, bold: true }, APP_NAME),
+
+function parseInline(text) {
+  const parts = [];
+  const regex = /(\*\*(.+?)\*\*)|(`(.+?)`)/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ t: 'text', v: text.slice(lastIndex, match.index) });
+    }
+    if (match[2]) parts.push({ t: 'bold', v: match[2] });
+    else if (match[4]) parts.push({ t: 'code', v: match[4] });
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ t: 'text', v: text.slice(lastIndex) });
+  }
+  if (parts.length === 0) parts.push({ t: 'text', v: text });
+  return parts;
+}
+
+function InlineLine({ text, color }) {
+  const parts = parseInline(text);
+  const base = color || T.text;
+  return h(Box, { flexWrap: 'wrap' },
+    ...parts.map((p, i) => {
+      if (p.t === 'bold') return h(Text, { key: String(i), color: base, bold: true }, p.v);
+      if (p.t === 'code') return h(Text, { key: String(i), color: T.cyan, backgroundColor: T.codeBg }, ' ' + p.v + ' ');
+      return h(Text, { key: String(i), color: base }, p.v);
+    }),
+  );
+}
+
+function parseMarkdownBlocks(text) {
+  const lines = text.split('\n');
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const fenceMatch = line.match(/^```(\w*)/);
+    if (fenceMatch) {
+      const lang = fenceMatch[1] || '';
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++;
+      blocks.push({ type: 'code', lang, code: codeLines.join('\n') });
+      continue;
+    }
+    const hMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (hMatch) {
+      blocks.push({ type: 'header', level: hMatch[1].length, text: hMatch[2] });
+      i++;
+      continue;
+    }
+    const ulMatch = line.match(/^(\s*)[-*]\s+(.+)/);
+    if (ulMatch) {
+      blocks.push({ type: 'list', indent: Math.floor(ulMatch[1].length / 2), text: ulMatch[2] });
+      i++;
+      continue;
+    }
+    const olMatch = line.match(/^(\s*)\d+[.)]\s+(.+)/);
+    if (olMatch) {
+      blocks.push({ type: 'list', indent: Math.floor(olMatch[1].length / 2), text: olMatch[2], ordered: true });
+      i++;
+      continue;
+    }
+    blocks.push({ type: 'text', text: line });
+    i++;
+  }
+  return blocks;
+}
+
+function CodeBlock({ lang, code, width }) {
+  const maxW = Math.max(20, Math.min((width || 80) - 4, 90));
+  const inner = maxW - 4;
+  const langLabel = lang ? ' ' + lang + ' ' : '';
+  const topBar = '\u250c' + (langLabel ? '\u2500' + langLabel : '') + '\u2500'.repeat(Math.max(0, maxW - 2 - langLabel.length)) + '\u2510';
+  const botBar = '\u2514' + '\u2500'.repeat(maxW - 2) + '\u2518';
+  const codeLines = code.split('\n');
+
+  return h(Box, { flexDirection: 'column', marginTop: 0, marginBottom: 0 },
+    h(Text, { color: T.borderLight }, topBar),
+    ...codeLines.map((ln, i) => {
+      const padded = ln.length > inner ? ln.slice(0, inner) : ln + ' '.repeat(Math.max(0, inner - ln.length));
+      return h(Box, { key: String(i) },
+        h(Text, { color: T.borderLight }, '\u2502 '),
+        h(Text, { color: T.cyan }, padded),
+        h(Text, { color: T.borderLight }, ' \u2502'),
+      );
+    }),
+    h(Text, { color: T.borderLight }, botBar),
+  );
+}
+
+function MarkdownContent({ text, width }) {
+  const blocks = parseMarkdownBlocks(text);
+  return h(Box, { flexDirection: 'column' },
+    ...blocks.map((block, i) => {
+      switch (block.type) {
+        case 'code':
+          return h(CodeBlock, { key: String(i), lang: block.lang, code: block.code, width });
+        case 'header':
+          return h(Box, { key: String(i), marginTop: block.level === 1 ? 1 : 0 },
+            h(Text, { color: T.accent, bold: true }, block.text),
+          );
+        case 'list': {
+          const pad = '  '.repeat(block.indent || 0);
+          const bullet = block.ordered ? '  ' : '  \u2022 ';
+          return h(Box, { key: String(i) },
+            h(Text, { color: T.textMuted }, pad + bullet),
+            h(InlineLine, { text: block.text }),
+          );
+        }
+        case 'text':
+          return block.text.trim()
+            ? h(Box, { key: String(i) }, h(InlineLine, { text: block.text }))
+            : h(Box, { key: String(i), height: 1 });
+        default:
+          return null;
+      }
+    }),
+  );
+}
+
+
+function Banner({ model, resumed, width, cwd }) {
+  const maxW = Math.max(30, Math.min(width - 4, 72));
+  const inner = maxW - 4;
+  const topLine = '  \u250c' + '\u2500'.repeat(maxW - 2) + '\u2510';
+  const botLine = '  \u2514' + '\u2500'.repeat(maxW - 2) + '\u2518';
+
+  const pad = (str) => {
+    const s = str.slice(0, inner);
+    return s + ' '.repeat(Math.max(0, inner - s.length));
+  };
+
+  const sessionLabel = resumed ? 'sesion reanudada' : 'sesion nueva';
+  const cwdShort = cwd && cwd.length > inner - 6 ? '...' + cwd.slice(-(inner - 9)) : (cwd || '.');
+
+  return h(Box, { flexDirection: 'column', paddingTop: 1, paddingBottom: 0 },
+    h(Text, { color: T.border }, topLine),
+    h(Box, {},
+      h(Text, { color: T.border }, '  \u2502 '),
+      h(Text, { color: T.accent, bold: true }, '\u25cf '),
+      h(Text, { color: T.text, bold: true }, pad(APP_NAME)),
+      h(Text, { color: T.border }, ' \u2502'),
     ),
-    h(Box, { paddingLeft: 2 },
-      h(Text, { color: T.textGhost }, resumed ? 'session resumed' : 'new session'),
-      h(Text, { color: T.textGhost }, '  ·  '),
-      h(Text, { color: T.textMuted }, model),
+    h(Box, {},
+      h(Text, { color: T.border }, '  \u2502 '),
+      h(Text, { color: T.textMuted }, pad('modelo: ' + model + ' \u00b7 ' + sessionLabel)),
+      h(Text, { color: T.border }, ' \u2502'),
     ),
-    h(Box, { paddingTop: 1, paddingLeft: 0 },
-      h(Text, { color: T.textInvis }, '  ' + '─'.repeat(Math.max(20, Math.min(width - 6, 80)))),
+    h(Box, {},
+      h(Text, { color: T.border }, '  \u2502 '),
+      h(Text, { color: T.textMuted }, pad('cwd: ' + cwdShort)),
+      h(Text, { color: T.border }, ' \u2502'),
     ),
+    h(Text, { color: T.border }, botLine),
   );
 }
 
@@ -217,12 +364,12 @@ function SpinnerLine({ label, started }) {
 
 function EventLine({ kind, title, detail }) {
   const cfg = {
-    info:    { sym: '·', color: T.textGhost },
-    think:   { sym: '◐', color: T.textGhost },
-    tool:    { sym: '⤳', color: T.purple },
-    ok:      { sym: '✓', color: T.green },
-    warn:    { sym: '▲', color: T.amber },
-    error:   { sym: '✕', color: T.red },
+    info:    { sym: '\u00b7', color: T.textGhost },
+    think:   { sym: '\u25d0', color: T.textGhost },
+    tool:    { sym: '\u2933', color: T.purple },
+    ok:      { sym: '\u2713', color: T.green },
+    warn:    { sym: '\u25b2', color: T.amber },
+    error:   { sym: '\u2715', color: T.red },
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
@@ -237,7 +384,7 @@ function UserMessage({ text }) {
   return h(Box, { paddingLeft: 3, paddingRight: 3, marginTop: 1, marginBottom: 0, flexDirection: 'row' },
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
-        h(Text, { color: T.accent, bold: true }, '⦿'),
+        h(Text, { color: T.accent, bold: true }, '\u29bf'),
         h(Text, { color: T.textDim, bold: true }, 'You'),
       ),
       h(Box, { paddingLeft: 2 },
@@ -259,11 +406,11 @@ function ThinkingBlock({ text, elapsed, live, width }) {
     return () => clearInterval(t);
   }, [live]);
 
-  const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '◐';
+  const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '\u25d0';
 
   const label = live
-    ? pulseChar + '  thinking...'
-    : '◐  thought ' + elapsed + 's';
+    ? pulseChar + '  pensando...'
+    : '\u25d0  penso ' + elapsed + 's';
 
   return h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 1 },
     h(Text, { color: T.textGhost }, label),
@@ -272,25 +419,22 @@ function ThinkingBlock({ text, elapsed, live, width }) {
           ...lines.map((line, i) =>
             h(Text, { key: String(i), color: T.textInvis, wrap: 'wrap' }, line),
           ),
-          more > 0 ? h(Text, { color: T.textGhost }, '··· ' + more + ' more lines') : null,
+          more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' lineas mas') : null,
         )
       : null,
   );
 }
 
-function AnswerBlock({ text, live }) {
+function AnswerBlock({ text, live, width }) {
   if (!text) return null;
-  const lines = text.split('\n');
   return h(Box, { flexDirection: 'column', paddingLeft: 3, paddingRight: 3, marginTop: 1 },
     h(Box, { gap: 1, marginBottom: 0 },
-      h(Text, { color: T.accentSoft, bold: true }, '◉'),
+      h(Text, { color: T.accentSoft, bold: true }, '\u25c9'),
       h(Text, { color: T.textDim, bold: true }, APP_NAME),
     ),
     h(Box, { flexDirection: 'column', paddingLeft: 2 },
-      ...lines.map((line, i) =>
-        h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line),
-      ),
-      live ? h(Text, { color: T.accent }, '▎') : null,
+      h(MarkdownContent, { text, width: Math.max(40, (width || 80) - 8) }),
+      live ? h(Text, { color: T.accent }, '\u258e') : null,
     ),
   );
 }
@@ -304,31 +448,38 @@ function SystemMsg({ text }) {
 }
 
 function ConfirmBar({ title, detail }) {
-  const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 8);
+  const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 10);
 
   return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
     h(Box, { gap: 1 },
-      h(Text, { color: T.amber, bold: true }, '?'),
+      h(Text, { color: T.amber, bold: true }, '\u26a0'),
       h(Text, { color: T.text, bold: true }, title),
     ),
     detailLines.length > 0
-      ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
+      ? h(Box, {
+          flexDirection: 'column',
+          paddingLeft: 2,
+          marginTop: 0,
+          borderStyle: 'single',
+          borderColor: T.border,
+          paddingRight: 1,
+        },
           ...detailLines.map((line, i) =>
             h(Text, { key: String(i), color: T.textDim, wrap: 'wrap' }, line),
           ),
         )
       : null,
-    h(Box, { marginTop: 1, paddingLeft: 2, gap: 2 },
-      h(Text, { color: T.green, bold: true }, 'y'),
-      h(Text, { color: T.textGhost }, 'allow'),
-      h(Text, { color: T.textInvis }, '·'),
-      h(Text, { color: T.red, bold: true }, 'n'),
-      h(Text, { color: T.textGhost }, 'deny'),
+    h(Box, { marginTop: 0, paddingLeft: 2, gap: 2 },
+      h(Text, { color: T.green, bold: true }, '[y]'),
+      h(Text, { color: T.textMuted }, 'permitir'),
+      h(Text, { color: T.textInvis }, '\u00b7'),
+      h(Text, { color: T.red, bold: true }, '[n]'),
+      h(Text, { color: T.textMuted }, 'denegar'),
     ),
   );
 }
 
-function StatusBar({ model, processing, width }) {
+function StatusBar({ model, processing, width, turnCount }) {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -337,27 +488,36 @@ function StatusBar({ model, processing, width }) {
     return () => clearInterval(t);
   }, [processing]);
 
-  const line = '─'.repeat(Math.max(10, Math.min(width - 4, 120)));
+  const line = '\u2500'.repeat(Math.max(10, Math.min(width - 4, 120)));
+  const safeW = Math.max(width - 2, 20);
 
   return h(Box, { flexDirection: 'column', paddingLeft: 1, paddingRight: 1 },
     h(Box, {},
-      h(Text, { color: T.textInvis }, line),
+      h(Text, { color: T.border }, line),
     ),
-    h(Box, { paddingLeft: 1, paddingTop: 0, gap: 1 },
-      h(Text, { color: T.accent }, '●'),
-      h(Text, { color: T.textGhost }, model),
-      processing
-        ? h(Text, { color: T.accentSoft }, '  ' + SPIN_FRAMES[frame])
-        : null,
-      h(Text, { color: T.textInvis }, '  '),
-      h(Text, { color: T.textInvis }, 'esc to exit'),
+    h(Box, { paddingLeft: 1, paddingTop: 0, gap: 1, justifyContent: 'space-between', width: safeW },
+      h(Box, { gap: 1 },
+        h(Text, { color: T.accent }, '\u25cf'),
+        h(Text, { color: T.textGhost }, model),
+        processing
+          ? h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame])
+          : null,
+        turnCount > 0
+          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + (turnCount === 1 ? ' turno' : ' turnos'))
+          : null,
+      ),
+      h(Box, { gap: 1 },
+        h(Text, { color: T.textInvis }, '/help'),
+        h(Text, { color: T.textInvis }, '\u00b7'),
+        h(Text, { color: T.textInvis }, 'esc salir'),
+      ),
     ),
   );
 }
 
 function StaticItem({ item, width }) {
   switch (item.type) {
-    case 'banner':   return h(Banner,        { model: item.model, resumed: item.resumed, width });
+    case 'banner':   return h(Banner,        { model: item.model, resumed: item.resumed, width, cwd: item.cwd });
     case 'divider':  return h(Box, { paddingLeft: 2 }, h(Text, { color: T.textInvis }, ' '));
     case 'user':     return h(UserMessage,   { text: item.text });
     case 'thinking': return h(ThinkingBlock, { text: item.text, elapsed: item.elapsed, width });
@@ -368,33 +528,112 @@ function StaticItem({ item, width }) {
   }
 }
 
-function InputBar({ onSubmit }) {
+function InputBar({ onSubmit, processing }) {
   const [value, setValue] = useState('');
+  const [cursor, setCursor] = useState(0);
+  const [histIdx, setHistIdx] = useState(-1);
+  const historyRef = useRef([]);
+  const savedRef = useRef('');
 
   useInput((input, key) => {
+    if (processing) return;
+
     if (key.return) {
-      if (value.trim()) {
-        const text = value.trim();
-        setValue('');
-        onSubmit(text);
+      const text = value.trim();
+      if (!text) return;
+      historyRef.current.unshift(text);
+      if (historyRef.current.length > 100) historyRef.current.pop();
+      setValue('');
+      setCursor(0);
+      setHistIdx(-1);
+      onSubmit(text);
+      return;
+    }
+
+    if (key.upArrow) {
+      const hist = historyRef.current;
+      if (hist.length === 0) return;
+      if (histIdx === -1) savedRef.current = value;
+      const next = Math.min(histIdx + 1, hist.length - 1);
+      setHistIdx(next);
+      setValue(hist[next]);
+      setCursor(hist[next].length);
+      return;
+    }
+
+    if (key.downArrow) {
+      if (histIdx <= 0) {
+        setHistIdx(-1);
+        setValue(savedRef.current);
+        setCursor(savedRef.current.length);
+        return;
       }
+      const next = histIdx - 1;
+      setHistIdx(next);
+      setValue(historyRef.current[next]);
+      setCursor(historyRef.current[next].length);
       return;
     }
+
+    if (key.leftArrow) {
+      setCursor(c => Math.max(0, c - 1));
+      return;
+    }
+
+    if (key.rightArrow) {
+      setCursor(c => Math.min(value.length, c + 1));
+      return;
+    }
+
+    if (key.ctrl && input === 'a') { setCursor(0); return; }
+    if (key.ctrl && input === 'e') { setCursor(value.length); return; }
+
+    if (key.ctrl && input === 'u') {
+      const after = value.slice(cursor);
+      setValue(after);
+      setCursor(0);
+      return;
+    }
+
+    if (key.ctrl && input === 'w') {
+      const before = value.slice(0, cursor);
+      const after = value.slice(cursor);
+      const trimmed = before.replace(/\S+\s*$/, '');
+      setValue(trimmed + after);
+      setCursor(trimmed.length);
+      return;
+    }
+
     if (key.backspace || key.delete) {
-      setValue(v => v.slice(0, -1));
+      if (cursor === 0) return;
+      setValue(v => v.slice(0, cursor - 1) + v.slice(cursor));
+      setCursor(c => Math.max(0, c - 1));
       return;
     }
+
     if (input && !key.ctrl && !key.meta) {
-      setValue(v => v + input);
+      setValue(v => v.slice(0, cursor) + input + v.slice(cursor));
+      setCursor(c => c + input.length);
     }
   });
 
-  const hasText = value.trim().length > 0;
+  const hasText = value.length > 0;
+  const before = value.slice(0, cursor);
+  const cursorChar = value[cursor] || ' ';
+  const after = value.slice(cursor + 1);
 
-  return h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0 },
-    h(Text, { color: T.textGhost }, '› '),
-    h(Text, { color: hasText ? T.text : T.textGhost }, hasText ? value : 'Send a message...'),
-    h(Text, { color: T.accent }, hasText ? '' : '▎'),
+  return h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0, marginTop: 1 },
+    h(Text, { color: T.accent }, '\u276f '),
+    hasText
+      ? h(Box, {},
+          h(Text, { color: T.text }, before),
+          h(Text, { color: T.accent, inverse: true }, cursorChar),
+          after ? h(Text, { color: T.text }, after) : null,
+        )
+      : h(Box, {},
+          h(Text, { color: T.accent, inverse: true }, ' '),
+          h(Text, { color: T.textGhost }, ' Escribe un mensaje...'),
+        ),
   );
 }
 
@@ -450,7 +689,7 @@ function App({ store, state, onSubmit }) {
 
   if (showInput) {
     dynamicArea.push(
-      h(InputBar, { key: 'input', onSubmit: handleInput })
+      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing })
     );
   }
 
@@ -463,7 +702,7 @@ function App({ store, state, onSubmit }) {
       ),
       ...dynamicArea,
     ),
-    h(StatusBar, { model: modelLabel, processing: store.processing, width }),
+    h(StatusBar, { model: modelLabel, processing: store.processing, width, turnCount: store.turnCount }),
   );
 }
 
@@ -498,11 +737,13 @@ export async function startTUI(options = {}) {
 
   const modelKey   = state.activeModel || DEFAULT_MODEL_KEY;
   const modelLabel = (MODELS[modelKey]?.label || modelKey).toLowerCase();
+  const cwd = state.cwd || process.cwd();
 
-  store.addItem({ type: 'banner', model: modelLabel, resumed });
+  store.addItem({ type: 'banner', model: modelLabel, resumed, cwd });
 
   const handleSubmit = async (input) => {
     store.processing = true;
+    store.turnCount += 1;
     store._emit();
 
     store.addItem({ type: 'divider' });

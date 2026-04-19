@@ -1,4 +1,5 @@
 const { normalizeText } = require('../utils/text');
+const { buildSkillsPrompt } = require('./skills');
 
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
@@ -6,45 +7,25 @@ const KNOWN_TOOLS = new Set([
   'fetch_url',
 ]);
 
-function buildSystemPrompt(cwd, toolPrompt) {
+function buildSystemPrompt(cwd) {
+  const platform = process.platform === 'linux' ? 'Linux'
+    : process.platform === 'darwin' ? 'macOS'
+    : process.platform;
+  const date = new Date().toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const skills = buildSkillsPrompt();
+
   return [
-    'Eres Adonix, un agente local de terminal estilo Copilot CLI.',
-    'Responde siempre en espanol, con tono directo y tecnico.',
-    'Puedes usar herramientas para archivos, comandos, scraping y mas.',
-    `Directorio actual: ${cwd}`,
+    skills,
     '',
-    'FORMATO OBLIGATORIO: Cada respuesta es EXACTAMENTE un JSON, sin texto antes ni despues.',
-    '',
-    'Para usar herramienta (SOLO el JSON, sin explicacion):',
-    '{"type":"tool","tool":"read_file","args":{"path":"src/index.js"}}',
-    '',
-    'Para respuesta final o conversacion (SOLO el JSON):',
-    '{"type":"final","content":"tu respuesta aqui"}',
-    '',
-    'PROHIBIDO: mezclar texto con JSON. PROHIBIDO: poner JSON de herramienta dentro del content de final.',
-    'Si necesitas una herramienta, responde UNICAMENTE con el JSON de herramienta. SIN explicacion.',
-    '',
-    toolPrompt,
-    '',
-    'Reglas:',
-    '- Una sola herramienta por respuesta.',
-    '- Lee o busca contexto antes de editar.',
-    '- Para archivos, comandos, busquedas o web: usa herramientas. No adivines resultados.',
-    '- Para scraping web: usa fetch_url con la URL. Agrega selector CSS si necesitas extraer.',
-    '- Para recursos del sistema: usa run_command con top, free, df, etc.',
-    '- Si la pregunta es conversacional, responde con type=final.',
-    '- NUNCA respondas con texto plano. SIEMPRE JSON.',
-    '',
-    'Auto-correccion:',
-    '- Si una herramienta o comando falla, ANALIZA el error en STDERR/mensaje.',
-    '- NO repitas el mismo comando que fallo. Corrige el problema primero.',
-    '- En argumentos de herramientas, usa texto plano. NUNCA formato markdown [texto](url), backticks ni HTML.',
-    '- URLs siempre en texto plano: https://ejemplo.com, NUNCA [https://ejemplo.com](https://ejemplo.com).',
-    '- Si un enfoque falla 2 veces, prueba una alternativa completamente diferente.',
-    '',
-    'Estilo de codigo:',
-    '- NUNCA uses comentarios // ni /* */ en el codigo que generes.',
-    '- El codigo debe ser autoexplicativo, sin comentarios de ningun tipo.',
+    '# Entorno',
+    `- Directorio de trabajo: ${cwd}`,
+    `- Sistema: ${platform}`,
+    `- Fecha: ${date}`,
   ].join('\n');
 }
 
@@ -139,6 +120,15 @@ function fuzzyExtractTool(text) {
   return extractSimpleArgsTool(text, tool);
 }
 
+function unescapeJsonString(raw) {
+  return raw
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\r/g, '\r')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
 function extractLongValueTool(text, tool, longArg) {
   const args = {};
   const keys = TOOL_ARG_KEYS[tool] || [];
@@ -146,7 +136,7 @@ function extractLongValueTool(text, tool, longArg) {
   for (const key of keys) {
     if (key === longArg) continue;
     const m = text.match(new RegExp(`"${key}"\\s*:\\s*"([^"]*?)"`));
-    if (m) args[key] = m[1];
+    if (m) args[key] = unescapeJsonString(m[1]);
     const bm = text.match(new RegExp(`"${key}"\\s*:\\s*(true|false|\\d+)`));
     if (bm) args[key] = bm[1] === 'true' ? true : bm[1] === 'false' ? false : Number(bm[1]);
   }
@@ -168,7 +158,7 @@ function extractLongValueTool(text, tool, longArg) {
   const value = text.slice(valStart, endMatch.index);
   if (!value.trim()) return null;
 
-  args[longArg] = value;
+  args[longArg] = unescapeJsonString(value);
   return { type: 'tool', tool, args };
 }
 
@@ -178,7 +168,7 @@ function extractSimpleArgsTool(text, tool) {
 
   for (const key of keys) {
     const strM = text.match(new RegExp(`"${key}"\\s*:\\s*"([^"]*?)"`));
-    if (strM) { args[key] = strM[1]; continue; }
+    if (strM) { args[key] = unescapeJsonString(strM[1]); continue; }
     const numM = text.match(new RegExp(`"${key}"\\s*:\\s*(true|false|\\d+)`));
     if (numM) {
       const v = numM[1];
@@ -252,11 +242,34 @@ function buildConversationMessages(state, turnMessages, systemPrompt) {
   return messages;
 }
 
+const WRITE_TOOLS = new Set(['write_file', 'append_file', 'replace_in_file']);
+
+function sanitizeArgsForModel(call) {
+  if (!WRITE_TOOLS.has(call.tool)) return call.args;
+
+  const clean = { path: call.args.path };
+
+  if (call.tool === 'write_file' || call.tool === 'append_file') {
+    clean.contentBytes = (call.args.content || '').length;
+    clean.contentLines = (call.args.content || '').split('\n').length;
+  }
+
+  if (call.tool === 'replace_in_file') {
+    clean.searchBytes = (call.args.search || '').length;
+    clean.replaceBytes = (call.args.replace || '').length;
+    if (call.args.all) clean.all = true;
+  }
+
+  return clean;
+}
+
 function buildToolResultMessage(call, result) {
+  const displayArgs = sanitizeArgsForModel(call);
+
   const base = JSON.stringify(
     {
       tool: call.tool,
-      args: call.args,
+      args: displayArgs,
       result,
     },
     null,
@@ -289,10 +302,11 @@ function buildToolResultMessage(call, result) {
 }
 
 function buildToolErrorMessage(call, errorMessage) {
+  const displayArgs = sanitizeArgsForModel(call);
   return [
     'TOOL_ERROR',
     `Herramienta: ${call.tool}`,
-    `Args: ${JSON.stringify(call.args)}`,
+    `Args: ${JSON.stringify(displayArgs)}`,
     `Error: ${errorMessage}`,
     '',
     'Analiza el error. NO repitas la misma llamada que fallo.',
@@ -307,4 +321,5 @@ module.exports = {
   buildToolResultMessage,
   getVisibleHistoryMessages,
   parseAgentResponse,
+  sanitizeArgsForModel,
 };

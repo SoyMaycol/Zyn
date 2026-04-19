@@ -30,15 +30,57 @@ const TOOL_DEFINITIONS = [
 
 function getToolPromptText() {
   return [
-    'Herramientas disponibles:',
-    ...TOOL_DEFINITIONS.map(tool => `- ${tool.name} ${tool.usage}`),
+    '## Lectura y navegacion',
     '',
-    'Guia de uso:',
-    '- fetch_url sin selector: devuelve el HTML completo de la pagina.',
-    '- fetch_url con selector: extrae texto de elementos CSS (ej: "h1", ".title", "#content p").',
-    '- fetch_url con selector + attribute: extrae un atributo especifico (ej: "href", "src").',
-    '- Para scraping: primero fetch_url sin selector para ver la estructura, luego con selector para extraer.',
-    '- Para recursos del sistema: usa run_command con top, free, df, etc.',
+    'list_dir { path? }',
+    '  Lista archivos y carpetas ordenados. Sin path usa directorio actual.',
+    '',
+    'read_file { path, startLine?, endLine? }',
+    '  Lee contenido con numeros de linea. Max 250 lineas por llamada.',
+    '  Para archivos grandes, usa startLine/endLine para leer por secciones.',
+    '',
+    'search_text { pattern, path?, glob? }',
+    '  Busca patron regex en archivos (ripgrep). path: directorio base.',
+    '  glob: filtro de archivos (ej: "**/*.js"). Ejemplo completo:',
+    '  {"type":"tool","tool":"search_text","args":{"pattern":"TODO|FIXME","path":"src","glob":"**/*.js"}}',
+    '',
+    'glob_files { pattern, path? }',
+    '  Busca archivos por patron glob. Ejemplo:',
+    '  {"type":"tool","tool":"glob_files","args":{"pattern":"**/*.test.js","path":"src"}}',
+    '',
+    'file_info { path }',
+    '  Metadata: tamano, tipo, fechas de creacion y modificacion.',
+    '',
+    '## Escritura y edicion',
+    '',
+    'write_file { path, content }',
+    '  Crea o sobrescribe archivo. Crea directorios padres automaticamente.',
+    '',
+    'append_file { path, content }',
+    '  Agrega contenido al final de un archivo existente.',
+    '',
+    'replace_in_file { path, search, replace, all? }',
+    '  Reemplaza texto literal (NO regex) en archivo.',
+    '  search debe coincidir EXACTAMENTE incluyendo espacios y saltos de linea.',
+    '  all=true reemplaza todas las coincidencias (default: solo primera).',
+    '',
+    'make_dir { path }',
+    '  Crea directorio y padres necesarios.',
+    '',
+    '## Ejecucion',
+    '',
+    'run_command { command }',
+    '  Ejecuta comando en bash. Timeout: 2 minutos.',
+    '  Retorna exit code, stdout y stderr.',
+    '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
+    '',
+    '## Web',
+    '',
+    'fetch_url { url, selector?, attribute?, limit? }',
+    '  Sin selector: retorna HTML completo de la pagina.',
+    '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
+    '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
+    '  limit: max elementos a extraer (default: 20, max: 50).',
   ].join('\n');
 }
 
@@ -83,10 +125,10 @@ function describeToolCall(call) {
 
 function globToRegExp(pattern) {
   let source = pattern.replace(/\\/g, '/');
+  source = source.replace(/\*\*/g, '::DOUBLE_STAR::');
   source = source.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  source = source.replace(/\\\*\\\*/g, '::DOUBLE_STAR::');
-  source = source.replace(/\\\*/g, '[^/]*');
-  source = source.replace(/\\\?/g, '[^/]');
+  source = source.replace(/\*/g, '[^/]*');
+  source = source.replace(/\?/g, '[^/]');
   source = source.replace(/::DOUBLE_STAR::/g, '.*');
   return new RegExp(`^${source}$`);
 }
@@ -582,6 +624,7 @@ async function fetchUrlTool(args, state, paint) {
 async function executeToolCall(call, state, ui) {
   ui.logEvent(state, 'tool', describeToolCall(call));
 
+  const startTime = Date.now();
   let result;
 
   switch (call.tool) {
@@ -622,7 +665,8 @@ async function executeToolCall(call, state, ui) {
       throw new Error(`Herramienta no soportada: ${call.tool}`);
   }
 
-  ui.logEvent(state, 'ok', 'Herramienta completada', shortText(result, 100));
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  ui.logEvent(state, 'ok', `Completado en ${elapsed}s`, shortText(result, 100));
   return result;
 }
 
@@ -754,6 +798,39 @@ function parseDirectAction(input) {
         path: searchMatch[2].trim(),
       },
     };
+  }
+
+  const fetchMatch = text.match(
+    /^(?:abre|visita|carga|fetch)\s+(?:la\s+)?(?:url|pagina|web)?\s*(https?:\/\/[^\s]+)$/i,
+  );
+  if (fetchMatch) {
+    return {
+      tool: 'fetch_url',
+      args: { url: fetchMatch[1].trim() },
+    };
+  }
+
+  const listLooseMatch = text.match(
+    /^(?:ls|dir|lista)\s+([/~.\w-][^\s]*)$/i,
+  );
+  if (listLooseMatch) {
+    return {
+      tool: 'list_dir',
+      args: { path: listLooseMatch[1].trim() },
+    };
+  }
+
+  const catMatch = text.match(
+    /^(?:cat|type|muestra)\s+([/~.\w-][^\s]*)$/i,
+  );
+  if (catMatch) {
+    const candidate = catMatch[1].trim();
+    if (/[/\\.]/.test(candidate)) {
+      return {
+        tool: 'read_file',
+        args: { path: candidate },
+      };
+    }
   }
 
   return null;

@@ -7,6 +7,7 @@ const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
 const MODELS = {
   'qwen': { label: 'Qwen 3.6 Plus', provider: 'qwen' },
+  'deepseek': { label: 'DeepSeek V3.2', provider: 'deepseek' },
 };
 const DEFAULT_MODEL_KEY = 'qwen';
 

@@ -8,6 +8,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node ./adonix.js",
+    "test": "node ./adonix.js test",
     "check": "node --check ./adonix.js && node --check ./src/cli/runtime.js"
   },
   "dependencies": {

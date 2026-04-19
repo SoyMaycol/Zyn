@@ -199,15 +199,29 @@ async function streamCompletion(chatId, prompt, jar, onChunk) {
 }
 
 async function qwen(prompt, onChunk = null) {
-  const jar = await ensureAuth();
-  const chatId = await createChat(jar);
-  const result = await streamCompletion(chatId, prompt, jar, onChunk);
-
-  return {
-    status: true,
-    text: result.text,
-    thinking: result.thinking,
-  };
+  const MAX_RETRIES = 2;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const jar = await ensureAuth();
+      const chatId = await createChat(jar);
+      const result = await streamCompletion(chatId, prompt, jar, onChunk);
+      return {
+        status: true,
+        text: result.text,
+        thinking: result.thinking,
+      };
+    } catch (err) {
+      const isAuthError = err.message?.includes('401')
+        || err.message?.includes('403')
+        || err.message?.includes('auth')
+        || err.message?.includes('login');
+      if (isAuthError && attempt < MAX_RETRIES) {
+        cachedJar = null;
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 module.exports = { qwen };

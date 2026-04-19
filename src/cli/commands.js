@@ -1,6 +1,7 @@
 const fs = require('fs');
 
 const fsp = fs.promises;
+const { listSkills, SKILLS_DIR } = require('../core/skills');
 
 const {
   DEFAULT_MODEL_KEY,
@@ -71,6 +72,7 @@ function printHelp() {
   console.log(`    /reset       ${m('reiniciar contexto')}`);
   console.log(`    /cwd [X]     ${m('directorio')}`);
   console.log(`    /tools       ${m('herramientas')}`);
+  console.log(`    /skills      ${m('skills del agente')}`);
   console.log(`    /exit        ${m('salir')}`);
   console.log('');
 }
@@ -218,6 +220,17 @@ async function handleLocalCommand(input, state, deps) {
 
   if (commandName === 'tools') {
     printTools();
+    return true;
+  }
+
+  if (commandName === 'skills') {
+    const skills = listSkills();
+    console.log(`\n  Skills cargadas (${skills.length}):\n`);
+    for (const s of skills) {
+      console.log(`    \x1b[36m${s.name.padEnd(14)}\x1b[0m ${s.title}`);
+    }
+    console.log(`\n  Directorio: \x1b[90m${SKILLS_DIR}\x1b[0m`);
+    console.log('  Edita o agrega archivos .md para personalizar el agente.\n');
     return true;
   }
 

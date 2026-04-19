@@ -16,6 +16,12 @@ const C = {
   light: '\x1b[37m',
   gray: '\x1b[90m',
   darkGray: '\x1b[38;5;240m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+  purple: '\x1b[35m',
+  accent: '\x1b[38;5;179m',
 };
 
 const INDENT = '    ';
@@ -105,10 +111,10 @@ function pushAction(state, kind, title, detail = '') {
 const EVENT_SYMBOLS = {
   info:  { sym: '·', color: C.gray },
   think: { sym: '○', color: C.gray },
-  tool:  { sym: '▸', color: C.light },
-  ok:    { sym: '✓', color: C.white },
-  warn:  { sym: '!', color: C.light },
-  error: { sym: '✗', color: C.light },
+  tool:  { sym: '⤳', color: C.purple },
+  ok:    { sym: '✓', color: C.green },
+  warn:  { sym: '▲', color: C.yellow },
+  error: { sym: '✗', color: C.red },
 };
 
 function logEvent(state, kind, title, detail = '') {
@@ -128,9 +134,11 @@ function printDivider() {
 function printBanner(state) {
   const key = state.activeModel || DEFAULT_MODEL_KEY;
   const model = (MODELS[key]?.label || key).toLowerCase();
+  const cwd = state.cwd || process.cwd();
 
   console.log('');
-  console.log(`  ${c('◆', C.white)} ${c(APP_NAME, C.bold, C.white)}  ${c('·', C.darkGray)}  ${c(model, C.gray)}`);
+  console.log(`  ${c('●', C.accent)} ${c(APP_NAME, C.bold, C.white)}  ${c('·', C.darkGray)}  ${c(model, C.gray)}`);
+  console.log(`  ${c('cwd:', C.darkGray)} ${c(cwd, C.gray)}`);
   console.log(`  ${c('/help para comandos', C.darkGray)}`);
   console.log('');
 }
