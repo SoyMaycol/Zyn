@@ -8,12 +8,16 @@
   "type": "commonjs",
   "scripts": {
     "start": "node ./adonix.js",
+    "web": "node ./web/server.js",
     "test": "node ./adonix.js test",
     "check": "node --check ./adonix.js && node --check ./src/cli/runtime.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
+    "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
     "ink": "^6.8.0",
     "react": "^19.2.5"
   },

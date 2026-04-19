@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Adonix</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            surface: { 50: '#fafafa', 100: '#f5f5f5', 200: '#e5e5e5', 800: '#1a1a1a', 900: '#111111', 950: '#0a0a0a' },
+            accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5' },
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { overscroll-behavior: none; }
+    ::-webkit-scrollbar { display: none; }
+    .no-scroll { overflow: hidden; }
+    .slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .card-press:active { transform: scale(0.98); transition: transform 0.1s; }
+
+    /* Toast */
+    .toast { animation: toastIn 0.3s cubic-bezier(0.16,1,0.3,1), toastOut 0.3s ease 2.2s forwards; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastOut { to { opacity: 0; transform: translateY(-10px); } }
+
+    /* Markdown code blocks */
+    .msg-content pre { background: #0a0a0a; color: #e5e5e5; border-radius: 12px; padding: 14px; margin: 8px 0; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6; }
+    .msg-content code { background: #f5f5f5; color: #111; padding: 2px 6px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+    .msg-content pre code { background: none; color: inherit; padding: 0; }
+    .msg-content p { margin: 4px 0; }
+    .msg-content ul, .msg-content ol { margin: 4px 0; padding-left: 20px; }
+    .msg-content li { margin: 2px 0; }
+    .msg-content h1, .msg-content h2, .msg-content h3 { font-weight: 600; margin: 8px 0 4px; }
+    .msg-content a { color: #6366f1; text-decoration: underline; }
+
+    /* Typing dots */
+    .typing-dot { animation: typingBounce 1.4s infinite ease-in-out both; }
+    .typing-dot:nth-child(1) { animation-delay: 0s; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+    /* Sidebar transition */
+    .sidebar-slide { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  </style>
+</head>
+<body class="bg-surface-50 font-sans text-neutral-900 min-h-screen">
+
+  <!-- ─── AUTH SCREEN ─── -->
+  <div id="authScreen" class="min-h-screen flex items-center justify-center px-5">
+    <div class="w-full max-w-sm fade-in">
+      <!-- Logo -->
+      <div class="text-center mb-8">
+        <div class="w-14 h-14 rounded-2xl bg-surface-950 flex items-center justify-center mx-auto mb-4">
+          <span class="text-white font-bold text-lg">A</span>
+        </div>
+        <h1 class="text-xl font-bold tracking-tight">Adonix Web</h1>
+        <p class="text-xs text-neutral-400 mt-1">Agente de ingeniería con GitHub</p>
+      </div>
+
+      <!-- Form -->
+      <div class="space-y-3">
+        <input id="authUser" type="text" placeholder="Usuario" autocomplete="username"
+          class="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:ring-2 focus:ring-neutral-300 outline-none transition-colors bg-white">
+        <input id="authPass" type="password" placeholder="Contraseña" autocomplete="current-password"
+          class="w-full px-4 py-3 rounded-xl border border-neutral-200 text-sm focus:ring-2 focus:ring-neutral-300 outline-none transition-colors bg-white">
+        <button id="authBtn" onclick="doAuth()"
+          class="w-full py-3 rounded-xl bg-surface-950 text-white text-sm font-semibold hover:bg-surface-800 active:scale-[0.98] transition-all">
+          Entrar
+        </button>
+      </div>
+
+      <p class="text-center mt-4 text-xs text-neutral-400">
+        <span id="authToggle" class="text-neutral-600 cursor-pointer hover:underline" onclick="toggleAuthMode()">
+          ¿No tienes cuenta? Regístrate
+        </span>
+      </p>
+      <p id="authError" class="text-center mt-3 text-xs text-red-500 hidden"></p>
+    </div>
+  </div>
+
+  <!-- ─── APP SCREEN ─── -->
+  <div id="appScreen" class="hidden min-h-screen">
+    <!-- Mobile overlay -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed top-0 left-0 h-full w-72 bg-white border-r border-neutral-100 z-50 flex flex-col sidebar-slide -translate-x-full lg:translate-x-0">
+      <!-- Header -->
+      <div class="px-4 pt-4 pb-3 border-b border-neutral-100">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-xl bg-surface-950 flex items-center justify-center">
+              <span class="text-white font-bold text-xs">A</span>
+            </div>
+            <span class="font-semibold text-sm">Adonix</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="openSettings()" class="w-8 h-8 rounded-full hover:bg-neutral-100 flex items-center justify-center transition-colors">
+              <span class="iconify text-lg text-neutral-500" data-icon="lucide:settings"></span>
+            </button>
+            <button onclick="toggleSidebar()" class="w-8 h-8 rounded-full hover:bg-neutral-100 flex items-center justify-center transition-colors lg:hidden">
+              <span class="iconify text-lg text-neutral-500" data-icon="lucide:x"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- New chat -->
+      <div class="px-3 py-2">
+        <button onclick="showRepoSelector()" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-sm transition-colors card-press">
+          <span class="iconify text-base" data-icon="lucide:plus"></span>
+          Nuevo chat
+        </button>
+      </div>
+
+      <!-- Chat list -->
+      <div class="flex-1 overflow-y-auto px-3 py-1 space-y-0.5" id="chatList">
+        <p class="text-xs text-neutral-400 px-2 py-4 text-center">Sin chats aún</p>
+      </div>
+
+      <!-- User footer -->
+      <div class="px-3 py-3 border-t border-neutral-100">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div id="userAvatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center text-white text-xs font-semibold">U</div>
+            <span id="userName" class="text-sm font-medium">user</span>
+          </div>
+          <button onclick="doLogout()" class="w-8 h-8 rounded-full hover:bg-neutral-100 flex items-center justify-center transition-colors">
+            <span class="iconify text-base text-neutral-400" data-icon="lucide:log-out"></span>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="lg:ml-72 min-h-screen flex flex-col">
+      <!-- Top bar (mobile) -->
+      <div class="sticky top-0 z-30 bg-surface-50/90 backdrop-blur-md border-b border-neutral-100 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button onclick="toggleSidebar()" class="w-8 h-8 rounded-full hover:bg-neutral-100 flex items-center justify-center transition-colors lg:hidden">
+            <span class="iconify text-lg" data-icon="lucide:menu"></span>
+          </button>
+          <h2 id="chatTitle" class="text-sm font-semibold truncate">Adonix Web</h2>
+        </div>
+        <div id="chatStatus" class="text-[10px] text-neutral-400 font-mono"></div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="flex-1 flex items-center justify-center px-5">
+        <div class="text-center max-w-xs">
+          <div class="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto mb-4">
+            <span class="iconify text-3xl text-neutral-300" data-icon="lucide:message-square-code"></span>
+          </div>
+          <h3 class="font-semibold text-base mb-1">Selecciona un repo</h3>
+          <p class="text-xs text-neutral-400 leading-relaxed">Crea un nuevo chat seleccionando un repositorio de GitHub para empezar a trabajar con Adonix</p>
+          <button onclick="showRepoSelector()" class="mt-4 px-5 py-2.5 rounded-xl bg-surface-950 text-white text-xs font-semibold hover:bg-surface-800 active:scale-[0.98] transition-all">
+            <span class="iconify text-sm mr-1 align-middle" data-icon="lucide:github"></span>
+            Seleccionar repo
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat view -->
+      <div id="chatView" class="hidden flex-1 flex flex-col">
+        <!-- Messages -->
+        <div id="messagesArea" class="flex-1 overflow-y-auto px-4 py-4 space-y-4"></div>
+
+        <!-- Input -->
+        <div class="sticky bottom-0 bg-surface-50/90 backdrop-blur-md border-t border-neutral-100 px-4 py-3">
+          <div class="flex items-end gap-2 max-w-3xl mx-auto">
+            <div class="flex-1 relative">
+              <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje..."
+                class="w-full px-4 py-3 pr-12 rounded-2xl border border-neutral-200 text-sm resize-none focus:ring-2 focus:ring-neutral-300 outline-none transition-colors bg-white leading-relaxed"
+                onkeydown="handleInputKey(event)" oninput="autoResize(this)"></textarea>
+            </div>
+            <button id="sendBtn" onclick="sendMessage()"
+              class="w-11 h-11 rounded-xl bg-surface-950 text-white flex items-center justify-center hover:bg-surface-800 active:scale-[0.95] transition-all shrink-0 disabled:opacity-40 disabled:pointer-events-none">
+              <span class="iconify text-lg" data-icon="lucide:arrow-up"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ─── REPO SELECTOR (Bottom Sheet) ─── -->
+  <div id="repoSheet" class="fixed inset-0 z-[100] hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeRepoSheet()"></div>
+    <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-white rounded-t-3xl max-h-[85vh] flex flex-col slide-up">
+      <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-neutral-100">
+        <h3 class="font-semibold text-sm">Seleccionar repositorio</h3>
+        <button onclick="closeRepoSheet()" class="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors">
+          <span class="iconify text-sm" data-icon="lucide:x"></span>
+        </button>
+      </div>
+      <div class="px-4 py-3">
+        <input id="repoSearch" type="text" placeholder="Buscar repo..." oninput="filterRepos()"
+          class="w-full px-3 py-2 rounded-xl border border-neutral-200 text-sm focus:ring-2 focus:ring-neutral-300 outline-none bg-surface-50">
+      </div>
+      <div id="repoList" class="overflow-y-auto flex-1 px-4 pb-4 space-y-1">
+        <div class="text-center py-8">
+          <div class="typing-dot inline-block w-2 h-2 bg-neutral-300 rounded-full mx-0.5"></div>
+          <div class="typing-dot inline-block w-2 h-2 bg-neutral-300 rounded-full mx-0.5"></div>
+          <div class="typing-dot inline-block w-2 h-2 bg-neutral-300 rounded-full mx-0.5"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SETTINGS (Bottom Sheet) ─── -->
+  <div id="settingsSheet" class="fixed inset-0 z-[100] hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closeSettings()"></div>
+    <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-white rounded-t-3xl max-h-[80vh] flex flex-col slide-up">
+      <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-neutral-100">
+        <h3 class="font-semibold text-sm">Configuración</h3>
+        <button onclick="closeSettings()" class="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors">
+          <span class="iconify text-sm" data-icon="lucide:x"></span>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <div>
+          <label class="text-xs font-semibold text-neutral-600 mb-1.5 block">Token de GitHub</label>
+          <input id="setToken" type="password" placeholder="ghp_xxxxxxxxxxxx"
+            class="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:ring-2 focus:ring-neutral-300 outline-none font-mono">
+          <p class="text-[10px] text-neutral-400 mt-1">Necesita permisos: repo, read:user</p>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-neutral-600 mb-1.5 block">Email de GitHub</label>
+          <input id="setEmail" type="email" placeholder="tu@email.com"
+            class="w-full px-3 py-2.5 rounded-xl border border-neutral-200 text-sm focus:ring-2 focus:ring-neutral-300 outline-none">
+        </div>
+        <button onclick="saveSettings()" class="w-full py-3 rounded-xl bg-surface-950 text-white text-sm font-semibold hover:bg-surface-800 active:scale-[0.98] transition-all">
+          Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toastContainer" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] flex flex-col items-center"></div>
+
+  <script>
+    // ─── State ──────────────────────────────────────────
+    let authMode = 'login';
+    let currentUser = null;
+    let currentChatId = null;
+    let repos = [];
+    let isStreaming = false;
+
+    // ─── Helpers ────────────────────────────────────────
+    async function api(url, opts = {}) {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...opts.headers },
+        ...opts,
+      });
+      if (res.status === 401) {
+        showAuth();
+        throw new Error('No autorizado');
+      }
+      return res;
+    }
+
+    function showToast(msg) {
+      const c = document.getElementById('toastContainer');
+      const t = document.createElement('div');
+      t.className = 'toast bg-neutral-900 text-white text-xs font-medium px-4 py-3 rounded-2xl shadow-lg text-center mb-2';
+      t.textContent = msg;
+      c.appendChild(t);
+      setTimeout(() => t.remove(), 2500);
+    }
+
+    function $(id) { return document.getElementById(id); }
+
+    // ─── Auth ───────────────────────────────────────────
+    function toggleAuthMode() {
+      authMode = authMode === 'login' ? 'register' : 'login';
+      $('authBtn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+      $('authToggle').textContent = authMode === 'login'
+        ? '¿No tienes cuenta? Regístrate'
+        : '¿Ya tienes cuenta? Inicia sesión';
+      $('authError').classList.add('hidden');
+    }
+
+    async function doAuth() {
+      const username = $('authUser').value.trim();
+      const password = $('authPass').value;
+      if (!username || !password) return;
+
+      $('authBtn').disabled = true;
+      $('authBtn').textContent = 'Cargando...';
+
+      try {
+        const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const res = await api(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        currentUser = data;
+        showApp();
+      } catch (err) {
+        $('authError').textContent = err.message;
+        $('authError').classList.remove('hidden');
+      } finally {
+        $('authBtn').disabled = false;
+        $('authBtn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+      }
+    }
+
+    async function doLogout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      currentUser = null;
+      currentChatId = null;
+      showAuth();
+    }
+
+    function showAuth() {
+      $('authScreen').classList.remove('hidden');
+      $('appScreen').classList.add('hidden');
+    }
+
+    async function showApp() {
+      $('authScreen').classList.add('hidden');
+      $('appScreen').classList.remove('hidden');
+
+      try {
+        const res = await api('/api/auth/me');
+        const me = await res.json();
+        currentUser = me;
+        $('userName').textContent = me.username;
+        $('userAvatar').textContent = me.username[0].toUpperCase();
+      } catch {}
+
+      loadChats();
+    }
+
+    // ─── Sidebar ────────────────────────────────────────
+    function toggleSidebar() {
+      const sb = $('sidebar');
+      const ov = $('sidebarOverlay');
+      const open = !sb.classList.contains('-translate-x-full');
+      if (open) {
+        sb.classList.add('-translate-x-full');
+        ov.classList.add('hidden');
+      } else {
+        sb.classList.remove('-translate-x-full');
+        ov.classList.remove('hidden');
+      }
+    }
+
+    // ─── Chats ──────────────────────────────────────────
+    async function loadChats() {
+      try {
+        const res = await api('/api/chats');
+        const chats = await res.json();
+        renderChatList(chats);
+      } catch {}
+    }
+
+    function renderChatList(chats) {
+      const el = $('chatList');
+      if (chats.length === 0) {
+        el.innerHTML = '<p class="text-xs text-neutral-400 px-2 py-4 text-center">Sin chats aún</p>';
+        return;
+      }
+      el.innerHTML = chats.map(c => `
+        <button onclick="openChat('${c.id}')" class="w-full text-left px-3 py-2.5 rounded-xl hover:bg-neutral-50 transition-colors group card-press ${c.id === currentChatId ? 'bg-neutral-100' : ''}">
+          <div class="flex items-center gap-2">
+            <span class="iconify text-sm text-neutral-400 shrink-0" data-icon="lucide:message-square"></span>
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-medium truncate">${c.title}</p>
+              <p class="text-[10px] text-neutral-400 truncate">${c.lastMessage || 'Sin mensajes'}</p>
+            </div>
+          </div>
+        </button>
+      `).join('');
+    }
+
+    async function openChat(chatId) {
+      currentChatId = chatId;
+      try {
+        const res = await api(`/api/chats/${chatId}`);
+        const chat = await res.json();
+        $('chatTitle').textContent = chat.title;
+        $('emptyState').classList.add('hidden');
+        $('chatView').classList.remove('hidden');
+        renderMessages(chat.messages);
+        loadChats();
+        toggleSidebar();
+      } catch (err) {
+        showToast('Error abriendo chat');
+      }
+    }
+
+    // ─── Messages ───────────────────────────────────────
+    function renderMessages(messages) {
+      const area = $('messagesArea');
+      area.innerHTML = messages.map(m => createMessageHtml(m.role, m.content)).join('');
+      area.scrollTop = area.scrollHeight;
+    }
+
+    function createMessageHtml(role, content) {
+      if (role === 'user') {
+        return `
+          <div class="flex justify-end fade-in">
+            <div class="max-w-[80%] bg-surface-950 text-white px-4 py-3 rounded-2xl rounded-br-md">
+              <p class="text-sm leading-relaxed">${escapeHtml(content)}</p>
+            </div>
+          </div>`;
+      }
+      return `
+        <div class="flex justify-start fade-in">
+          <div class="max-w-[85%]">
+            <div class="flex items-center gap-1.5 mb-1">
+              <div class="w-5 h-5 rounded-md bg-surface-950 flex items-center justify-center">
+                <span class="text-white text-[9px] font-bold">A</span>
+              </div>
+              <span class="text-[10px] font-semibold text-neutral-400">Adonix</span>
+            </div>
+            <div class="msg-content text-sm leading-relaxed text-neutral-800">${renderMarkdown(content)}</div>
+          </div>
+        </div>`;
+    }
+
+    function createEventHtml(type, content) {
+      const icons = {
+        tool: 'lucide:wrench',
+        tool_done: 'lucide:check-circle',
+        tool_error: 'lucide:alert-circle',
+        thinking: 'lucide:brain',
+        status: 'lucide:info',
+        error: 'lucide:alert-triangle',
+      };
+      const colors = {
+        tool: 'text-blue-500',
+        tool_done: 'text-green-500',
+        tool_error: 'text-red-500',
+        error: 'text-red-500',
+        thinking: 'text-neutral-400',
+        status: 'text-neutral-400',
+      };
+      return `
+        <div class="flex justify-center fade-in">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-100 border border-neutral-200">
+            <span class="iconify text-xs ${colors[type] || 'text-neutral-400'}" data-icon="${icons[type] || 'lucide:info'}"></span>
+            <span class="text-[11px] text-neutral-500">${escapeHtml(content)}</span>
+          </div>
+        </div>`;
+    }
+
+    function escapeHtml(text) {
+      const d = document.createElement('div');
+      d.textContent = text;
+      return d.innerHTML;
+    }
+
+    function renderMarkdown(text) {
+      let html = escapeHtml(text);
+      // Code blocks
+      html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+      html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+      // Inline code
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      // Bold
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      // Italic
+      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      // Headers
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+      // Lists
+      html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+      html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+      // Links
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+      // Paragraphs
+      html = html.replace(/\n\n/g, '</p><p>');
+      html = html.replace(/\n/g, '<br>');
+      return `<p>${html}</p>`;
+    }
+
+    // ─── Send Message ───────────────────────────────────
+    function handleInputKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function autoResize(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+    }
+
+    async function sendMessage() {
+      const input = $('chatInput');
+      const message = input.value.trim();
+      if (!message || !currentChatId || isStreaming) return;
+
+      input.value = '';
+      input.style.height = 'auto';
+      isStreaming = true;
+      $('sendBtn').disabled = true;
+
+      const area = $('messagesArea');
+      // User message
+      area.insertAdjacentHTML('beforeend', createMessageHtml('user', message));
+      area.scrollTop = area.scrollHeight;
+
+      // Streaming placeholder
+      const streamId = 'stream-' + Date.now();
+      area.insertAdjacentHTML('beforeend', `
+        <div id="${streamId}" class="flex justify-start fade-in">
+          <div class="max-w-[85%]">
+            <div class="flex items-center gap-1.5 mb-1">
+              <div class="w-5 h-5 rounded-md bg-surface-950 flex items-center justify-center">
+                <span class="text-white text-[9px] font-bold">A</span>
+              </div>
+              <span class="text-[10px] font-semibold text-neutral-400">Adonix</span>
+            </div>
+            <div class="msg-stream msg-content text-sm leading-relaxed text-neutral-800">
+              <div class="flex items-center gap-1 py-2">
+                <div class="typing-dot w-1.5 h-1.5 bg-neutral-400 rounded-full"></div>
+                <div class="typing-dot w-1.5 h-1.5 bg-neutral-400 rounded-full"></div>
+                <div class="typing-dot w-1.5 h-1.5 bg-neutral-400 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `);
+      area.scrollTop = area.scrollHeight;
+
+      let streamContent = '';
+      let streamEl = document.querySelector(`#${streamId} .msg-stream`);
+
+      try {
+        const res = await fetch(`/api/chats/${currentChatId}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6);
+            if (data === '[DONE]') break;
+
+            let event;
+            try { event = JSON.parse(data); } catch { continue; }
+
+            if (event.type === 'delta') {
+              streamContent += event.content;
+              streamEl.innerHTML = renderMarkdown(streamContent);
+              area.scrollTop = area.scrollHeight;
+            } else if (event.type === 'thinking') {
+              $('chatStatus').textContent = event.content;
+            } else if (event.type === 'thinking_delta') {
+              // Skip thinking deltas for now
+            } else if (event.type === 'tool' || event.type === 'tool_done' || event.type === 'tool_error' || event.type === 'status') {
+              // Insert event before stream element
+              const streamNode = document.getElementById(streamId);
+              streamNode.insertAdjacentHTML('beforebegin', createEventHtml(event.type, event.content || `${event.name}: ${event.path || ''}`));
+              area.scrollTop = area.scrollHeight;
+            } else if (event.type === 'done') {
+              streamEl.innerHTML = renderMarkdown(event.content);
+              area.scrollTop = area.scrollHeight;
+            } else if (event.type === 'error') {
+              streamEl.innerHTML = `<p class="text-red-500 text-xs">${escapeHtml(event.content)}</p>`;
+            }
+          }
+        }
+      } catch (err) {
+        streamEl.innerHTML = `<p class="text-red-500 text-xs">Error: ${escapeHtml(err.message)}</p>`;
+      } finally {
+        isStreaming = false;
+        $('sendBtn').disabled = false;
+        $('chatStatus').textContent = '';
+        loadChats();
+      }
+    }
+
+    // ─── Repo Selector ──────────────────────────────────
+    async function showRepoSelector() {
+      $('repoSheet').classList.remove('hidden');
+      document.body.classList.add('no-scroll');
+
+      if (repos.length === 0) {
+        try {
+          const res = await api('/api/repos');
+          repos = await res.json();
+          if (repos.error) throw new Error(repos.error);
+        } catch (err) {
+          $('repoList').innerHTML = `
+            <div class="text-center py-8">
+              <p class="text-xs text-red-500">${escapeHtml(err.message)}</p>
+              <button onclick="closeRepoSheet(); openSettings()" class="mt-3 px-4 py-2 rounded-xl bg-neutral-100 text-xs font-medium">
+                Configurar token
+              </button>
+            </div>`;
+          return;
+        }
+      }
+      renderRepos(repos);
+    }
+
+    function closeRepoSheet() {
+      $('repoSheet').classList.add('hidden');
+      document.body.classList.remove('no-scroll');
+    }
+
+    function filterRepos() {
+      const q = $('repoSearch').value.toLowerCase();
+      const filtered = repos.filter(r =>
+        r.name.toLowerCase().includes(q) || r.fullName.toLowerCase().includes(q)
+      );
+      renderRepos(filtered);
+    }
+
+    function renderRepos(list) {
+      $('repoList').innerHTML = list.map(r => `
+        <button onclick="selectRepo('${r.owner}', '${r.name}')"
+          class="w-full text-left px-3 py-3 rounded-xl hover:bg-neutral-50 transition-colors card-press border border-transparent hover:border-neutral-100">
+          <div class="flex items-center gap-2.5">
+            <span class="iconify text-lg text-neutral-400 shrink-0" data-icon="${r.private ? 'lucide:lock' : 'lucide:book-open'}"></span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium truncate">${r.fullName}</p>
+              <div class="flex items-center gap-2 mt-0.5">
+                ${r.language ? `<span class="text-[10px] text-neutral-400">${r.language}</span>` : ''}
+                ${r.private ? '<span class="text-[10px] text-amber-500">privado</span>' : ''}
+                <span class="text-[10px] text-neutral-300">${timeAgo(r.updatedAt)}</span>
+              </div>
+            </div>
+            <span class="iconify text-sm text-neutral-300" data-icon="lucide:chevron-right"></span>
+          </div>
+        </button>
+      `).join('');
+    }
+
+    async function selectRepo(owner, name) {
+      closeRepoSheet();
+      try {
+        const res = await api('/api/chats', {
+          method: 'POST',
+          body: JSON.stringify({ repoOwner: owner, repoName: name }),
+        });
+        const chat = await res.json();
+        openChat(chat.id);
+      } catch (err) {
+        showToast('Error creando chat');
+      }
+    }
+
+    // ─── Settings ───────────────────────────────────────
+    function openSettings() {
+      $('settingsSheet').classList.remove('hidden');
+      document.body.classList.add('no-scroll');
+      // Pre-fill if available
+      if (currentUser?.githubEmail) {
+        $('setEmail').value = currentUser.githubEmail;
+      }
+    }
+
+    function closeSettings() {
+      $('settingsSheet').classList.add('hidden');
+      document.body.classList.remove('no-scroll');
+    }
+
+    async function saveSettings() {
+      const githubToken = $('setToken').value.trim();
+      const githubEmail = $('setEmail').value.trim();
+
+      if (!githubToken) {
+        showToast('Token requerido');
+        return;
+      }
+
+      try {
+        await api('/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify({ githubToken, githubEmail }),
+        });
+        repos = [];
+        closeSettings();
+        showToast('Configuración guardada ✓');
+        currentUser.hasGithub = true;
+        currentUser.githubEmail = githubEmail;
+      } catch (err) {
+        showToast('Error guardando');
+      }
+    }
+
+    // ─── Utils ──────────────────────────────────────────
+    function timeAgo(dateStr) {
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 60) return `${mins}m`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h`;
+      const days = Math.floor(hrs / 24);
+      if (days < 30) return `${days}d`;
+      return `${Math.floor(days / 30)}mo`;
+    }
+
+    // ─── Init ───────────────────────────────────────────
+    async function init() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const me = await res.json();
+          currentUser = me;
+          showApp();
+        } else {
+          showAuth();
+        }
+      } catch {
+        showAuth();
+      }
+    }
+
+    // Enter key on auth inputs
+    $('authUser').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPass').focus(); });
+    $('authPass').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+    init();
+  </script>
+</body>
+</html>
