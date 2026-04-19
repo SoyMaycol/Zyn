@@ -227,6 +227,15 @@ async function runAgentTurn(input, state, ui) {
   let repeatCount = 0;
 
   for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
+    const injected = typeof state.getQueuedMessages === 'function'
+      ? state.getQueuedMessages()
+      : [];
+    for (const msg of injected) {
+      const note = `MENSAJE_ADICIONAL_DEL_USUARIO:\n${msg}`;
+      turnMessages.push({ role: 'user', content: note });
+      ui.logEvent(state, 'info', 'Mensaje recibido en vivo', shortText(msg, 60));
+    }
+
     const messages = buildConversationMessages(
       state,
       turnMessages,

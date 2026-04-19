@@ -64,6 +64,8 @@ class UIStore extends EventEmitter {
     this.processing = false;
     this.confirmRequest = null;
     this.turnCount = 0;
+    this.messageQueue = [];
+    this.pendingExit = false;
     this._idCounter = 0;
     this._scheduled = false;
   }
@@ -129,6 +131,12 @@ class UIStore extends EventEmitter {
     if (!this.confirmRequest) return;
     this.confirmRequest.resolve(answer);
     this.confirmRequest = null;
+    this._emit();
+  }
+
+  enqueueMessage(text) {
+    this.messageQueue.push(text);
+    this.addItem({ type: 'queued', text });
     this._emit();
   }
 
@@ -447,6 +455,13 @@ function SystemMsg({ text }) {
   );
 }
 
+function QueuedMessage({ text }) {
+  return h(Box, { paddingLeft: 5, gap: 1, marginTop: 0 },
+    h(Text, { color: T.amber }, '\u{1F4E9}'),
+    h(Text, { color: T.textGhost, italic: true, wrap: 'wrap' }, text),
+  );
+}
+
 function ConfirmBar({ title, detail }) {
   const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 10);
 
@@ -524,6 +539,7 @@ function StaticItem({ item, width }) {
     case 'answer':   return h(AnswerBlock,   { text: item.text, width });
     case 'event':    return h(EventLine,     { kind: item.kind, title: item.title, detail: item.detail });
     case 'system':   return h(SystemMsg,     { text: item.text });
+    case 'queued':   return h(QueuedMessage, { text: item.text });
     default:         return null;
   }
 }
@@ -536,8 +552,6 @@ function InputBar({ onSubmit, processing }) {
   const savedRef = useRef('');
 
   useInput((input, key) => {
-    if (processing) return;
-
     if (key.return) {
       const text = value.trim();
       if (!text) return;
@@ -622,17 +636,20 @@ function InputBar({ onSubmit, processing }) {
   const cursorChar = value[cursor] || ' ';
   const after = value.slice(cursor + 1);
 
+  const promptColor = processing ? T.amber : T.accent;
+  const placeholder = processing ? ' En cola — escribe y se procesará después...' : ' Escribe un mensaje...';
+
   return h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0, marginTop: 1 },
-    h(Text, { color: T.accent }, '\u276f '),
+    h(Text, { color: promptColor }, processing ? '\u{1F4E9} ' : '\u276f '),
     hasText
       ? h(Box, {},
           h(Text, { color: T.text }, before),
-          h(Text, { color: T.accent, inverse: true }, cursorChar),
+          h(Text, { color: promptColor, inverse: true }, cursorChar),
           after ? h(Text, { color: T.text }, after) : null,
         )
       : h(Box, {},
-          h(Text, { color: T.accent, inverse: true }, ' '),
-          h(Text, { color: T.textGhost }, ' Escribe un mensaje...'),
+          h(Text, { color: promptColor, inverse: true }, ' '),
+          h(Text, { color: T.textGhost }, placeholder),
         ),
   );
 }
@@ -646,9 +663,17 @@ function App({ store, state, onSubmit }) {
   const modelLabel = (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
   const handleInput = useCallback((text) => {
-    if (text === '/exit' || text === '/quit') { exit(); return; }
+    if (text === '/exit' || text === '/quit') {
+      if (store.processing) {
+        store.pendingExit = true;
+        store.addEvent('info', 'saliendo al terminar el turno actual');
+        return;
+      }
+      exit();
+      return;
+    }
     onSubmit(text);
-  }, [onSubmit, exit]);
+  }, [onSubmit, exit, store]);
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') { exit(); return; }
@@ -658,7 +683,7 @@ function App({ store, state, onSubmit }) {
     else if (input === 'n' || key.return) store.resolveConfirm('n');
   });
 
-  const showInput   = !store.processing && !store.confirmRequest;
+  const showInput   = !store.confirmRequest;
   const showConfirm = !!store.confirmRequest;
 
   const dynamicArea = [];
@@ -734,6 +759,11 @@ export async function startTUI(options = {}) {
 
   state.rl = null;
   state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
+  state.getQueuedMessages = () => {
+    const msgs = store.messageQueue.splice(0);
+    if (msgs.length) store._emit();
+    return msgs;
+  };
 
   const modelKey   = state.activeModel || DEFAULT_MODEL_KEY;
   const modelLabel = (MODELS[modelKey]?.label || modelKey).toLowerCase();
@@ -741,10 +771,12 @@ export async function startTUI(options = {}) {
 
   store.addItem({ type: 'banner', model: modelLabel, resumed, cwd });
 
-  const handleSubmit = async (input) => {
-    store.processing = true;
-    store.turnCount += 1;
-    store._emit();
+  const processInput = async (input) => {
+    if (input === '/exit' || input === '/quit') {
+      store.pendingExit = true;
+      store.addEvent('info', 'hasta luego');
+      return;
+    }
 
     store.addItem({ type: 'divider' });
     store.addItem({ type: 'user', text: input });
@@ -780,9 +812,6 @@ export async function startTUI(options = {}) {
         console.log   = origLog;
         console.error = origError;
       }
-
-      store.processing = false;
-      store._emit();
       return;
     }
 
@@ -800,13 +829,39 @@ export async function startTUI(options = {}) {
     } finally {
       console.error = origError;
     }
+  };
+
+  let appInstance = null;
+
+  const handleSubmit = async (input) => {
+    if (store.processing) {
+      store.enqueueMessage(input);
+      return;
+    }
+
+    store.processing = true;
+    store.turnCount += 1;
+    store._emit();
+
+    await processInput(input);
+
+    while (store.messageQueue.length > 0) {
+      const next = store.messageQueue.shift();
+      store.turnCount += 1;
+      store._emit();
+      await processInput(next);
+    }
 
     store.processing = false;
     store._emit();
+
+    if (store.pendingExit && appInstance) {
+      appInstance.unmount();
+    }
   };
 
-  const app = render(h(App, { store, state, onSubmit: handleSubmit }), {
+  appInstance = render(h(App, { store, state, onSubmit: handleSubmit }), {
     exitOnCtrlC: false,
   });
-  await app.waitUntilExit();
+  await appInstance.waitUntilExit();
 }

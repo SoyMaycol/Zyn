@@ -16,6 +16,7 @@ const {
   printStatus,
   printWelcome,
   pushAction,
+  shortText,
   startThinkingIndicator,
   streamBufferedAssistantMessage,
   writeAssistantDelta,
@@ -113,37 +114,72 @@ async function runInteractiveChatClassic(options = {}) {
   logEvent(state, 'info', resumed ? 'sesion reanudada' : 'chat activo — /help para comandos');
   console.log('');
 
+  const messageQueue = [];
+  let processing = false;
+  let pendingExit = false;
+
+  state.getQueuedMessages = () => messageQueue.splice(0);
+
+  const processInput = async (input) => {
+    if (input === '/exit' || input === '/quit') {
+      pendingExit = true;
+      return;
+    }
+
+    if (input.startsWith('/')) {
+      try {
+        const handled = await handleLocalCommand(input, state, getCommandDeps());
+        if (handled) return;
+      } catch (err) {
+        console.error(`Error: ${err.message}`);
+        return;
+      }
+    }
+
+    try {
+      const result = await runAgentTurn(input, state, getUiBindings());
+      if (!result.rendered) {
+        await streamBufferedAssistantMessage(state, result.content);
+      }
+    } catch (err) {
+      logEvent(state, 'error', 'Error', err.message);
+    }
+  };
+
   try {
     while (true) {
       const input = (await rl.question('  \x1b[97m❯\x1b[0m ')).trim();
-      if (!input) {
-        continue;
-      }
+      if (!input) continue;
 
       if (input === '/exit' || input === '/quit') {
         logEvent(state, 'info', 'Hasta luego');
         break;
       }
 
-      if (input.startsWith('/')) {
-        try {
-          const handled = await handleLocalCommand(input, state, getCommandDeps());
-          if (handled) {
-            continue;
-          }
-        } catch (err) {
-          console.error(`Error: ${err.message}`);
-          continue;
-        }
+      processing = true;
+
+      const lineHandler = (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        messageQueue.push(trimmed);
+        console.log(`  \x1b[33m📩 en cola:\x1b[0m \x1b[90m${shortText(trimmed, 60)}\x1b[0m`);
+      };
+      rl.on('line', lineHandler);
+
+      await processInput(input);
+
+      while (messageQueue.length > 0) {
+        const next = messageQueue.shift();
+        console.log(`\n  \x1b[33m▸\x1b[0m procesando mensaje en cola: \x1b[97m${shortText(next, 50)}\x1b[0m`);
+        await processInput(next);
       }
 
-      try {
-        const result = await runAgentTurn(input, state, getUiBindings());
-        if (!result.rendered) {
-          await streamBufferedAssistantMessage(state, result.content);
-        }
-      } catch (err) {
-        logEvent(state, 'error', 'Error', err.message);
+      rl.removeListener('line', lineHandler);
+      processing = false;
+
+      if (pendingExit) {
+        logEvent(state, 'info', 'Hasta luego');
+        break;
       }
     }
   } finally {
