@@ -13,7 +13,23 @@ const { MODELS, DEFAULT_MODEL_KEY } = require('../src/config');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Evitar crashes silenciosos
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL]', err.message, err.stack);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[UNHANDLED]', err);
+});
+
 app.use(express.json({ limit: '5mb' }));
+// No cache para HTML
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 // Persistir secreto de sesión en disco
 const SECRET_FILE = path.join(__dirname, 'data', '.session-secret');
@@ -235,6 +251,7 @@ app.post('/api/chats/:id/send', requireAuth, async (req, res) => {
       isAborted: () => aborted,
     });
   } catch (err) {
+    console.error(`[Agent Error] ${err.message}`);
     if (!aborted) {
       res.write(`data: ${JSON.stringify({ type: 'error', content: err.message })}\n\n`);
     }
