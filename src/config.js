@@ -7,7 +7,9 @@ const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
 const MODELS = {
   'qwen': { label: 'Qwen 3.6 Plus', provider: 'qwen' },
-  'deepseek': { label: 'DeepSeek V3.2', provider: 'deepseek' },
+  'nemotron': { label: 'Nemotron 3 Super', provider: 'zen', zenModel: 'nemotron-3-super-free' },
+  'minimax': { label: 'MiniMax M2.5', provider: 'zen', zenModel: 'minimax-m2.5-free' },
+  'trinity': { label: 'Trinity Large', provider: 'zen', zenModel: 'trinity-large-preview-free' },
 };
 const DEFAULT_MODEL_KEY = 'qwen';
 

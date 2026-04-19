@@ -1,39 +1,39 @@
 const { REQUEST_TIMEOUT_MS } = require('../config');
 
-const BASE = 'https://deep-seek.ai';
-const MODEL = 'deepseek/deepseek-v3.2';
-const CSRF_TOKEN = 'Vdr15h7nAPZ6w38PP9RmXzjTpKGXGxbJfQ6dMdqI';
+const BASE = 'https://opencode.ai/zen/v1';
 
 const HEADERS = {
   'Content-Type': 'application/json',
-  'X-CSRF-TOKEN': CSRF_TOKEN,
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
   'Accept': 'text/event-stream',
-  'Origin': BASE,
-  'Referer': `${BASE}/`,
+  'Origin': 'https://opencode.ai',
+  'Referer': 'https://opencode.ai/',
 };
 
-async function streamCompletion(prompt, onChunk) {
+async function streamCompletion(messages, modelId, onChunk) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${BASE}/api/chat`, {
+    const res = await fetch(`${BASE}/chat/completions`, {
       method: 'POST',
       headers: HEADERS,
       body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        model: modelId,
+        messages,
+        stream: true,
+        max_tokens: 8192,
       }),
       signal: controller.signal,
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`DeepSeek fallo (${res.status}): ${text.slice(0, 200)}`);
+      throw new Error(`Zen ${modelId} fallo (${res.status}): ${text.slice(0, 200)}`);
     }
 
     let answer = '';
+    let thinking = '';
     const decoder = new TextDecoder();
     let buffer = '';
 
@@ -52,25 +52,36 @@ async function streamCompletion(prompt, onChunk) {
         let parsed;
         try { parsed = JSON.parse(data); } catch { continue; }
 
-        const content = parsed?.choices?.[0]?.delta?.content;
-        if (content) {
-          answer += content;
-          if (onChunk) onChunk(content, 'answer');
+        const delta = parsed?.choices?.[0]?.delta;
+        if (!delta) continue;
+
+        // Reasoning (thinking)
+        const reasoning = delta.reasoning || delta.reasoning_details?.[0]?.text;
+        if (reasoning && reasoning.length > thinking.length) {
+          const newDelta = reasoning.slice(thinking.length);
+          thinking = reasoning;
+          if (onChunk) onChunk(newDelta, 'thinking');
+        }
+
+        // Content
+        if (delta.content) {
+          answer += delta.content;
+          if (onChunk) onChunk(delta.content, 'answer');
         }
       }
     }
 
-    return { text: answer.trim(), thinking: '' };
+    return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function deepseek(prompt, onChunk = null) {
+async function zen(messages, modelId, onChunk = null) {
   const MAX_RETRIES = 2;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await streamCompletion(prompt, onChunk);
+      const result = await streamCompletion(messages, modelId, onChunk);
       return {
         status: true,
         text: result.text,
@@ -89,4 +100,4 @@ async function deepseek(prompt, onChunk = null) {
   }
 }
 
-module.exports = { deepseek };
+module.exports = { zen };

@@ -247,29 +247,56 @@ async function runAgentTurn(input, state, ui) {
       label: step === 0 ? 'Pensando' : `Paso ${step + 1}`,
     });
 
-    let secondaryPromise = null;
+    let secondaryResults = [];
     if (state.concuerdo) {
-      const altKey = (state.activeModel || DEFAULT_MODEL_KEY) === 'qwen' ? 'deepseek' : 'qwen';
-      secondaryPromise = chatSilent({ messages, modelKey: altKey }).catch(() => null);
+      const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
+      const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
+      const CONCUERDO_TIMEOUT = 30000;
+      const withTimeout = (promise) => Promise.race([
+        promise,
+        new Promise(r => setTimeout(() => r(null), CONCUERDO_TIMEOUT)),
+      ]);
+      const secondaryPromises = otherKeys.map(k =>
+        withTimeout(chatSilent({ messages, modelKey: k }).catch(() => null))
+      );
+      // No bloqueamos al primario — resolvemos despues
+      secondaryResults = secondaryPromises.map((p, i) => ({ promise: p, key: otherKeys[i] }));
     }
 
     const raw = await primaryPromise;
     let parsed = parseAgentResponse(raw);
 
-    if (secondaryPromise) {
-      const altResult = await secondaryPromise;
-      if (altResult?.answer) {
-        const altKey = (state.activeModel || DEFAULT_MODEL_KEY) === 'qwen' ? 'deepseek' : 'qwen';
-        const altParsed = parseAgentResponse(altResult.answer);
+    if (secondaryResults.length > 0) {
+      const settled = await Promise.allSettled(secondaryResults.map(s => s.promise));
+      const extras = [];
+      let toolSuggestions = [];
 
-        if (parsed.type === 'final' && altParsed.type === 'tool') {
-          ui.logEvent(state, 'info', `${MODELS[altKey].label} sugiere ${altParsed.tool}`);
-          parsed = altParsed;
-        } else if (parsed.type === 'final' && altParsed.type === 'final' && altParsed.content?.trim()) {
-          ui.logEvent(state, 'info', `Perspectiva de ${MODELS[altKey].label} integrada`);
-          parsed = { type: 'final', content: parsed.content + '\n\n---\n' + altParsed.content };
-        } else if (parsed.type === 'tool' && altParsed.type === 'tool') {
-          ui.logEvent(state, 'info', `${MODELS[altKey].label} concuerda: ${altParsed.tool}`);
+      for (let i = 0; i < settled.length; i++) {
+        const val = settled[i].status === 'fulfilled' ? settled[i].value : null;
+        if (!val?.answer) continue;
+        const altParsed = parseAgentResponse(val.answer);
+        const label = MODELS[secondaryResults[i].key]?.label || secondaryResults[i].key;
+
+        if (altParsed.type === 'tool') {
+          toolSuggestions.push({ parsed: altParsed, label });
+          ui.logEvent(state, 'info', `${label} sugiere ${altParsed.tool}`);
+        } else if (altParsed.type === 'final' && altParsed.content?.trim()) {
+          extras.push({ content: altParsed.content, label });
+          ui.logEvent(state, 'info', `Perspectiva de ${label} integrada`);
+        }
+      }
+
+      if (parsed.type === 'final' && toolSuggestions.length >= 2) {
+        // Mayoria sugiere herramienta — usarla
+        parsed = toolSuggestions[0].parsed;
+        ui.logEvent(state, 'info', `${toolSuggestions.length} modelos concuerdan en usar ${parsed.tool}`);
+      } else if (parsed.type === 'final' && extras.length > 0) {
+        const combined = extras.map(e => e.content).join('\n\n');
+        parsed = { type: 'final', content: parsed.content + '\n\n---\n' + combined };
+      } else if (parsed.type === 'tool' && toolSuggestions.length > 0) {
+        const matching = toolSuggestions.filter(t => t.parsed.tool === parsed.tool);
+        if (matching.length > 0) {
+          ui.logEvent(state, 'info', `${matching.length + 1} modelos concuerdan: ${parsed.tool}`);
         }
       }
     }

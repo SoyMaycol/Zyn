@@ -245,14 +245,15 @@ async function handleLocalCommand(input, state, deps) {
   if (commandName === 'concuerdo') {
     state.concuerdo = !state.concuerdo;
     await saveState(state);
-    const keys = Object.keys(MODELS);
-    const modelNames = keys.map(k => MODELS[k].label).join(' + ');
+    const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
+    const allLabels = Object.keys(MODELS).map(k => MODELS[k].label);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
       content: `Modo concuerdo: ${state.concuerdo ? 'on' : 'off'}`,
     });
     if (state.concuerdo) {
-      console.log(`Modo concuerdo activado — ${modelNames} trabajan juntos.`);
+      console.log(`Modo concuerdo activado — ${allLabels.join(' + ')} trabajan juntos.`);
+      console.log(`  Primario: ${MODELS[activeKey]?.label || activeKey}`);
     } else {
       console.log('Modo concuerdo desactivado.');
     }

@@ -204,7 +204,7 @@ async function runInteractiveChat(options = {}) {
 
 async function runTest() {
   const { MODELS } = require('../config');
-  const { deepseek } = require('../model/deepseekScraper');
+  const { zen } = require('../model/zenScraper');
 
   const C = {
     reset: '\x1b[0m',
@@ -231,9 +231,10 @@ async function runTest() {
 
   console.log(`  ${C.cyan}[1/4]${C.reset} Config y modelos`);
   const modelKeys = Object.keys(MODELS);
-  if (modelKeys.includes('qwen') && modelKeys.includes('deepseek')) {
+  const zenModels = modelKeys.filter(k => MODELS[k].provider === 'zen');
+  if (modelKeys.includes('qwen') && zenModels.length > 0) {
     console.log(`    ${ok('Modelos registrados: ' + modelKeys.join(', '))}`);
-    console.log(`    ${ok('DeepSeek V3.2 provider: ' + MODELS.deepseek.provider)}`);
+    console.log(`    ${ok('Zen models: ' + zenModels.map(k => MODELS[k].label).join(', '))}`);
   } else {
     console.log(`    ${fail('Faltan modelos esperados')}`);
   }
@@ -245,7 +246,7 @@ async function runTest() {
     ['core/prompts', '../core/prompts'],
     ['tools/index', '../tools/index'],
     ['model/scraperClient', '../model/scraperClient'],
-    ['model/deepseekScraper', '../model/deepseekScraper'],
+    ['model/zenScraper', '../model/zenScraper'],
     ['model/qwenScraper', '../model/qwenScraper'],
   ];
   for (const [name, path] of modules) {
@@ -267,15 +268,18 @@ async function runTest() {
   }
   console.log('');
 
-  console.log(`  ${C.cyan}[4/4]${C.reset} DeepSeek V3.2 — stream en vivo`);
+  console.log(`  ${C.cyan}[4/4]${C.reset} Zen API — stream en vivo (nemotron)`);
   console.log(`    ${dim('Enviando: "que modelo eres?"')}`);
   process.stdout.write(`    ${C.purple}`);
   try {
     const startMs = Date.now();
     let totalChars = 0;
-    await deepseek('que modelo eres? responde en 1 linea corta', (text) => {
-      process.stdout.write(text);
-      totalChars += text.length;
+    const msgs = [{ role: 'user', content: 'que modelo eres? responde en 1 linea corta' }];
+    await zen(msgs, 'nemotron-3-super-free', (text, phase) => {
+      if (phase === 'answer') {
+        process.stdout.write(text);
+        totalChars += text.length;
+      }
     });
     const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
     process.stdout.write(C.reset + '\n');

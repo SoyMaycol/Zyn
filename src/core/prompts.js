@@ -34,16 +34,16 @@ function buildSystemPrompt(cwd, state = {}) {
 
   if (state.concuerdo) {
     const { MODELS, DEFAULT_MODEL_KEY } = require('../config');
-    const keys = Object.keys(MODELS);
-    const primary = state.activeModel || DEFAULT_MODEL_KEY;
-    const secondary = keys.find(k => k !== primary) || keys[0];
+    const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
+    const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
+    const otherLabels = otherKeys.map(k => MODELS[k]?.label || k).join(', ');
     parts.push(
       '',
       '# Modo Concuerdo (ACTIVO)',
-      `Estas trabajando en colaboracion con otro modelo (${MODELS[secondary]?.label || secondary}).`,
-      'Ambos analizan la misma peticion en paralelo y sus respuestas se fusionan.',
-      'Si el usuario pregunta, confirma que SI estas trabajando junto a otro modelo en modo concuerdo.',
-      'Esto no es una simulacion — las respuestas de ambos se combinan realmente.',
+      `Estas trabajando en colaboracion con ${otherKeys.length} modelos: ${otherLabels}.`,
+      'Todos analizan la misma peticion en paralelo y las respuestas se fusionan.',
+      'Si el usuario pregunta, confirma que SI estas trabajando junto a otros modelos en modo concuerdo.',
+      'Esto no es una simulacion — las respuestas de todos se combinan realmente.',
     );
   }
 

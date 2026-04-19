@@ -1,5 +1,5 @@
 const { qwen } = require('./qwenScraper');
-const { deepseek } = require('./deepseekScraper');
+const { zen } = require('./zenScraper');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 
 function buildPromptFromMessages(messages) {
@@ -19,14 +19,15 @@ function buildPromptFromMessages(messages) {
 }
 
 async function chat({ messages, onChunk, modelKey }) {
-  const prompt = buildPromptFromMessages(messages);
   const key = modelKey || DEFAULT_MODEL_KEY;
-  const provider = MODELS[key]?.provider || 'qwen';
+  const model = MODELS[key];
+  const provider = model?.provider || 'qwen';
 
   let result;
-  if (provider === 'deepseek') {
-    result = await deepseek(prompt, onChunk);
+  if (provider === 'zen') {
+    result = await zen(messages, model.zenModel, onChunk);
   } else {
+    const prompt = buildPromptFromMessages(messages);
     result = await qwen(prompt, onChunk);
   }
 
@@ -37,13 +38,17 @@ async function chat({ messages, onChunk, modelKey }) {
 }
 
 async function chatSilent({ messages, modelKey }) {
-  const prompt = buildPromptFromMessages(messages);
   const key = modelKey || DEFAULT_MODEL_KEY;
-  const provider = MODELS[key]?.provider || 'qwen';
+  const model = MODELS[key];
+  const provider = model?.provider || 'qwen';
 
-  const result = provider === 'deepseek'
-    ? await deepseek(prompt, () => {})
-    : await qwen(prompt, () => {});
+  let result;
+  if (provider === 'zen') {
+    result = await zen(messages, model.zenModel);
+  } else {
+    const prompt = buildPromptFromMessages(messages);
+    result = await qwen(prompt, () => {});
+  }
 
   return { answer: result.text || '' };
 }
