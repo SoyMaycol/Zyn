@@ -14,7 +14,8 @@ const XML_TOOL_RE = /<invoke\s+name=|<\w+:tool_call>/i;
 const INTERNAL_PLAN_START_RE = /^(el usuario|the user|necesito|i need|primero|first|voy a|i will|debo|i should|tengo que|let me|para hacer esto|to do this|mi siguiente paso|my next step|entendido|okay|ok|perfecto|now|ahora)\b/i;
 const INTERNAL_PLAN_ACTION_RE = /(read_file|write_file|leer el archivo|read the file|leer primero|read it first|editar el archivo|edit the file|modificar el archivo|hacer el cambio|quitar el comentario|analizar|analyze|inspeccionar|inspect|usar la herramienta|use the tool|ver el archivo|continuar|continue|resolver|fix the issue|importar|getname|corregir)/i;
 const DEFERAL_RE = /(¿(quieres|necesitas|prefieres).*(vea|revise|aplique|cambie|lea)|si (quieres|necesitas) puedo|puedo ver el codigo exacto|puedo revisar el archivo exacto|voy a leer (ambos|estos|esos) archivos|do you want me to|would you like me to|i can check the exact file|let me read the file first)/i;
-const PENDING_EDIT_RE = /(perfecto, ya tengo todo el codigo|now i can see the full code|veo el problema|i see the problem|el problema esta en|the problem is in|esto muestra|this shows|voy a (agregar|cambiar|modificar|reemplazar|quitar|usar|incorporar|corregir)|i will (add|change|modify|replace|remove|use|fix)|necesito (cambiar|modificar|agregar|quitar|usar|corregir)|i need to (change|modify|add|remove|use|fix)|aqui esta el archivo corregido|here is the corrected file|lo que necesito cambiar|debo cambiar|tengo que cambiar|voy a aplicar el fix|i'm going to apply the fix|voy a incorporar|getname del resolver|corregir la logica)/i;
+const PENDING_EDIT_RE = /(perfecto, ya tengo todo el codigo|now i can see the full code|veo el problema|i see the problem|el problema esta en|the problem is in|esto muestra|this shows|voy a (agregar|cambiar|modificar|reemplazar|quitar|usar|incorporar|corregir|escribir|aplicar)|i will (add|change|modify|replace|remove|use|fix|write|apply)|necesito (cambiar|modificar|agregar|quitar|usar|corregir|ver|leer)|i need to (change|modify|add|remove|use|fix|see|read)|aqui esta el archivo corregido|here is the corrected file|lo que necesito cambiar|debo cambiar|tengo que cambiar|voy a aplicar el fix|i'm going to apply the fix|voy a incorporar|getname del resolver|corregir la logica|ya tengo|ahora veo|ah, ?getname|ah ya|necesito ver|voy a leer|voy a escribir|archivo corregido|el fix es|la solucion es)/i;
+const USER_WRITE_INTENT_RE = /(agrega|añade|anade|pon(?:er|e|lo|la)?|importa|corrige|arregla|edita|cambia|quita|elimina|reemplaza|modifica|actualiza|sube|commit|aplica|termina|soluciona|hazlo|fix|add|change|edit|replace|import|modify|update|remove|apply)/i;
 const TEXT_FILE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.md', '.txt',
   '.html', '.css', '.scss', '.sass', '.less', '.yml', '.yaml', '.xml',
@@ -474,6 +475,12 @@ async function applyToolCall(parsed, answer, toolCtx, loopState, modelMessages) 
       loopState.readOrder.push(parsed.args.path);
     }
     loopState.readCounts[parsed.args.path] = (loopState.readCounts[parsed.args.path] || 0) + 1;
+    loopState.totalReads = (loopState.totalReads || 0) + 1;
+  }
+
+  if (parsed.tool === 'write_file') {
+    loopState.writesDone = (loopState.writesDone || 0) + 1;
+    loopState.totalReads = 0;
   }
 
   modelMessages.push({ role: 'assistant', content: answer });
@@ -686,6 +693,9 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     fileCache: new Map(),
     onEvent,
   };
+  const userLatest = [...history].reverse().find(m => m.role === 'user')?.content || '';
+  const userWantsEdit = USER_WRITE_INTENT_RE.test(normalizeClassifierText(userLatest));
+
   const loopState = {
     autoActions: new Set(),
     lastFingerprint: '',
@@ -695,6 +705,9 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     readCounts: {},
     readContents: {},
     readOrder: [],
+    totalReads: 0,
+    writesDone: 0,
+    userWantsEdit,
     fileTree,
   };
 
@@ -871,6 +884,38 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       continue;
     }
 
+    if (
+      parsed.type === 'final'
+      && loopState.userWantsEdit
+      && loopState.totalReads >= 2
+      && loopState.readOrder.length > 0
+      && (loopState.writesDone || 0) === 0
+    ) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      if (!loopState.lastReadPath) {
+        loopState.lastReadPath = loopState.readOrder[loopState.readOrder.length - 1];
+        loopState.lastReadContent = loopState.readContents[loopState.lastReadPath] || '';
+      }
+      const forced = await runForcedToolPass({
+        modelKey,
+        toolCtx,
+        loopState,
+        modelMessages,
+        sourceText: `${thinkingContent}\n${parsed.content || answer}`.trim(),
+      });
+      if (forced) {
+        await applyToolCall(forced.parsed, forced.raw, toolCtx, loopState, modelMessages);
+        loopState.repeatCount = 0;
+        continue;
+      }
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: buildForcedWritePrompt(loopState, modelMessages, parsed.content || answer),
+      });
+      continue;
+    }
+
     if (parsed.type === 'final' && loopState.lastReadPath && looksLikePendingEdit(parsed.content || answer)) {
       if (streamStarted) onEvent({ type: 'clear_stream' });
       const forced = await runForcedToolPass({
@@ -973,7 +1018,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       if (
         parsed.tool === 'read_file'
         && parsed.args?.path
-        && loopState.readCounts[parsed.args.path] >= 3
+        && (loopState.readCounts[parsed.args.path] >= 3 || loopState.totalReads >= 3)
       ) {
         const forced = await runForcedToolPass({
           modelKey,
