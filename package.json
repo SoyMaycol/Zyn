@@ -1,0 +1,21 @@
+{
+  "name": "adonix",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agente local de terminal",
+  "bin": {
+    "adonix": "./adonix.js"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "start": "node ./adonix.js",
+    "check": "node --check ./adonix.js && node --check ./src/cli/runtime.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "cheerio": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
