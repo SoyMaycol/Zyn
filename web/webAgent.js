@@ -14,6 +14,7 @@ const XML_TOOL_RE = /<invoke\s+name=|<\w+:tool_call>/i;
 const INTERNAL_PLAN_START_RE = /^(el usuario|necesito|primero|voy a|debo|tengo que|para hacer esto|mi siguiente paso|entendido|dejame|déjame)\b/i;
 const INTERNAL_PLAN_ACTION_RE = /(read_file|write_file|leer el archivo|leer primero|editar el archivo|modificar el archivo|hacer el cambio|quitar el comentario|analizar|inspeccionar|usar la herramienta|ver el archivo|continuar|resolver)/i;
 const DEFERAL_RE = /(¿(quieres|necesitas|prefieres).*(vea|revise|aplique|cambie|lea)|si (quieres|necesitas) puedo|puedo ver el codigo exacto|puedo revisar el archivo exacto|voy a leer (ambos|estos|esos) archivos)/i;
+const PENDING_EDIT_RE = /(veo el problema|el problema esta en|voy a (agregar|cambiar|modificar|reemplazar|quitar|usar)|necesito (cambiar|modificar|agregar|quitar|usar)|aqui esta el archivo corregido|lo que necesito cambiar|debo cambiar|tengo que cambiar|voy a aplicar el fix)/i;
 const TEXT_FILE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.md', '.txt',
   '.html', '.css', '.scss', '.sass', '.less', '.yml', '.yaml', '.xml',
@@ -83,6 +84,12 @@ function looksLikeDeferral(text) {
   const sample = String(text || '').trimStart().slice(0, 320);
   if (!sample || looksLikeToolPayload(sample)) return false;
   return DEFERAL_RE.test(sample);
+}
+
+function looksLikePendingEdit(text) {
+  const sample = String(text || '').trimStart().slice(0, 600);
+  if (!sample || looksLikeToolPayload(sample)) return false;
+  return PENDING_EDIT_RE.test(sample);
 }
 
 function normalizeRepoPath(value = '') {
@@ -505,6 +512,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     autoActions: new Set(),
     lastFingerprint: '',
     repeatCount: 0,
+    lastReadPath: '',
   };
 
   for (let step = 0; step < MAX_STEPS; step++) {
@@ -676,6 +684,21 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       continue;
     }
 
+    if (parsed.type === 'final' && loopState.lastReadPath && looksLikePendingEdit(parsed.content || answer)) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          `Ya leiste ${loopState.lastReadPath} y ya identificaste el cambio.`,
+          'No describas el fix.',
+          `Emite ahora un write_file para ${loopState.lastReadPath} con el contenido completo corregido.`,
+          'Si necesitas leer otro archivo auxiliar, hazlo ahora. Si no, escribe el archivo.',
+        ].join(' '),
+      });
+      continue;
+    }
+
     if (parsed.type === 'final' && !String(parsed.content || '').trim()) {
       if (streamStarted) onEvent({ type: 'clear_stream' });
       modelMessages.push({ role: 'assistant', content: answer });
@@ -740,6 +763,13 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     // ── Tool call ──
     if (parsed.type === 'tool') {
       if (streamStarted) onEvent({ type: 'clear_stream' });
+
+      if (parsed.tool === 'read_file' && parsed.args?.path) {
+        loopState.lastReadPath = parsed.args.path;
+      }
+      if (parsed.tool === 'write_file') {
+        loopState.lastReadPath = parsed.args?.path || loopState.lastReadPath;
+      }
 
       const toolResult = await executeTool(parsed.tool, parsed.args, toolCtx);
       modelMessages.push({ role: 'assistant', content: answer });
