@@ -4,6 +4,71 @@ function encodePath(filePath) {
   return filePath.split('/').map(encodeURIComponent).join('/');
 }
 
+function splitLines(text) {
+  if (!text) return [];
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+}
+
+function lcsLength(a, b) {
+  if (!a.length || !b.length) return 0;
+  if (a.length < b.length) return lcsLength(b, a);
+
+  let prev = new Array(b.length + 1).fill(0);
+  let curr = new Array(b.length + 1).fill(0);
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1] + 1
+        : Math.max(prev[j], curr[j - 1]);
+    }
+    [prev, curr] = [curr, prev];
+    curr.fill(0);
+  }
+
+  return prev[b.length];
+}
+
+function getLineDiffStats(beforeContent = '', afterContent = '') {
+  const before = splitLines(beforeContent);
+  const after = splitLines(afterContent);
+
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) {
+    start++;
+  }
+
+  let beforeEnd = before.length - 1;
+  let afterEnd = after.length - 1;
+  while (beforeEnd >= start && afterEnd >= start && before[beforeEnd] === after[afterEnd]) {
+    beforeEnd--;
+    afterEnd--;
+  }
+
+  const beforeCore = before.slice(start, beforeEnd + 1);
+  const afterCore = after.slice(start, afterEnd + 1);
+  if (!beforeCore.length && !afterCore.length) {
+    return { addedLines: 0, removedLines: 0 };
+  }
+  if (!beforeCore.length) {
+    return { addedLines: afterCore.length, removedLines: 0 };
+  }
+  if (!afterCore.length) {
+    return { addedLines: 0, removedLines: beforeCore.length };
+  }
+
+  const complexity = beforeCore.length * afterCore.length;
+  if (complexity > 2_000_000) {
+    return { addedLines: afterCore.length, removedLines: beforeCore.length };
+  }
+
+  const shared = lcsLength(beforeCore, afterCore);
+  return {
+    addedLines: afterCore.length - shared,
+    removedLines: beforeCore.length - shared,
+  };
+}
+
 async function ghFetch(urlPath, token, options = {}) {
   const { headers: extraHeaders, ...rest } = options;
   const res = await fetch(`${BASE}${urlPath}`, {
@@ -78,12 +143,14 @@ async function readFile(token, owner, repo, filePath) {
 
 async function writeFile(token, owner, repo, filePath, content, author = {}) {
   let sha;
+  let previousContent = '';
   try {
     const existing = await ghFetch(
       `/repos/${owner}/${repo}/contents/${encodePath(filePath)}`,
       token,
     );
     sha = existing.sha;
+    previousContent = Buffer.from(existing.content || '', 'base64').toString('utf8');
   } catch {}
 
   const filename = filePath.split('/').pop();
@@ -102,9 +169,12 @@ async function writeFile(token, owner, repo, filePath, content, author = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  const diffStats = getLineDiffStats(previousContent, content);
 
   return {
     path: result.content?.path || filePath,
+    addedLines: diffStats.addedLines,
+    removedLines: diffStats.removedLines,
     commitMessage: result.commit?.message || body.message,
     commitSha: result.commit?.sha || '',
     commitUrl: result.commit?.html_url || '',

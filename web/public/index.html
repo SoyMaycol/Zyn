@@ -54,6 +54,7 @@
 
     .sidebar-slide { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
     textarea { font-family: 'Inter', sans-serif; }
+    .thinking-body { white-space: pre-wrap; word-break: break-word; }
   </style>
 </head>
 <body class="bg-surface-50 font-sans text-neutral-900 min-h-screen">
@@ -297,6 +298,10 @@
       return '<p>' + h + '</p>';
     }
 
+    function renderPlain(text) {
+      return esc(text).replace(/\n/g, '<br>');
+    }
+
     function looksLikeToolPayload(text) {
       const sample = String(text || '').trimStart().slice(0, 240);
       if (!sample) return false;
@@ -305,6 +310,16 @@
         || /^```(?:json)?/i.test(sample)
         || /"type"\s*:\s*"tool"/i.test(sample)
         || /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read)"/i.test(sample);
+    }
+
+    function toggleThinkingBlock(id) {
+      const body = $(`${id}-think-body`);
+      const label = $(`${id}-think-label`);
+      const icon = $(`${id}-think-icon`);
+      if (!body || !label || !icon) return;
+      const isHidden = body.classList.toggle('hidden');
+      label.textContent = isHidden ? 'ver' : 'ocultar';
+      icon.textContent = isHidden ? '▸' : '▾';
     }
 
     // Auth
@@ -631,6 +646,7 @@
       let streamContent = '';
       let synthContent = '';
       let isSynth = false;
+      let thinkingContent = '';
 
       area.insertAdjacentHTML('beforeend', `
         <div id="${sid}" class="fade-in">
@@ -655,6 +671,47 @@
       function addEv(html) {
         evEl.insertAdjacentHTML('beforeend', `<div class="px-4 py-0.5 fade-in"><div class="max-w-3xl mx-auto pl-[18px] text-[11px]">${html}</div></div>`);
         area.scrollTop = area.scrollHeight;
+      }
+
+      function ensureThinkingBlock() {
+        if ($(`${sid}-think-wrap`)) return;
+        evEl.insertAdjacentHTML('beforeend', `
+          <div id="${sid}-think-wrap" class="px-4 py-0.5 fade-in">
+            <div class="max-w-3xl mx-auto pl-[18px]">
+              <div class="rounded-xl border border-neutral-200 bg-white/80 overflow-hidden">
+                <button onclick="toggleThinkingBlock('${sid}')"
+                  class="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-neutral-50 transition-colors">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-[10px] text-emerald-600">◐</span>
+                    <span id="${sid}-think-status" class="text-[11px] text-neutral-500 truncate">pensando...</span>
+                  </div>
+                  <div class="flex items-center gap-1 text-[10px] text-neutral-400 shrink-0">
+                    <span id="${sid}-think-label">ocultar</span>
+                    <span id="${sid}-think-icon">▾</span>
+                  </div>
+                </button>
+                <div id="${sid}-think-body" class="thinking-body px-3 pb-3 text-[11px] leading-relaxed text-neutral-500 font-mono"></div>
+              </div>
+            </div>
+          </div>
+        `);
+      }
+
+      function updateThinkingBlock(statusText, finished = false) {
+        ensureThinkingBlock();
+        const status = $(`${sid}-think-status`);
+        const body = $(`${sid}-think-body`);
+        if (status) status.textContent = statusText;
+        if (body) {
+          body.innerHTML = thinkingContent ? renderPlain(thinkingContent) : '<span class="text-neutral-300">Sin trazas de pensamiento.</span>';
+        }
+        if (finished) {
+          const wrap = $(`${sid}-think-wrap`);
+          if (wrap) {
+            const dot = wrap.querySelector('.text-emerald-600');
+            if (dot) dot.textContent = '◌';
+          }
+        }
       }
 
       try {
@@ -693,18 +750,16 @@
                 break;
 
               case 'thinking_start':
-                addEv(`<span id="${sid}-think" class="text-neutral-400"><span class="spinner">◐</span> pensando...</span>`);
+                updateThinkingBlock('pensando...');
                 break;
 
               case 'thinking_delta':
+                thinkingContent += ev.content;
+                updateThinkingBlock('pensando...');
                 break;
 
               case 'thinking_end': {
-                const thinkEl = $(`${sid}-think`);
-                if (thinkEl) {
-                  const p = thinkEl.closest('.px-4');
-                  p.innerHTML = `<div class="max-w-3xl mx-auto pl-[18px] text-[11px]"><span class="text-neutral-300">pensó ${ev.duration || '?'}s</span></div>`;
-                }
+                updateThinkingBlock(`pensó ${ev.duration || '?'}s`, true);
                 break;
               }
 
@@ -722,7 +777,17 @@
                 const allSpinners = evEl.querySelectorAll('.spinner');
                 const last = allSpinners[allSpinners.length - 1];
                 if (last) { last.className = 'text-emerald-600'; last.textContent = '✓'; }
-                addEv(`<span class="text-neutral-400">${esc(ev.content)}</span>`);
+                const meta = ev.meta || {};
+                const diffHtml = typeof meta.addedLines === 'number' || typeof meta.removedLines === 'number'
+                  ? ` <span class="inline-flex items-center gap-1 ml-2">
+                      <span class="px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">+${meta.addedLines || 0}</span>
+                      <span class="px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 border border-red-100">-${meta.removedLines || 0}</span>
+                    </span>`
+                  : '';
+                const pathHtml = meta.path
+                  ? `<div class="mt-1 text-[10px] text-neutral-300">${esc(meta.path)}</div>`
+                  : '';
+                addEv(`<div class="text-neutral-400">${esc(ev.content)}${diffHtml}${pathHtml}</div>`);
                 break;
               }
 

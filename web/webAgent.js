@@ -86,9 +86,20 @@ async function executeTool(tool, args, ctx) {
         const commitLabel = shortSha
           ? `${writeResult.commitMessage} · ${shortSha}`
           : writeResult.commitMessage;
-        ctx.onEvent({ type: 'tool_done', content: `Commit real: ${commitLabel}` });
+        ctx.onEvent({
+          type: 'tool_done',
+          content: `Commit real: ${commitLabel}`,
+          meta: {
+            path: writeResult.path,
+            addedLines: writeResult.addedLines,
+            removedLines: writeResult.removedLines,
+            commitSha: writeResult.commitSha,
+            commitUrl: writeResult.commitUrl,
+          },
+        });
         return [
           `Archivo ${writeResult.path} actualizado y commiteado.`,
+          `Diff: +${writeResult.addedLines} -${writeResult.removedLines}`,
           `Commit real: ${writeResult.commitMessage}`,
           writeResult.commitSha ? `SHA: ${writeResult.commitSha}` : '',
           writeResult.commitUrl ? `URL: ${writeResult.commitUrl}` : '',
