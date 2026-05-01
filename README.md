@@ -18,7 +18,6 @@ Zyn is a local agent for terminal and web workflows. It supports multiple AI pro
 
 ## Features
 
-- Global CLI executable after `npm install -g`.
 - English by default, with language switching from commands.
 - Interactive terminal mode and classic CLI mode.
 - Web mode for collaborative usage.
