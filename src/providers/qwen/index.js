@@ -4,7 +4,7 @@ const {
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,
-} = require('../config');
+} = require('../../config');
 
 const BASE = 'https://chat.qwen.ai';
 const MODEL = 'qwen3.6-plus';

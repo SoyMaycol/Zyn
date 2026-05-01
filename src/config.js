@@ -1,7 +1,7 @@
 const os = require('os');
 const path = require('path');
 
-const APP_NAME = 'Adonix';
+const APP_NAME = 'Zyn';
 const APP_ROOT = path.resolve(__dirname, '..');
 const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
@@ -15,7 +15,7 @@ const DEFAULT_MODEL_KEY = 'qwen';
 
 const QWEN_EMAIL = 'danielalejandrobasado@gmail.com';
 const QWEN_PASSWORD = 'zyzz1234';
-const MAX_TOOL_STEPS = 10;
+const MAX_TOOL_STEPS = Infinity;
 const MAX_OUTPUT_CHARS = 12000;
 const MAX_FILE_LINES = 250;
 const ACTION_LOG_LIMIT = 40;

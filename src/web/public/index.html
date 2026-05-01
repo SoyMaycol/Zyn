@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Adonix</title>
+  <title>Zyn</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script>
@@ -66,7 +66,7 @@
         <div class="w-12 h-12 rounded-xl bg-white border border-neutral-200 flex items-center justify-center mx-auto mb-4 shadow-sm">
           <span class="text-emerald-600 font-bold text-lg">A</span>
         </div>
-        <h1 class="text-base font-semibold tracking-tight">Adonix</h1>
+        <h1 class="text-base font-semibold tracking-tight">Zyn</h1>
         <p class="text-[11px] text-neutral-400 mt-1">agente de ingenieria de software</p>
       </div>
       <div class="space-y-2.5">
@@ -98,7 +98,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="text-emerald-600 font-bold text-sm">A</span>
-            <span class="font-semibold text-xs text-neutral-700">Adonix</span>
+            <span class="font-semibold text-xs text-neutral-700">Zyn</span>
           </div>
           <button onclick="toggleSidebar()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors lg:hidden text-neutral-400 text-xs">✕</button>
         </div>
@@ -133,7 +133,7 @@
       <div class="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-neutral-100 px-4 py-2 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <button onclick="toggleSidebar()" class="w-7 h-7 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors lg:hidden text-neutral-400 text-sm">☰</button>
-          <h2 id="chatTitle" class="text-[12px] font-medium text-neutral-600 truncate max-w-[200px]">Adonix</h2>
+          <h2 id="chatTitle" class="text-[12px] font-medium text-neutral-600 truncate max-w-[200px]">Zyn</h2>
         </div>
         <div class="flex items-center gap-1.5">
           <div class="relative" id="modelWrap">
@@ -444,7 +444,7 @@
           chatSettings = {};
           $('chatView').classList.add('hidden');
           $('emptyState').classList.remove('hidden');
-          $('chatTitle').textContent = 'Adonix';
+          $('chatTitle').textContent = 'Zyn';
           $('modelBtn').classList.add('hidden');
           $('concuerdoBtn').classList.add('hidden');
         }
@@ -532,7 +532,7 @@
     }
 
     function assistantHtml(content) {
-      return `<div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto"><div class="flex items-center gap-1.5 mb-1"><span class="text-orange-500 text-xs font-bold">◉</span><span class="text-[10px] text-neutral-400 font-medium">Adonix</span></div><div class="msg text-[13px] leading-relaxed text-neutral-600 pl-[18px]">${md(content)}</div></div></div>`;
+      return `<div class="px-4 py-3 fade-in"><div class="max-w-3xl mx-auto"><div class="flex items-center gap-1.5 mb-1"><span class="text-orange-500 text-xs font-bold">◉</span><span class="text-[10px] text-neutral-400 font-medium">Zyn</span></div><div class="msg text-[13px] leading-relaxed text-neutral-600 pl-[18px]">${md(content)}</div></div></div>`;
     }
 
     // Slash Commands
@@ -656,7 +656,7 @@
             <div class="max-w-3xl mx-auto">
               <div class="flex items-center gap-1.5 mb-1">
                 <span class="text-orange-500 text-xs font-bold">◉</span>
-                <span class="text-[10px] text-neutral-400 font-medium">Adonix</span>
+                <span class="text-[10px] text-neutral-400 font-medium">Zyn</span>
                 <span id="${sid}-model" class="text-[9px] text-neutral-300"></span>
               </div>
               <div id="${sid}-c" class="msg text-[13px] leading-relaxed text-neutral-600 pl-[18px] cursor-blink"></div>

@@ -483,7 +483,7 @@ function printSessions(sessions) {
 
   console.log('');
   for (const s of sessions.slice(0, 15)) {
-    const id = c(s.sessionId.replace('adonix-', ''), C.darkGray);
+    const id = c(s.sessionId.replace('zyn-', ''), C.darkGray);
     const turns = c(`${s.turnCount}t`, C.gray);
     const title = shortText(s.title, 40);
     console.log(`  ${id}  ${turns}  ${c(title, C.light)}`);

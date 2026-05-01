@@ -70,13 +70,13 @@ function printHelp() {
   const m = (t) => paint(t, 'dim');
 
   console.log('');
-  console.log(`  ${paint('◆', 'cyan')} ${paint('Adonix', 'cyan')} ${m('— Ayuda')}`);
+  console.log(`  ${paint('◆', 'cyan')} ${paint('Zyn', 'cyan')} ${m('— Ayuda')}`);
   console.log('');
   console.log(`  ${m('Uso')}`);
-  console.log(`    adonix              ${m('modo interactivo')}`);
-  console.log(`    adonix 'pregunta'   ${m('consulta unica')}`);
-  console.log(`    adonix --new        ${m('nueva sesion')}`);
-  console.log(`    adonix --resume ID  ${m('reanudar sesion')}`);
+  console.log(`    zyn              ${m('modo interactivo')}`);
+  console.log(`    zyn 'pregunta'   ${m('consulta unica')}`);
+  console.log(`    zyn --new        ${m('nueva sesion')}`);
+  console.log(`    zyn --resume ID  ${m('reanudar sesion')}`);
   console.log('');
   console.log(`  ${m('Comandos')}`);
   console.log(`    /help        ${m('ayuda')}`);

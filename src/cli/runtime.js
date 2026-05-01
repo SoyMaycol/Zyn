@@ -204,7 +204,7 @@ async function runInteractiveChat(options = {}) {
 
 async function runTest() {
   const { MODELS } = require('../config');
-  const { zen } = require('../model/zenScraper');
+  const { zen } = require('../providers/zenScraper');
 
   const C = {
     reset: '\x1b[0m',
@@ -225,7 +225,7 @@ async function runTest() {
   const dim = (t) => `${C.gray}${t}${C.reset}`;
 
   console.log('');
-  console.log(`  ${title('● Adonix Test Suite')}`);
+  console.log(`  ${title('● Zyn Test Suite')}`);
   console.log(`  ${dim('─'.repeat(40))}`);
   console.log('');
 

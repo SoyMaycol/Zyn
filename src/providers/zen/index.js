@@ -1,4 +1,4 @@
-const { REQUEST_TIMEOUT_MS } = require('../config');
+const { REQUEST_TIMEOUT_MS } = require('../../config');
 
 const BASE = 'https://opencode.ai/zen/v1';
 

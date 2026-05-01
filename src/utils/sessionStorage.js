@@ -34,7 +34,7 @@ function createState(rl = null) {
 function createSessionId() {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   const random = Math.random().toString(36).slice(2, 8);
-  return `adonix-${stamp}-${random}`;
+  return `zyn-${stamp}-${random}`;
 }
 
 function getSessionPath(sessionId) {

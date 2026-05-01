@@ -1,7 +1,7 @@
 const { chat, chatSilent } = require('../src/model/scraperClient');
 const { parseAgentResponse } = require('../src/core/prompts');
 const { buildSkillsPrompt } = require('../src/core/skills');
-const { DEFAULT_MODEL_KEY, MODELS } = require('../src/config');
+const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 const githubApi = require('./githubApi');
 const store = require('./store');
 
@@ -336,7 +336,7 @@ async function runForcedToolPass({ modelKey, toolCtx, loopState, modelMessages, 
     {
       role: 'system',
       content: [
-        'Eres Adonix en modo de recuperacion.',
+        'Eres Zyn en modo de recuperacion.',
         'Debes responder SOLO con un JSON valido de herramienta.',
         'No des explicaciones, no uses markdown, no escribas texto extra.',
         'Si ya tienes suficiente contexto para editar, responde con write_file.',
@@ -625,7 +625,7 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
   const synthMessages = [
     {
       role: 'system',
-      content: 'Eres Adonix. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.',
+      content: 'Eres Zyn. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.',
     },
     {
       role: 'user',
@@ -688,7 +688,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     owner: repoOwner,
     repo: repoName,
     email: user.githubEmail,
-    authorName: user.githubUsername || user.githubName || user.username || 'Adonix',
+    authorName: user.githubUsername || user.githubName || user.username || 'Zyn',
     fileTree,
     fileCache: new Map(),
     onEvent,

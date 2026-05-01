@@ -1,5 +1,5 @@
-const { qwen } = require('./qwenScraper');
-const { zen } = require('./zenScraper');
+const { qwen } = require('./qwen/index');
+const { zen } = require('./zen/index');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 
 function buildPromptFromMessages(messages) {
