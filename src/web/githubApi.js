@@ -82,7 +82,7 @@ async function ghFetch(urlPath, token, options = {}) {
   });
   if (!res.ok) {
     if (res.status === 401) {
-      throw new Error('Token de GitHub inválido o expirado. Reconfigura en ajustes.');
+      throw new Error('Invalid or expired GitHub token. Reconfigure it in settings.');
     }
     const text = await res.text().catch(() => '');
     throw new Error(`GitHub ${res.status}: ${text.slice(0, 200)}`);

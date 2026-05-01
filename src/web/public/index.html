@@ -70,7 +70,7 @@
         <p class="text-[11px] text-neutral-400 mt-1">agente de ingenieria de software</p>
       </div>
       <div class="space-y-2.5">
-        <input id="authUser" type="text" placeholder="usuario" autocomplete="username"
+        <input id="authUser" type="text" placeholder="username" autocomplete="username"
           class="w-full px-3 py-2.5 rounded-xl bg-white border border-neutral-200 text-sm focus:border-neutral-400 outline-none transition-colors placeholder-neutral-300">
         <input id="authPass" type="password" placeholder="contrasena" autocomplete="current-password"
           class="w-full px-3 py-2.5 rounded-xl bg-white border border-neutral-200 text-sm focus:border-neutral-400 outline-none transition-colors placeholder-neutral-300">
@@ -81,7 +81,7 @@
       </div>
       <p class="text-center mt-4 text-[11px] text-neutral-400">
         <span id="authToggle" class="cursor-pointer hover:text-neutral-600 transition-colors" onclick="toggleAuthMode()">
-          No tienes cuenta? Registrate
+          No account? Sign up
         </span>
       </p>
       <p id="authError" class="text-center mt-3 text-[11px] text-red-500 hidden"></p>
@@ -121,8 +121,8 @@
             <span id="userName" class="text-[11px] text-neutral-500">user</span>
           </div>
           <div class="flex items-center gap-0.5">
-            <button onclick="openSettings()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Ajustes">⚙</button>
-            <button onclick="doLogout()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Salir">↗</button>
+            <button onclick="openSettings()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Settings">⚙</button>
+            <button onclick="doLogout()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Logout">↗</button>
           </div>
         </div>
       </div>
@@ -143,8 +143,8 @@
             </button>
             <div id="modelMenu" class="hidden absolute top-full right-0 mt-1 w-52 bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-lg z-50"></div>
           </div>
-          <button id="concuerdoBtn" onclick="toggleConcuerdo()" class="hidden px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent" title="Modo Concuerdo">
-            ⊕ concuerdo
+          <button id="groupBtn" onclick="toggleConcuerdo()" class="hidden px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent" title="Group mode">
+            ⊕ group
           </button>
         </div>
       </div>
@@ -153,10 +153,10 @@
       <div id="emptyState" class="flex-1 flex items-center justify-center px-5">
         <div class="text-center max-w-xs">
           <div class="text-5xl mb-4 opacity-5">◇</div>
-          <h3 class="font-medium text-sm text-neutral-500 mb-1">Selecciona un repositorio</h3>
-          <p class="text-[11px] text-neutral-400 leading-relaxed mb-5">Conecta un repo de GitHub para empezar a trabajar</p>
+          <h3 class="font-medium text-sm text-neutral-500 mb-1">Select a repository</h3>
+          <p class="text-[11px] text-neutral-400 leading-relaxed mb-5">Connect a GitHub repo to start working</p>
           <button onclick="showRepoSelector()" class="px-4 py-2 rounded-xl bg-white border border-neutral-200 text-[11px] text-neutral-600 hover:bg-neutral-50 transition-colors shadow-sm">
-            Seleccionar repo
+            Select repo
           </button>
         </div>
       </div>
@@ -169,7 +169,7 @@
 
         <div class="border-t border-neutral-100 px-4 py-3 bg-white">
           <div class="flex items-end gap-2 max-w-3xl mx-auto">
-            <textarea id="chatInput" rows="1" placeholder="Escribe un mensaje... (/ para comandos)"
+            <textarea id="chatInput" rows="1" placeholder="Write a message... (/ for commands)"
               class="flex-1 px-3.5 py-2.5 rounded-xl bg-neutral-50 border border-neutral-200 text-[13px] resize-none focus:border-neutral-400 focus:bg-white outline-none transition-all placeholder-neutral-300 leading-relaxed"
               onkeydown="handleInputKey(event)" oninput="handleInputChange(this)"></textarea>
             <button id="sendBtn" onclick="sendMessage()"
@@ -188,7 +188,7 @@
     <div class="absolute inset-0 bg-black/30" onclick="closeRepoSheet()"></div>
     <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-white rounded-t-2xl max-h-[80vh] flex flex-col slide-up border-t border-neutral-200 shadow-xl">
       <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-neutral-100">
-        <h3 class="font-medium text-sm">Repositorios</h3>
+        <h3 class="font-medium text-sm">Repositories</h3>
         <button onclick="closeRepoSheet()" class="w-7 h-7 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors text-neutral-500 text-xs">✕</button>
       </div>
       <div class="px-4 py-2">
@@ -196,7 +196,7 @@
           class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
       </div>
       <div id="repoList" class="overflow-y-auto flex-1 px-4 pb-4 space-y-0.5">
-        <div class="text-center py-8 text-neutral-400 text-[11px]">Cargando...</div>
+        <div class="text-center py-8 text-neutral-400 text-[11px]">Loading...</div>
       </div>
     </div>
   </div>
@@ -206,12 +206,12 @@
     <div class="absolute inset-0 bg-black/30" onclick="closeSettings()"></div>
     <div class="absolute bottom-0 left-0 right-0 max-w-lg mx-auto bg-white rounded-t-2xl max-h-[80vh] flex flex-col slide-up border-t border-neutral-200 shadow-xl">
       <div class="flex items-center justify-between px-4 pt-4 pb-3 border-b border-neutral-100">
-        <h3 class="font-medium text-sm">Ajustes</h3>
+        <h3 class="font-medium text-sm">Settings</h3>
         <button onclick="closeSettings()" class="w-7 h-7 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors text-neutral-500 text-xs">✕</button>
       </div>
       <div class="p-4 space-y-4">
         <div>
-          <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">Token de GitHub</label>
+          <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">GitHub token</label>
           <input id="setToken" type="password" placeholder="ghp_xxxxxxxxxxxx"
             class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
           <p class="text-[10px] text-neutral-300 mt-1">Permisos: repo, read:user</p>
@@ -222,7 +222,7 @@
             class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
         </div>
         <button onclick="saveSettings()" class="w-full py-2.5 rounded-xl bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-800 active:scale-[0.98] transition-all">
-          Guardar
+          Save
         </button>
       </div>
     </div>
@@ -243,10 +243,10 @@
     let slashIdx = -1;
 
     const SLASH_COMMANDS = [
-      { cmd: '/concuerdo', desc: 'Toggle modo concuerdo', icon: '⊕' },
-      { cmd: '/model', desc: 'Cambiar modelo de IA', icon: '◈' },
-      { cmd: '/clear', desc: 'Limpiar mensajes', icon: '⌧' },
-      { cmd: '/help', desc: 'Ver comandos', icon: '?' },
+      { cmd: '/concuerdo', desc: 'Toggle group mode', icon: '⊕' },
+      { cmd: '/model', desc: 'Change AI model', icon: '◈' },
+      { cmd: '/clear', desc: 'Clear messages', icon: '⌧' },
+      { cmd: '/help', desc: 'View commands', icon: '?' },
     ];
 
     function $(id) { return document.getElementById(id); }
@@ -327,7 +327,7 @@
     function toggleAuthMode() {
       authMode = authMode === 'login' ? 'register' : 'login';
       $('authBtn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
-      $('authToggle').textContent = authMode === 'login' ? 'No tienes cuenta? Registrate' : 'Ya tienes cuenta? Inicia sesion';
+      $('authToggle').textContent = authMode === 'login' ? 'No account? Sign up' : 'Already have an account? Sign in';
       $('authError').classList.add('hidden');
     }
 
@@ -425,7 +425,7 @@
         $('chatView').classList.remove('hidden');
         $('modelBtn').classList.remove('hidden');
         $('modelBtn').classList.add('flex');
-        $('concuerdoBtn').classList.remove('hidden');
+        $('groupBtn').classList.remove('hidden');
         updateModelUI();
         renderMessages(chat.messages);
         loadChats();
@@ -446,7 +446,7 @@
           $('emptyState').classList.remove('hidden');
           $('chatTitle').textContent = 'Zyn';
           $('modelBtn').classList.add('hidden');
-          $('concuerdoBtn').classList.add('hidden');
+          $('groupBtn').classList.add('hidden');
         }
         loadChats();
         showToast('Chat eliminado');
@@ -499,7 +499,7 @@
       updateModelUI();
       try {
         await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ concuerdo: chatSettings.concuerdo }) });
-        showToast(chatSettings.concuerdo ? 'Concuerdo activado' : 'Concuerdo desactivado');
+        showToast(chatSettings.concuerdo ? 'Group mode enabled' : 'Group mode disabled');
       } catch {}
     }
 
@@ -507,14 +507,14 @@
       const active = chatSettings.activeModel || defaultModel;
       const label = models.find(m => m.key === active)?.label || active;
       $('modelLabel').textContent = label.toLowerCase();
-      const btn = $('concuerdoBtn');
+      const btn = $('groupBtn');
       if (chatSettings.concuerdo) {
         btn.className = 'flex px-2.5 py-1 rounded-lg text-[10px] transition-all bg-emerald-50 text-emerald-600 border border-emerald-200';
       } else {
         btn.className = 'flex px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent';
       }
       const modelNames = models.map(m => m.label.toLowerCase()).join(', ');
-      $('statusBar').textContent = chatSettings.concuerdo ? `⊕ concuerdo · ${modelNames}` : label.toLowerCase();
+      $('statusBar').textContent = chatSettings.concuerdo ? `⊕ group · ${modelNames}` : label.toLowerCase();
     }
 
     // Messages
@@ -576,7 +576,7 @@
       autoResize($('chatInput'));
       if (cmd === '/concuerdo') toggleConcuerdo();
       else if (cmd === '/model') toggleModelMenu();
-      else if (cmd === '/clear') { $('messagesArea').innerHTML = ''; showToast('Chat limpiado'); }
+      else if (cmd === '/clear') { $('messagesArea').innerHTML = ''; showToast('Chat cleared'); }
       else if (cmd === '/help') {
         const area = $('messagesArea');
         const helpHtml = SLASH_COMMANDS.map(c => `<span class="text-emerald-600 font-medium">${c.cmd}</span> <span class="text-neutral-400">—</span> ${c.desc}`).join('<br>');
@@ -684,7 +684,7 @@
                   class="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-neutral-50 transition-colors">
                   <div class="flex items-center gap-2 min-w-0">
                     <span class="text-[10px] text-emerald-600">◐</span>
-                    <span id="${sid}-think-status" class="text-[11px] text-neutral-500 truncate">pensando...</span>
+                    <span id="${sid}-think-status" class="text-[11px] text-neutral-500 truncate">thinking...</span>
                   </div>
                   <div class="flex items-center gap-1 text-[10px] text-neutral-400 shrink-0">
                     <span id="${sid}-think-label">ocultar</span>
@@ -751,16 +751,16 @@
                 break;
 
               case 'thinking_start':
-                updateThinkingBlock('pensando...');
+                updateThinkingBlock('thinking...');
                 break;
 
               case 'thinking_delta':
                 thinkingContent += ev.content;
-                updateThinkingBlock('pensando...');
+                updateThinkingBlock('thinking...');
                 break;
 
               case 'thinking_end': {
-                updateThinkingBlock(`pensó ${ev.duration || '?'}s`, true);
+                updateThinkingBlock(`thinking ${ev.duration || '?'}s`, true);
                 break;
               }
 
@@ -818,11 +818,11 @@
                 area.scrollTop = area.scrollHeight;
                 break;
 
-              case 'concuerdo_start':
-                addEv(`<span class="text-emerald-600 flex items-center gap-1"><span>⊕</span> concuerdo: ${ev.models?.map(esc).join(', ') || '...'}</span>`);
+              case 'group_start':
+                addEv(`<span class="text-emerald-600 flex items-center gap-1"><span>⊕</span> group: ${ev.models?.map(esc).join(', ') || '...'}</span>`);
                 break;
 
-              case 'concuerdo_model': {
+              case 'group_model': {
                 const si = ev.status === 'ok' ? '<span class="text-emerald-600">✓</span>' : ev.status === 'timeout' ? '<span class="text-neutral-300">⏱</span>' : '<span class="text-neutral-300">—</span>';
                 addEv(`<span class="text-neutral-400">&nbsp;&nbsp;${si} ${esc(ev.label)}</span>`);
                 break;
@@ -951,14 +951,14 @@
     async function saveSettings() {
       const githubToken = $('setToken').value.trim();
       const githubEmail = $('setEmail').value.trim();
-      if (!githubToken) { showToast('Token requerido'); return; }
+      if (!githubToken) { showToast('Token required'); return; }
       try {
         const res = await api('/api/settings', { method: 'PUT', body: JSON.stringify({ githubToken, githubEmail }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         repos = [];
         closeSettings();
-        showToast('Token guardado');
+        showToast('Token saved');
         currentUser.hasGithub = true;
         currentUser.githubEmail = githubEmail;
       } catch (err) {

@@ -2,6 +2,7 @@ const { chat, chatSilent } = require('../src/model/scraperClient');
 const { parseAgentResponse } = require('../src/core/prompts');
 const { buildSkillsPrompt } = require('../src/core/skills');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
+const { normalizeLanguage } = require('../i18n');
 const githubApi = require('./githubApi');
 const store = require('./store');
 
@@ -35,28 +36,28 @@ function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
     skills,
     '',
     '# Entorno',
-    `Repositorio: ${repoOwner}/${repoName}`,
-    `Fecha: ${new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+    `Repository: ${repoOwner}/${repoName}`,
+    `Date: ${new Date().toLocaleDateString(normalizeLanguage(state.language) === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
     '',
-    '# Reglas de autonomia',
-    '- Si el usuario pide un cambio, debes hacerlo de punta a punta.',
-    '- Si el usuario dice "continua", debes seguir trabajando.',
-    '- Si no sabes el archivo exacto, usa search_text, glob_files o list_dir.',
-    '- No preguntes "quieres que..." ni "necesitas que..." si puedes investigarlo tu.',
+    '# Autonomy rules',
+    '- If the user asks for a change, make it end to end.',
+    '- If the user says "continue", keep working.',
+    '- If you do not know the exact file, use search_text, glob_files, or list_dir.',
+    '- Do not ask "do you want" questions when you can investigate yourself.',
     '',
-    'Archivos del repositorio:',
+    'Repository files:',
     treeLines,
   ];
 
-  if (state.concuerdo) {
+  if (state.group) {
     const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
     const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
     const otherLabels = otherKeys.map(k => MODELS[k]?.label || k).join(', ');
     parts.push(
       '',
-      '# Modo Concuerdo (ACTIVO)',
-      `Trabajas junto a ${otherKeys.length} modelos: ${otherLabels}.`,
-      'Si el usuario pregunta, confirma que trabajas en equipo con otros modelos.',
+      '# Group mode (ACTIVE)',
+      `You work with ${otherKeys.length} models: ${otherLabels}.`,
+      'If asked, confirm that you work with other models.',
     );
   }
 
@@ -313,11 +314,11 @@ function buildForcedWritePrompt(state, conversationMessages, sourceText = '') {
     'Cualquier archivo del repo puede ser el objetivo real, incluido core/*. No asumas que core solo es auxiliar.',
     'Si de verdad necesitas otro archivo auxiliar, usa read_file para ese archivo. Si no, emite write_file ya.',
     '',
-    `Archivo objetivo actual (${path}):`,
+    `Current target file (${path}):`,
     content,
     ...supportPaths.flatMap(item => [
       '',
-      `Archivo auxiliar ya leido (${item}):`,
+      `Auxiliary file already read (${item}):`,
       state.readContents[item],
     ]),
   ].join('\n');
@@ -336,24 +337,24 @@ async function runForcedToolPass({ modelKey, toolCtx, loopState, modelMessages, 
     {
       role: 'system',
       content: [
-        'Eres Zyn en modo de recuperacion.',
-        'Debes responder SOLO con un JSON valido de herramienta.',
-        'No des explicaciones, no uses markdown, no escribas texto extra.',
-        'Si ya tienes suficiente contexto para editar, responde con write_file.',
-        'Si aun falta una dependencia exacta, responde con read_file para un solo archivo.',
+        'You are Zyn in recovery mode.',
+        'You must respond ONLY with valid tool JSON.',
+        'Do not explain, do not use markdown, do not write extra text.',
+        'If you already have enough context to edit, respond with write_file.',
+        'If an exact dependency is still missing, respond with read_file for a single file.',
       ].join(' '),
     },
     {
       role: 'user',
       content: [
-        `Peticion original: ${latestUserPrompt}`,
+        `Original request: ${latestUserPrompt}`,
         sourceText ? `Contexto adicional: ${sourceText}` : '',
-        `Archivo objetivo: ${targetPath}`,
-        `Contenido actual de ${targetPath}:`,
+        `Target file: ${targetPath}`,
+        `Current content of ${targetPath}:`,
         loopState.readContents[targetPath] || '',
         ...supportPaths.flatMap(item => [
           '',
-          `Archivo auxiliar ${item}:`,
+          `Auxiliary file ${item}:`,
           loopState.readContents[item],
         ]),
         '',
@@ -501,7 +502,7 @@ async function executeTool(tool, args, ctx) {
       }
       case 'write_file': {
         if (!args.content || args.content.length < 2) {
-          const msg = 'Error: contenido vacio. Lee el archivo primero con read_file.';
+          const msg = 'Error: empty content. Read the file first with read_file.';
           ctx.onEvent({ type: 'tool_error', content: msg });
           return msg;
         }
@@ -547,7 +548,7 @@ async function executeTool(tool, args, ctx) {
           .slice(0, 100)
           .map(f => f.path);
         ctx.onEvent({ type: 'tool_done', content: `${items.length} archivos` });
-        return items.join('\n') || 'Directorio vacio';
+        return items.join('\n') || 'Empty directory';
       }
       case 'search_text': {
         const matches = await searchTextInRepo(ctx, args);
@@ -565,8 +566,8 @@ async function executeTool(tool, args, ctx) {
       case 'file_info': {
         const info = ctx.fileTree.find(f => f.path === args.path);
         if (!info) {
-          ctx.onEvent({ type: 'tool_error', content: 'Archivo no encontrado' });
-          return 'Archivo no encontrado en el repo.';
+          ctx.onEvent({ type: 'tool_error', content: 'File not found' });
+          return 'File not found en el repo.';
         }
         ctx.onEvent({ type: 'tool_done', content: args.path });
         return `path: ${info.path}\nsize: ${info.size} bytes`;
@@ -588,7 +589,7 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
   const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
   if (!otherKeys.length) return null;
 
-  onEvent({ type: 'concuerdo_start', models: otherKeys.map(k => MODELS[k].label) });
+  onEvent({ type: 'group_start', models: otherKeys.map(k => MODELS[k].label) });
 
   const withTimeout = (p) => Promise.race([
     p,
@@ -609,12 +610,12 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
       const altParsed = parseAgentResponse(val.answer);
       if (altParsed.type === 'final' && altParsed.content?.trim()) {
         extras.push({ content: altParsed.content, label });
-        onEvent({ type: 'concuerdo_model', label, status: 'ok' });
+        onEvent({ type: 'group_model', label, status: 'ok' });
       } else {
-        onEvent({ type: 'concuerdo_model', label, status: 'skip' });
+        onEvent({ type: 'group_model', label, status: 'skip' });
       }
     } else {
-      onEvent({ type: 'concuerdo_model', label, status: 'timeout' });
+      onEvent({ type: 'group_model', label, status: 'timeout' });
     }
   }
 
@@ -630,9 +631,9 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
     {
       role: 'user',
       content: [
-        `Respuesta de ${primaryLabel}:\n${primaryContent}`,
-        ...extras.map(e => `\nRespuesta de ${e.label}:\n${e.content}`),
-        '\nCrea la respuesta final unificada:',
+        `Response from ${primaryLabel}:\n${primaryContent}`,
+        ...extras.map(e => `\nResponse from ${e.label}:\n${e.content}`),
+        '\nCreate the final unified response:',
       ].join('\n'),
     },
   ];
@@ -659,10 +660,10 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
 async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const { repoOwner, repoName, messages: history } = chatData;
   const modelKey = chatData.activeModel || DEFAULT_MODEL_KEY;
-  const concuerdo = chatData.concuerdo || false;
+  const group = chatData.group || false;
 
   const modelLabel = MODELS[modelKey]?.label || modelKey;
-  onEvent({ type: 'model_info', model: modelKey, label: modelLabel, concuerdo });
+  onEvent({ type: 'model_info', model: modelKey, label: modelLabel, group });
 
   let fileTree = [];
   try {
@@ -674,7 +675,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   }
 
   const systemPrompt = buildSystemPrompt(repoOwner, repoName, fileTree, {
-    concuerdo,
+    group,
     activeModel: modelKey,
   });
 
@@ -995,7 +996,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
 
     // ── Final response ──
     if (parsed.type === 'final') {
-      if (concuerdo) {
+      if (group) {
         const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted);
         if (synthResult) {
           chatData.messages.push({ role: 'assistant', content: synthResult, ts: Date.now() });

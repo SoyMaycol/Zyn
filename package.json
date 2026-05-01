@@ -1,9 +1,10 @@
 {
   "name": "zyn",
   "version": "1.1.0",
-  "description": "Agente local de terminal profesional",
+  "description": "Professional local terminal and web agent",
   "author": "Maycol y Ado",
   "bin": {
+    "Zyn": "./zyn.js",
     "zyn": "./zyn.js"
   },
   "type": "commonjs",
@@ -27,5 +28,6 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN LICENSE",
+  "preferGlobal": true
 }

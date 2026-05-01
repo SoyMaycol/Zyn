@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const store = require('./store');
 const githubApi = require('./githubApi');
 const { runWebAgent } = require('./webAgent');
-const { MODELS, DEFAULT_MODEL_KEY, listProvidersFromModels } = require('../config');
+const { MODELS, DEFAULT_MODEL_KEY, listProvidersFromModels, DEFAULT_LANGUAGE } = require('../config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -56,7 +56,7 @@ app.use(session({
 }));
 
 function requireAuth(req, res, next) {
-  if (!req.session.userId) return res.status(401).json({ error: 'No autorizado' });
+  if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
@@ -66,13 +66,13 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, password } = req.body;
     if (!username || !password) {
-      return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
+      return res.status(400).json({ error: 'Username and password are required' });
     }
     if (username.length < 3 || password.length < 4) {
-      return res.status(400).json({ error: 'Mínimo 3 chars usuario, 4 chars contraseña' });
+      return res.status(400).json({ error: 'Minimum 3 chars username, 4 chars password' });
     }
     if (store.getUser(username)) {
-      return res.status(409).json({ error: 'El usuario ya existe' });
+      return res.status(409).json({ error: 'User already exists' });
     }
     const passwordHash = await bcrypt.hash(password, 10);
     store.createUser({ username, passwordHash });
@@ -88,7 +88,7 @@ app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     const user = store.getUser(username);
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      return res.status(401).json({ error: 'Credenciales incorrectas' });
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
     req.session.userId = username;
     res.json({ success: true, username });
@@ -122,7 +122,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
     if (githubToken) {
       const profile = await githubApi.validateToken(githubToken);
       if (!profile) {
-        return res.status(400).json({ error: 'Token de GitHub inválido o expirado' });
+        return res.status(400).json({ error: 'Invalid or expired GitHub token' });
       }
       updates.githubToken = githubToken;
       updates.githubUsername = profile.login || '';
@@ -170,7 +170,7 @@ app.get('/api/repos', requireAuth, async (req, res) => {
   try {
     const user = store.getUser(req.session.userId);
     if (!user.githubToken) {
-      return res.status(400).json({ error: 'Configura tu token de GitHub primero' });
+      return res.status(400).json({ error: 'Set your GitHub token first' });
     }
     const repos = await githubApi.listRepos(user.githubToken);
     res.json(repos);
@@ -200,7 +200,7 @@ app.get('/api/chats', requireAuth, (req, res) => {
 app.post('/api/chats', requireAuth, (req, res) => {
   const { repoOwner, repoName } = req.body;
   if (!repoOwner || !repoName) {
-    return res.status(400).json({ error: 'Repo requerido' });
+    return res.status(400).json({ error: 'Repository required' });
   }
   const chat = store.createChat(req.session.userId, repoOwner, repoName);
   res.json(chat);
@@ -209,7 +209,7 @@ app.post('/api/chats', requireAuth, (req, res) => {
 app.get('/api/chats/:id', requireAuth, (req, res) => {
   const chat = store.getChat(req.params.id);
   if (!chat || chat.userId !== req.session.userId) {
-    return res.status(404).json({ error: 'Chat no encontrado' });
+    return res.status(404).json({ error: 'Chat not found' });
   }
   res.json(chat);
 });
@@ -217,19 +217,20 @@ app.get('/api/chats/:id', requireAuth, (req, res) => {
 app.put('/api/chats/:id/settings', requireAuth, (req, res) => {
   const chat = store.getChat(req.params.id);
   if (!chat || chat.userId !== req.session.userId) {
-    return res.status(404).json({ error: 'Chat no encontrado' });
+    return res.status(404).json({ error: 'Chat not found' });
   }
-  const { activeModel, concuerdo } = req.body;
+  const { activeModel, concuerdo, language } = req.body;
   if (activeModel !== undefined) chat.activeModel = activeModel;
   if (concuerdo !== undefined) chat.concuerdo = concuerdo;
+  if (language !== undefined) chat.language = language || DEFAULT_LANGUAGE;
   store.saveChat(chat);
-  res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo });
+  res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo, language: chat.language || DEFAULT_LANGUAGE });
 });
 
 app.delete('/api/chats/:id', requireAuth, (req, res) => {
   const chat = store.getChat(req.params.id);
   if (!chat || chat.userId !== req.session.userId) {
-    return res.status(404).json({ error: 'Chat no encontrado' });
+    return res.status(404).json({ error: 'Chat not found' });
   }
   store.deleteChat(req.params.id);
   res.json({ success: true });
@@ -240,17 +241,17 @@ app.delete('/api/chats/:id', requireAuth, (req, res) => {
 app.post('/api/chats/:id/send', requireAuth, async (req, res) => {
   const chat = store.getChat(req.params.id);
   if (!chat || chat.userId !== req.session.userId) {
-    return res.status(404).json({ error: 'Chat no encontrado' });
+    return res.status(404).json({ error: 'Chat not found' });
   }
 
   const user = store.getUser(req.session.userId);
   if (!user.githubToken) {
-    return res.status(400).json({ error: 'Configura tu token de GitHub' });
+    return res.status(400).json({ error: 'Set your GitHub token' });
   }
 
   const { message } = req.body;
   if (!message?.trim()) {
-    return res.status(400).json({ error: 'Mensaje vacio' });
+    return res.status(400).json({ error: 'Empty message' });
   }
 
   chat.messages.push({ role: 'user', content: message.trim(), ts: Date.now() });

@@ -6,6 +6,7 @@ const fsp = fs.promises;
 const {
   ACTION_LOG_LIMIT,
   CURRENT_SESSION_FILE,
+  DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
   SESSIONS_DIR,
 } = require('../config');
@@ -17,7 +18,7 @@ function createState(rl = null) {
     sessionPath: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    title: 'Nueva sesion',
+    title: 'New session',
     cwd: process.cwd(),
     history: [],
     memorySummary: '',
@@ -28,6 +29,7 @@ function createState(rl = null) {
     transcriptPath: '',
     autoApprove: false,
     activeModel: DEFAULT_MODEL_KEY,
+    language: DEFAULT_LANGUAGE,
   };
 }
 
@@ -87,6 +89,7 @@ function applyLoadedState(state, loaded) {
   state.transcriptPath = loaded.transcriptPath || getTranscriptPath(loaded.sessionId);
   state.autoApprove = Boolean(loaded.autoApprove);
   state.activeModel = loaded.activeModel || DEFAULT_MODEL_KEY;
+  state.language = loaded.language || DEFAULT_LANGUAGE;
   if (state.actionLog.length > ACTION_LOG_LIMIT) {
     state.actionLog = state.actionLog.slice(-ACTION_LOG_LIMIT);
   }
@@ -112,6 +115,7 @@ async function saveState(state) {
     transcriptPath: state.transcriptPath,
     autoApprove: Boolean(state.autoApprove),
     activeModel: state.activeModel || DEFAULT_MODEL_KEY,
+    language: state.language || DEFAULT_LANGUAGE,
   });
   await setCurrentSessionId(state.sessionId);
 }
@@ -188,7 +192,7 @@ async function listSessions() {
 
     sessions.push({
       sessionId: data.sessionId,
-      title: data.title ?? 'Sesion',
+      title: data.title ?? 'Session',
       updatedAt: data.updatedAt ?? data.createdAt ?? '',
       turnCount: Number(data.turnCount ?? 0),
       cwd: data.cwd ?? '',

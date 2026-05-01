@@ -53,6 +53,9 @@ function createChat(userId, repoOwner, repoName) {
     title: `${repoOwner}/${repoName}`,
     messages: [],
     createdAt: Date.now(),
+    activeModel: '',
+    concuerdo: false,
+    language: 'en',
   };
   fs.writeFileSync(path.join(CHATS_DIR, `${id}.json`), JSON.stringify(chat, null, 2));
   return chat;

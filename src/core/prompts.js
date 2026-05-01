@@ -1,6 +1,7 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsPrompt } = require('./skills');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
+const { normalizeLanguage, languageLabel } = require('../i18n');
 
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
@@ -8,11 +9,13 @@ const KNOWN_TOOLS = new Set([
   'fetch_url', 'web_search', 'web_read',
 ]);
 
+
 function buildSystemPrompt(cwd, state = {}) {
+  const language = normalizeLanguage(state.language);
   const platform = process.platform === 'linux' ? 'Linux'
     : process.platform === 'darwin' ? 'macOS'
     : process.platform;
-  const date = new Date().toLocaleDateString('es-ES', {
+  const date = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -23,21 +26,35 @@ function buildSystemPrompt(cwd, state = {}) {
     .map(group => `${group.key}: ${group.models.map(m => m.key).join(', ')}`)
     .join('\n');
 
+  const languageInstructions = language === 'es'
+    ? [
+        'Responde siempre en español.',
+        'Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
+        'Si hace falta, usa herramientas sin pedir permiso extra.',
+        'Responde solo con el resultado final o con la siguiente accion concreta.',
+        'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
+      ]
+    : [
+        'Always respond in English.',
+        'Execute the task directly. Do not give tutorials or instructions when you can act yourself.',
+        'Use tools when needed without asking for extra permission.',
+        'Reply only with the final result or the next concrete action.',
+        'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
+      ];
+
   const parts = [
     skills,
     '',
-    '# Entorno',
-    `- Directorio de trabajo: ${cwd}`,
-    `- Sistema: ${platform}`,
-    `- Fecha: ${date}`,
+    '# Environment',
+    `- Working directory: ${cwd}`,
+    `- System: ${platform}`,
+    `- Date: ${date}`,
+    `- Response language: ${languageLabel(language)}`,
     '',
-    '# Modo de trabajo',
-    '- Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
-    '- Si hace falta, usa herramientas sin pedir permiso extra.',
-    '- Responde solo con el resultado final o con la siguiente accion concreta.',
-    '- Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
+    '# Working mode',
+    ...languageInstructions,
     '',
-    '# Proveedores y modelos disponibles',
+    '# Available providers and models',
     providerGroups,
   ];
 
@@ -47,10 +64,10 @@ function buildSystemPrompt(cwd, state = {}) {
     const otherLabels = otherKeys.map(k => MODELS[k]?.label || k).join(', ');
     parts.push(
       '',
-      '# Modo Concuerdo (ACTIVO)',
-      `Trabajas en colaboracion con ${otherKeys.length} modelos: ${otherLabels}.`,
-      'Cada modelo puede revisar y corregir a los otros antes de dar la respuesta final.',
-      'Si el usuario pregunta, confirma que SI trabajas junto a otros modelos.',
+      '# Group mode (ACTIVE)',
+      `You work collaboratively with ${otherKeys.length} models: ${otherLabels}.`,
+      'Each model may review and correct the others before the final answer.',
+      'If asked, confirm that you are working with other models.',
     );
   }
 

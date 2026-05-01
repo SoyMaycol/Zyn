@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { normalizeLanguage } = require('./i18n');
 
 const APP_NAME = 'Zyn';
 const APP_ROOT = path.resolve(__dirname, '..');
@@ -88,6 +89,7 @@ const MODELS = {
 };
 
 const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
+const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || 'en');
 
 const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL || process.env.QWEN_EMAIL || '';
 const QWEN_PASSWORD = process.env.ZYN_QWEN_PASSWORD || process.env.QWEN_PASSWORD || '';
@@ -133,6 +135,7 @@ module.exports = {
   BUILTIN_MODELS,
   CURRENT_SESSION_FILE,
   DATA_ROOT,
+  DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
   EXPORTS_DIR,
   HOME_DIR,

@@ -79,7 +79,7 @@ async function requestModel(messages, state, ui, options = {}) {
     return result.answer ?? '';
   } catch (err) {
     if (controller.signal.aborted || err?.name === 'AbortError') {
-      throw new Error('Agente detenido por el usuario o por tiempo agotado');
+      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario o por tiempo agotado' : 'Agent stopped by the user or timed out');
     }
     throw err;
   } finally {
@@ -102,10 +102,10 @@ async function summarizeMessages(state, ui, messages) {
     {
       role: 'system',
       content: [
-        'Resume la conversacion para memoria persistente.',
-        'Escribe en espanol.',
-        'Incluye objetivos, decisiones, archivos, comandos, restricciones y pendientes importantes.',
-        'Maximo 12 lineas.',
+        state.language === 'es' ? 'Resume la conversacion para memoria persistente.' : 'Summarize the conversation for persistent memory.',
+        state.language === 'es' ? 'Escribe en espanol.' : 'Write in English.',
+        state.language === 'es' ? 'Incluye objetivos, decisiones, archivos, comandos, restricciones y pendientes importantes.' : 'Include goals, decisions, files, commands, constraints, and important pending items.',
+        'Max 12 lines.',
       ].join('\n'),
     },
     {
@@ -119,7 +119,7 @@ async function summarizeMessages(state, ui, messages) {
   ];
 
   return normalizeText(await requestModel(prompt, state, ui, {
-    label: 'Compactando memoria',
+    label: state.language === 'es' ? 'Compactando memoria' : 'Compacting memory',
   }));
 }
 
@@ -139,7 +139,7 @@ async function compactHistoryIfNeeded(state, ui) {
 
   state.memorySummary = summary;
   state.history = recentMessages;
-  ui.logEvent(state, 'info', 'Memoria compactada', shortText(summary, 100));
+  ui.logEvent(state, 'info', state.language === 'es' ? 'Memoria compactada' : 'Memory compacted', shortText(summary, 100));
   await appendTranscriptEntry(state.sessionId, {
     type: 'system',
     content: `Memoria compactada:\n${summary}`,
@@ -156,9 +156,9 @@ async function answerFromToolResult(input, call, result, state, ui) {
     {
       role: 'system',
       content: [
-        'Eres Zyn.',
-        'Responde en espanol, directo y solo con la respuesta final.',
-        'Usa solo los datos del resultado de herramienta dado.',
+        'You are Zyn.',
+        state.language === 'es' ? 'Responde en espanol, directo y solo con la respuesta final.' : 'Respond in English, direct and only with the final answer.',
+        state.language === 'es' ? 'Usa solo los datos del resultado de herramienta dado.' : 'Use only the data from the provided tool result.',
         `Directorio actual: ${state.cwd}`,
       ].join('\n'),
     },
@@ -175,7 +175,7 @@ async function answerFromToolResult(input, call, result, state, ui) {
   ];
 
   const output = await requestModel(messages, state, ui, {
-    label: 'Resumiendo resultado',
+    label: state.language === 'es' ? 'Resumiendo resultado' : 'Summarizing result',
     streamOutput: true,
   });
   return normalizeText(output);
@@ -184,10 +184,10 @@ async function answerFromToolResult(input, call, result, state, ui) {
 async function runAgentTurn(input, state, ui, options = {}) {
   const signal = options.signal;
   state.turnCount += 1;
-  if (state.turnCount === 1 && state.title === 'Nueva sesion') {
+  if (state.turnCount === 1 && state.title === 'New session') {
     state.title = shortText(input, 60) || state.title;
   }
-  ui.logEvent(state, 'info', `Turno ${state.turnCount}`);
+  ui.logEvent(state, 'info', `${state.language === 'es' ? 'Turno' : 'Turn'} ${state.turnCount}`);
 
   const directAction = parseDirectAction(input);
   if (directAction) {
@@ -206,7 +206,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
       type: 'assistant',
       content: finalAnswer,
     });
-    ui.logEvent(state, 'ok', 'Respuesta lista');
+    ui.logEvent(state, 'ok', state.language === 'es' ? 'Respuesta lista' : 'Response ready');
     await persistSessionState(state, ui);
     return { content: finalAnswer, rendered: true };
   }
@@ -220,7 +220,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
   while (true) {
     if (signal?.aborted) {
-      throw new Error('Agente detenido por el usuario');
+      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario' : 'Agent stopped by the user');
     }
 
     const injected = typeof state.getQueuedMessages === 'function'
@@ -229,7 +229,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     for (const msg of injected) {
       const note = `MENSAJE_ADICIONAL_DEL_USUARIO:\n${msg}`;
       turnMessages.push({ role: 'user', content: note });
-      ui.logEvent(state, 'info', 'Mensaje recibido en vivo', shortText(msg, 60));
+      ui.logEvent(state, 'info', state.language === 'es' ? 'Mensaje recibido en vivo' : 'Live message received', shortText(msg, 60));
     }
 
     const messages = buildConversationMessages(
@@ -239,7 +239,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     );
 
     const primaryPromise = requestModel(messages, state, ui, {
-      label: step === 0 ? 'Pensando' : `Paso ${step + 1}`,
+      label: step === 0 ? (state.language === 'es' ? 'Pensando' : 'Thinking') : `${state.language === 'es' ? 'Paso' : 'Step'} ${step + 1}`,
       signal,
     });
 
@@ -271,7 +271,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
         const label = MODELS[secondaryResults[i].key]?.label || secondaryResults[i].key;
 
         if (!val?.answer) {
-          ui.logEvent(state, 'info', `⏳ ${label} — sin respuesta`);
+          ui.logEvent(state, 'info', `${label} — ${state.language === 'es' ? 'sin respuesta' : 'no response'}`);
           continue;
         }
 
@@ -279,35 +279,35 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
         if (altParsed.type === 'tool') {
           toolSuggestions.push({ parsed: altParsed, label });
-          ui.logEvent(state, 'info', `🔧 ${label} sugiere ${altParsed.tool}`);
+          ui.logEvent(state, 'info', `${label} ${state.language === 'es' ? 'sugiere' : 'suggests'} ${altParsed.tool}`);
         } else if (altParsed.type === 'final' && altParsed.content?.trim()) {
           extras.push({ content: altParsed.content, label });
-          ui.logEvent(state, 'info', `✓ ${label} respondió`);
+          ui.logEvent(state, 'info', `${label} ${state.language === 'es' ? 'respondió' : 'responded'}`);
         }
       }
 
       if (parsed.type === 'final' && toolSuggestions.length >= 2) {
         parsed = toolSuggestions[0].parsed;
-        ui.logEvent(state, 'info', `🤝 ${toolSuggestions.length} modelos concuerdan: ${parsed.tool}`);
+        ui.logEvent(state, 'info', `${toolSuggestions.length} ${state.language === 'es' ? 'modelos concuerdan' : 'models agree'}: ${parsed.tool}`);
       } else if (parsed.type === 'final' && extras.length > 0) {
-        const activeLabel = MODELS[state.activeModel || DEFAULT_MODEL_KEY]?.label || 'Primario';
-        ui.logEvent(state, 'info', `🤝 Sintetizando: ${[activeLabel, ...extras.map(e => e.label)].join(' + ')}`);
+        const activeLabel = MODELS[state.activeModel || DEFAULT_MODEL_KEY]?.label || (state.language === 'es' ? 'Primario' : 'Primary');
+        ui.logEvent(state, 'info', `${state.language === 'es' ? 'Sintetizando' : 'Synthesizing'}: ${[activeLabel, ...extras.map(e => e.label)].join(' + ')}`);
 
         const synthMessages = [
           {
             role: 'system',
             content: [
-              'Eres Zyn. Varios modelos IA analizaron la misma pregunta del usuario.',
-              'Tu trabajo: crear UNA SOLA respuesta final unificada.',
-              'Reglas:',
-              '- NO repitas informacion que ya este cubierta por otro modelo',
-              '- Integra las perspectivas unicas de cada uno naturalmente',
-              '- Si todos dicen lo mismo, da UNA respuesta limpia sin redundancia',
-              '- Se directo y conciso',
-              '- Responde en español',
-              '- NO menciones que estas sintetizando ni que hay multiples modelos',
-              '- NO uses separadores --- ni secciones por modelo',
-              '- Responde como si fueras un solo agente dando la mejor respuesta posible',
+              state.language === 'es' ? 'Eres Zyn. Varios modelos IA analizaron la misma pregunta del usuario.' : 'You are Zyn. Several AI models analyzed the same user request.',
+              state.language === 'es' ? 'Tu trabajo: crear UNA SOLA respuesta final unificada.' : 'Your job: create ONE unified final answer.',
+              'Rules:',
+              state.language === 'es' ? '- NO repitas informacion que ya este cubierta por otro modelo' : '- Do not repeat information already covered by another model',
+              state.language === 'es' ? '- Integra las perspectivas unicas de cada uno naturalmente' : "- Blend each model's unique insights naturally",
+              state.language === 'es' ? '- Si todos dicen lo mismo, da UNA respuesta limpia sin redundancia' : '- If they all say the same thing, give one clean non-redundant answer',
+              state.language === 'es' ? '- Se directo y conciso' : '- Be direct and concise',
+              state.language === 'es' ? '- Responde en español' : '- Respond in English',
+              state.language === 'es' ? '- NO menciones que estas sintetizando ni que hay multiples modelos' : '- Do not mention that you are synthesizing or that multiple models are involved',
+              state.language === 'es' ? '- NO uses separadores --- ni secciones por modelo' : '- Do not use --- separators or per-model sections',
+              state.language === 'es' ? '- Responde como si fueras un solo agente dando la mejor respuesta posible' : '- Respond like a single agent giving the best possible answer',
             ].join('\n'),
           },
           {
@@ -329,7 +329,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
           });
           if (synthesis?.trim()) {
             parsed = { type: 'final', content: synthesis.trim() };
-            ui.logEvent(state, 'info', '🤝 Respuesta unificada lista');
+            ui.logEvent(state, 'info', state.language === 'es' ? '🤝 Respuesta unificada lista' : '🤝 Unified response ready');
           }
         } catch {
         }
@@ -349,7 +349,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
         type: 'assistant',
         content,
       });
-      ui.logEvent(state, 'ok', 'Respuesta lista');
+      ui.logEvent(state, 'ok', state.language === 'es' ? 'Respuesta lista' : 'Response ready');
       await persistSessionState(state, ui);
       return { content, rendered: false };
     }

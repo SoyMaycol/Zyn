@@ -6,6 +6,7 @@ const {
   THINK_FRAMES,
 } = require('../config');
 const { shortText } = require('../utils/text');
+const { t } = require('../i18n');
 
 const C = {
   reset: '\x1b[0m',
@@ -139,7 +140,7 @@ function printBanner(state) {
   console.log('');
   console.log(`  ${c('●', C.accent)} ${c(APP_NAME, C.bold, C.white)}  ${c('·', C.darkGray)}  ${c(model, C.gray)}`);
   console.log(`  ${c('cwd:', C.darkGray)} ${c(cwd, C.gray)}`);
-  console.log(`  ${c('/help para comandos', C.darkGray)}`);
+  console.log(`  ${c('/help for commands', C.darkGray)}`);
   console.log('');
 }
 
@@ -207,7 +208,7 @@ function beginThinkingStream(state) {
   }
 
   const frozenWidth = contentWidth();
-  process.stderr.write(`  ${c('○', C.gray)} ${c('pensando...', C.dim, C.italic)}\n`);
+  process.stderr.write(`  ${c('○', C.gray)} ${c('thinking...', C.dim, C.italic)}\n`);
   state.thinkingStream = {
     active: true,
     plain: false,
@@ -292,7 +293,7 @@ function endThinkingStream(state) {
     }
 
     const elapsed = ((Date.now() - state.thinkingStream.started) / 1000).toFixed(1);
-    process.stderr.write(`  ${c('○', C.gray)} ${c(`pensó ${elapsed}s`, C.dim, C.gray)}\n`);
+    process.stderr.write(`  ${c('○', C.gray)} ${c(`thinking ${elapsed}s`, C.dim, C.gray)}\n`);
   }
 
   state.thinkingStream = null;
@@ -409,15 +410,16 @@ function printStatus(state) {
   const key = state.activeModel || DEFAULT_MODEL_KEY;
   const model = MODELS[key]?.label || key;
 
+  const lang = state.language || 'en';
   const rows = [
-    ['sesion', state.sessionId],
-    ['titulo', state.title],
-    ['modelo', model],
-    ['cwd', state.cwd],
-    ['auto', state.autoApprove ? 'on' : 'off'],
-    ['turnos', String(state.turnCount)],
-    ['mensajes', String(state.history.length)],
-    ['memoria', state.memorySummary ? 'si' : 'no'],
+    [t(lang, 'sessionLabel'), state.sessionId],
+    [t(lang, 'titleLabel'), state.title],
+    [t(lang, 'modelLabel'), model],
+    [t(lang, 'cwdLabel'), state.cwd],
+    [t(lang, 'autoLabel'), state.autoApprove ? 'on' : 'off'],
+    [t(lang, 'turnsLabel'), String(state.turnCount)],
+    [t(lang, 'messagesLabel'), String(state.history.length)],
+    [t(lang, 'memoryLabel'), state.memorySummary ? 'yes' : 'no'],
   ];
 
   console.log('');
@@ -429,7 +431,7 @@ function printStatus(state) {
 
 function printHistory(state) {
   if (state.actionLog.length === 0) {
-    console.log(`  ${c('Sin acciones registradas.', C.gray)}`);
+    console.log(`  ${c(t(state.language || 'en', 'noActions'), C.gray)}`);
     return;
   }
 
@@ -444,7 +446,7 @@ function printHistory(state) {
 
 function printMemory(state) {
   if (!state.memorySummary) {
-    console.log(`  ${c('Sin memoria compactada.', C.gray)}`);
+    console.log(`  ${c(t(state.language || 'en', 'noMemory'), C.gray)}`);
     return;
   }
 
@@ -459,13 +461,14 @@ function printMemory(state) {
 }
 
 function printSession(state) {
+  const lang = state.language || 'en';
   const rows = [
-    ['sesion', state.sessionId],
-    ['titulo', state.title],
-    ['archivo', state.sessionPath],
-    ['transcript', state.transcriptPath],
-    ['desde', state.createdAt],
-    ['update', state.updatedAt],
+    [t(lang, 'sessionLabel'), state.sessionId],
+    [t(lang, 'titleLabel'), state.title],
+    [t(lang, 'fileLabel'), state.sessionPath],
+    [t(lang, 'transcriptLabel'), state.transcriptPath],
+    [t(lang, 'fromLabel'), state.createdAt],
+    [t(lang, 'updatedLabel'), state.updatedAt],
   ];
 
   console.log('');
@@ -477,7 +480,7 @@ function printSession(state) {
 
 function printSessions(sessions) {
   if (sessions.length === 0) {
-    console.log(`  ${c('No hay sesiones guardadas.', C.gray)}`);
+    console.log(`  ${c(t('en', 'noSavedSessions'), C.gray)}`);
     return;
   }
 

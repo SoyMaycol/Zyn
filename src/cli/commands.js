@@ -4,119 +4,80 @@ const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
-const {
-  DEFAULT_MODEL_KEY,
-  MODELS,
-  listProvidersFromModels,
-} = require('../config');
-const {
-  createNewSessionState,
-  listSessions,
-  loadSessionState,
-  saveState,
-} = require('../utils/sessionStorage');
-const {
-  exportTranscriptText,
-  formatTranscriptPreview,
-} = require('../utils/transcriptStorage');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels } = require('../config');
+const { languageLabel, normalizeLanguage, t } = require('../i18n');
+const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
+const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
 const { printTools } = require('../tools');
 
 const SLASH_COMMANDS = [
-  { name: 'help', desc: 'ayuda completa' },
-  { name: 'status', desc: 'estado actual' },
-  { name: 'history', desc: 'acciones recientes' },
-  { name: 'memory', desc: 'memoria resumida' },
-  { name: 'session', desc: 'sesion actual' },
-  { name: 'sessions', desc: 'listar sesiones' },
-  { name: 'new', desc: 'nueva sesion' },
-  { name: 'resume', desc: 'reanudar sesion' },
-  { name: 'title', desc: 'renombrar sesion' },
-  { name: 'model', desc: 'ver/cambiar modelo' },
-  { name: 'models', desc: 'listar modelos' },
-  { name: 'providers', desc: 'listar proveedores' },
-  { name: 'auto', desc: 'auto-aprobacion' },
-  { name: 'concuerdo', desc: 'modo grupo de modelos' },
-  { name: 'tools', desc: 'herramientas' },
-  { name: 'skills', desc: 'skills del agente' },
-  { name: 'web', desc: 'activar version web' },
-  { name: 'stop', desc: 'detener agente' },
-  { name: 'abort', desc: 'detener agente' },
-  { name: 'reset', desc: 'reiniciar contexto' },
-  { name: 'cwd', desc: 'directorio' },
-  { name: 'transcript', desc: 'ver transcript' },
-  { name: 'export', desc: 'exportar a txt' },
-  { name: 'exit', desc: 'salir' },
+  { name: 'help', desc: 'full help' },
+  { name: 'status', desc: 'current status' },
+  { name: 'history', desc: 'recent actions' },
+  { name: 'memory', desc: 'memory summary' },
+  { name: 'session', desc: 'current session' },
+  { name: 'sessions', desc: 'list sessions' },
+  { name: 'new', desc: 'new session' },
+  { name: 'resume', desc: 'resume session' },
+  { name: 'title', desc: 'rename session' },
+  { name: 'model', desc: 'view/change model' },
+  { name: 'models', desc: 'list models' },
+  { name: 'providers', desc: 'list providers' },
+  { name: 'lang', desc: 'change language' },
+  { name: 'language', desc: 'change language' },
+  { name: 'auto', desc: 'auto-approval' },
+  { name: 'concuerdo', desc: 'group model mode' },
+  { name: 'tools', desc: 'tools' },
+  { name: 'skills', desc: 'agent skills' },
+  { name: 'web', desc: 'open web version' },
+  { name: 'stop', desc: 'stop agent' },
+  { name: 'abort', desc: 'stop agent' },
+  { name: 'reset', desc: 'reset context' },
+  { name: 'cwd', desc: 'working directory' },
+  { name: 'transcript', desc: 'view transcript' },
+  { name: 'export', desc: 'export to txt' },
+  { name: 'exit', desc: 'exit' },
 ];
 
 function parseSlashCommand(input) {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith('/')) {
-    return null;
-  }
-
+  const trimmed = String(input || '').trim();
+  if (!trimmed.startsWith('/')) return null;
   const withoutSlash = trimmed.slice(1);
   const spaceIndex = withoutSlash.indexOf(' ');
-
-  if (spaceIndex === -1) {
-    return {
-      commandName: withoutSlash,
-      args: '',
-    };
-  }
-
-  return {
-    commandName: withoutSlash.slice(0, spaceIndex),
-    args: withoutSlash.slice(spaceIndex + 1).trim(),
-  };
+  if (spaceIndex === -1) return { commandName: withoutSlash, args: '' };
+  return { commandName: withoutSlash.slice(0, spaceIndex), args: withoutSlash.slice(spaceIndex + 1).trim() };
 }
 
-function printHelp() {
+function printHelp(state = {}) {
   const { paint } = require('./print');
-  const m = (t) => paint(t, 'dim');
+  const lang = normalizeLanguage(state.language || DEFAULT_LANGUAGE);
+  const m = (value) => paint(value, 'dim');
   const providers = listProvidersFromModels(MODELS);
 
   console.log('');
-  console.log(`  ${paint('◆', 'cyan')} ${paint('Zyn', 'cyan')} ${m('— Ayuda')}`);
+  console.log(`  ${paint('◆', 'cyan')} ${paint('Zyn', 'cyan')} ${m(t(lang, 'helpTitle'))}`);
   console.log('');
-  console.log(`  ${m('Uso')}`);
-  console.log(`    zyn                ${m('modo interactivo')}`);
-  console.log(`    zyn 'pregunta'     ${m('consulta unica')}`);
-  console.log(`    zyn --new          ${m('nueva sesion')}`);
-  console.log(`    zyn --resume ID    ${m('reanudar sesion')}`);
+  console.log(`  ${m(t(lang, 'usage'))}`);
+  console.log(`    zyn                ${m(t(lang, 'interactiveMode'))}`);
+  console.log(`    zyn 'question'     ${m(t(lang, 'singlePrompt'))}`);
+  console.log(`    zyn --new          ${m(t(lang, 'newSession'))}`);
+  console.log(`    zyn --resume ID    ${m(t(lang, 'resumeSession'))}`);
   console.log('');
-  console.log(`  ${m('Comandos')}`);
-  console.log(`    /help            ${m('ayuda')}`);
-  console.log(`    /status          ${m('estado actual')}`);
-  console.log(`    /history         ${m('acciones recientes')}`);
-  console.log(`    /memory          ${m('memoria resumida')}`);
-  console.log(`    /session         ${m('sesion actual')}`);
-  console.log(`    /sessions        ${m('listar sesiones')}`);
-  console.log(`    /resume X        ${m('reanudar sesion')}`);
-  console.log(`    /new             ${m('nueva sesion')}`);
-  console.log(`    /title X         ${m('renombrar')}`);
-  console.log(`    /transcript      ${m('ver transcript')}`);
-  console.log(`    /export [X]      ${m('exportar a txt')}`);
-  console.log(`    /auto [X]        ${m('auto-aprobacion')}`);
-  console.log(`    /concuerdo       ${m('modo grupo de modelos')}`);
-  console.log(`    /model [X]       ${m('ver/cambiar modelo')}`);
-  console.log(`    /models          ${m('listar modelos')}`);
-  console.log(`    /providers       ${m('listar proveedores')}`);
-  console.log(`    /web [start]     ${m('activar version web')}`);
-  console.log(`    /stop            ${m('detener agente')}`);
-  console.log(`    /reset           ${m('reiniciar contexto')}`);
-  console.log(`    /cwd [X]         ${m('directorio')}`);
-  console.log(`    /tools           ${m('herramientas')}`);
-  console.log(`    /skills          ${m('skills del agente')}`);
-  console.log(`    /exit            ${m('salir')}`);
-  console.log('');
-  console.log(`  ${m('ESC x2 en TUI')}`);
-  console.log(`    ${m('Pulsa ESC dos veces durante un turno para detener el agente.')}`);
-  console.log('');
-  console.log(`  ${m('Proveedores')}`);
-  for (const provider of providers) {
-    console.log(`    ${provider.key}  ${provider.models.map(mo => mo.label).join(', ')}`);
+  console.log(`  ${m(t(lang, 'commands'))}`);
+  for (const cmd of SLASH_COMMANDS) {
+    console.log(`    /${cmd.name.padEnd(14)} ${m(cmd.desc)}`);
   }
+  console.log('');
+  console.log(`  ${m(t(lang, 'escTwice'))}`);
+  console.log(`    ${m(t(lang, 'escTwiceDesc'))}`);
+  console.log('');
+  console.log(`  ${m(t(lang, 'providers'))}`);
+  for (const provider of providers) {
+    console.log(`    ${provider.key}  ${provider.models.map(model => model.label).join(', ')}`);
+  }
+  console.log('');
+  console.log(`  ${m(t(lang, 'chooseLanguage'))}`);
   console.log('');
 }
 
@@ -145,9 +106,7 @@ async function startWebVersion() {
 
 async function handleLocalCommand(input, state, deps) {
   const parsed = parseSlashCommand(input);
-  if (!parsed) {
-    return false;
-  }
+  if (!parsed) return false;
 
   const { commandName, args } = parsed;
   const {
@@ -162,7 +121,7 @@ async function handleLocalCommand(input, state, deps) {
   } = deps;
 
   if (commandName === 'help') {
-    printHelp();
+    printHelp(state);
     return true;
   }
 
@@ -187,7 +146,24 @@ async function handleLocalCommand(input, state, deps) {
   }
 
   if (commandName === 'sessions') {
-    renderSessions(await listSessions());
+    renderSessions(await listSessions(), state.language);
+    return true;
+  }
+
+  if (commandName === 'lang' || commandName === 'language') {
+    if (!args) {
+      console.log(`${t(state.language, 'langCurrent')}: ${languageLabel(state.language)}`);
+      return true;
+    }
+
+    const nextLanguage = normalizeLanguage(args);
+    if (!['en', 'es'].includes(nextLanguage)) {
+      throw new Error(t(state.language, 'langInvalid'));
+    }
+
+    state.language = nextLanguage;
+    await saveState(state);
+    console.log(`${t(state.language, 'langChanged')}: ${languageLabel(nextLanguage)} (${nextLanguage})`);
     return true;
   }
 
@@ -196,41 +172,41 @@ async function handleLocalCommand(input, state, deps) {
     applyLoadedState(state, nextState);
     global.__zynActiveModel = state.activeModel || DEFAULT_MODEL_KEY;
     printBanner(state);
-    console.log(`Nueva sesion: ${state.sessionId}`);
+    console.log(`${t(state.language, 'newSessionCreated')}: ${state.sessionId}`);
     return true;
   }
 
   if (commandName === 'resume') {
     const sessionId = args.trim();
     if (!sessionId) {
-      throw new Error('Falta el id de sesion');
+      throw new Error(t(state.language, 'missingSessionId'));
     }
 
     const loaded = await loadSessionState(sessionId, state.rl);
     if (!loaded) {
-      throw new Error('No encontre esa sesion');
+      throw new Error(t(state.language, 'sessionNotFound'));
     }
 
     applyLoadedState(state, loaded);
     global.__zynActiveModel = state.activeModel || DEFAULT_MODEL_KEY;
     await saveState(state);
     printBanner(state);
-    console.log(`Sesion reanudada: ${state.sessionId}`);
+    console.log(`${t(state.language, 'sessionResumed')}: ${state.sessionId}`);
     return true;
   }
 
   if (commandName === 'title' || commandName === 'rename') {
     if (!args) {
-      throw new Error('Falta el nuevo titulo');
+      throw new Error(t(state.language, 'missingTitle'));
     }
 
     state.title = args;
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
-      content: `Titulo actualizado: ${args}`,
+      content: `Title updated: ${args}`,
     });
-    console.log(`Titulo actualizado: ${state.title}`);
+    console.log(`Title updated: ${state.title}`);
     return true;
   }
 
@@ -245,7 +221,7 @@ async function handleLocalCommand(input, state, deps) {
     const key = args.toLowerCase().trim();
     if (!MODELS[key]) {
       const available = Object.keys(MODELS).join(', ');
-      throw new Error(`Modelo no valido. Disponibles: ${available}`);
+      throw new Error(`${t(state.language, 'modelInvalid')}: ${available}`);
     }
 
     state.activeModel = key;
@@ -253,9 +229,9 @@ async function handleLocalCommand(input, state, deps) {
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
-      content: `Modelo cambiado a: ${MODELS[key].label}`,
+      content: `Model switched to: ${MODELS[key].label}`,
     });
-    console.log(`Modelo: ${MODELS[key].label}`);
+    console.log(`Model: ${MODELS[key].label}`);
     return true;
   }
 
@@ -284,7 +260,7 @@ async function handleLocalCommand(input, state, deps) {
     }
 
     if (args !== 'on' && args !== 'off') {
-      throw new Error('Usa /auto on o /auto off');
+      throw new Error('Use /auto on or /auto off');
     }
 
     state.autoApprove = args === 'on';
@@ -293,7 +269,7 @@ async function handleLocalCommand(input, state, deps) {
       type: 'system',
       content: `Auto approve: ${state.autoApprove ? 'on' : 'off'}`,
     });
-    console.log(state.autoApprove ? 'Auto approve activado.' : 'Auto approve desactivado.');
+    console.log(state.autoApprove ? 'Auto approval enabled.' : 'Auto approval disabled.');
     return true;
   }
 
@@ -304,29 +280,29 @@ async function handleLocalCommand(input, state, deps) {
     const allLabels = Object.keys(MODELS).map(k => MODELS[k].label);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
-      content: `Modo concuerdo: ${state.concuerdo ? 'on' : 'off'}`,
+      content: `Group mode: ${state.concuerdo ? 'on' : 'off'}`,
     });
     if (state.concuerdo) {
-      console.log(`Modo concuerdo activado — ${allLabels.join(' + ')} trabajan juntos.`);
-      console.log(`  Primario: ${MODELS[activeKey]?.label || activeKey}`);
+      console.log(`Group mode enabled — ${allLabels.join(' + ')} work together.`);
+      console.log(`  Primary: ${MODELS[activeKey]?.label || activeKey}`);
     } else {
-      console.log('Modo concuerdo desactivado.');
+      console.log('Group mode disabled.');
     }
     return true;
   }
 
   if (commandName === 'web') {
     const url = await startWebVersion();
-    console.log(`Versión web activada en ${url}`);
+    console.log(`Web version started at ${url}`);
     return true;
   }
 
   if (commandName === 'stop' || commandName === 'abort') {
     if (typeof state.abortCurrentTurn === 'function') {
       state.abortCurrentTurn();
-      console.log('Agente detenido.');
+      console.log('Agent stopped.');
     } else {
-      console.log('No hay un turno activo para detener.');
+      console.log(t(state.language, 'noActiveTurn'));
     }
     return true;
   }
@@ -338,12 +314,12 @@ async function handleLocalCommand(input, state, deps) {
 
   if (commandName === 'skills') {
     const skills = listSkills();
-    console.log(`\n  Skills cargadas (${skills.length}):\n`);
+    console.log(`\n  ${t(state.language, 'skillsLoaded')} (${skills.length}):\n`);
     for (const s of skills) {
       console.log(`    \x1b[36m${s.name.padEnd(14)}\x1b[0m ${s.title}`);
     }
-    console.log(`\n  Directorio: \x1b[90m${SKILLS_DIR}\x1b[0m`);
-    console.log('  Edita o agrega archivos .md para personalizar el agente.\n');
+    console.log(`\n  Directory: \x1b[90m${SKILLS_DIR}\x1b[0m`);
+    console.log('  Edit or add .md files to customize the agent.\n');
     return true;
   }
 
@@ -355,9 +331,9 @@ async function handleLocalCommand(input, state, deps) {
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
-      content: 'Contexto reiniciado',
+      content: 'Context reset',
     });
-    console.log('Contexto reiniciado.');
+    console.log('Context reset.');
     return true;
   }
 
@@ -368,17 +344,16 @@ async function handleLocalCommand(input, state, deps) {
     }
 
     const resolved = resolveInputPath(args, state.cwd);
-    const stats = await fsp.stat(resolved);
-
-    if (!stats.isDirectory()) {
-      throw new Error('La ruta no es un directorio');
+    const stats = await fsp.stat(resolved).catch(() => null);
+    if (!stats?.isDirectory()) {
+      throw new Error(t(state.language, 'noDirectory'));
     }
 
     state.cwd = resolved;
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
-      content: `Directorio cambiado a ${resolved}`,
+      content: `Directory changed to ${resolved}`,
     });
     console.log(state.cwd);
     return true;
@@ -392,7 +367,7 @@ async function handleLocalCommand(input, state, deps) {
   if (commandName === 'export') {
     const outputPath = args ? resolveInputPath(args, state.cwd) : '';
     const exported = await exportTranscriptText(state.sessionId, outputPath);
-    console.log(`Transcript exportado en: ${exported}`);
+    console.log(`Transcript exported to: ${exported}`);
     return true;
   }
 

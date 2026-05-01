@@ -63,7 +63,7 @@ async function runCollaboration(primaryContent, primaryKey, modelMessages, onEve
     const reviewRes = await chatSilent({ messages: reviewPrompt, modelKey: reviewer.key }).catch(() => null);
     if (reviewRes?.answer) {
       reviews.push({ from: reviewer.label, review: reviewRes.answer });
-      onEvent({ type: 'info', content: `${reviewer.label} terminó su revisión.` });
+      onEvent({ type: 'info', content: `${reviewer.label} finished review.` });
     }
   }
 
@@ -72,22 +72,22 @@ async function runCollaboration(primaryContent, primaryKey, modelMessages, onEve
     {
       role: 'system',
       content: [
-        'Eres Zyn.',
-        'Tu trabajo es producir una sola respuesta final profesional, precisa y directa.',
-        'Integra las revisiones cruzadas y corrige cualquier error.',
-        'No menciones el proceso interno.',
+        'You are Zyn.',
+        'Your job is to produce one final professional, accurate, and direct answer.',
+        'Integrate the cross-reviews and correct any errors.',
+        'Do not mention the internal process.',
       ].join('\n'),
     },
     {
       role: 'user',
       content: [
-        'Respuestas iniciales:',
+        'Initial responses:',
         validAnswers.map(a => `${a.label}: ${a.content}`).join('\n\n'),
         '',
-        'Revisiones cruzadas:',
+        'Cross-reviews:',
         reviews.map(r => `De ${r.from}: ${r.review}`).join('\n\n'),
         '',
-        'Crea la respuesta final unificada, corregida y optimizada. Responde solo con el texto final en español.',
+        'Create the final unified, corrected, and optimized response. Respond only with the final text in English.',
       ].join('\n'),
     },
   ];

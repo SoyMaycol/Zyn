@@ -85,7 +85,7 @@ async function runSinglePrompt(prompt, options = {}) {
     if (process.stdout.isTTY) {
       await printWelcome();
       printBanner(state);
-      logEvent(state, 'info', resumed ? 'sesion retomada' : 'sesion nueva');
+      logEvent(state, 'info', resumed ? 'session resumed' : 'new session');
       console.log('');
     }
 
@@ -111,7 +111,7 @@ async function runInteractiveChatClassic(options = {}) {
   const { state, resumed } = await loadOrCreateSessionState(rl, options);
   await printWelcome();
   printBanner(state);
-  logEvent(state, 'info', resumed ? 'sesion reanudada' : 'chat activo — /help para comandos');
+  logEvent(state, 'info', resumed ? 'session resumed' : 'chat active — /help for commands');
   console.log('');
 
   const messageQueue = [];
