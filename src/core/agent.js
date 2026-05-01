@@ -6,7 +6,7 @@ const {
   MODELS,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
-const { chat, chatSilent } = require('../model/scraperClient');
+const { chat, chatSilent } = require('../providers/scraperClient');
 const {
   buildConversationMessages,
   buildSystemPrompt,
@@ -158,7 +158,7 @@ async function answerFromToolResult(input, call, result, state, ui) {
     {
       role: 'system',
       content: [
-        'Eres Adonix.',
+        'Eres Zyn.',
         'Responde en espanol, directo y solo con la respuesta final.',
         'Usa solo los datos del resultado de herramienta dado.',
         `Directorio actual: ${state.cwd}`,
@@ -302,7 +302,7 @@ async function runAgentTurn(input, state, ui) {
           {
             role: 'system',
             content: [
-              'Eres Adonix. Varios modelos IA analizaron la misma pregunta del usuario.',
+              'Eres Zyn. Varios modelos IA analizaron la misma pregunta del usuario.',
               'Tu trabajo: crear UNA SOLA respuesta final unificada.',
               'Reglas:',
               '- NO repitas informacion que ya este cubierta por otro modelo',

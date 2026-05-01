@@ -76,7 +76,7 @@ async function ghFetch(urlPath, token, options = {}) {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'Adonix-Web',
+      'User-Agent': 'Zyn-Web',
       ...extraHeaders,
     },
   });
@@ -158,8 +158,8 @@ async function writeFile(token, owner, repo, filePath, content, author = {}) {
     message: `Update ${filename}`,
     content: Buffer.from(content).toString('base64'),
     committer: {
-      name: author.name || 'Adonix',
-      email: author.email || 'adonix@bot.local',
+      name: author.name || 'Zyn',
+      email: author.email || 'zyn@bot.local',
     },
   };
   if (sha) body.sha = sha;

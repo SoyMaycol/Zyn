@@ -1,16 +1,17 @@
 {
-  "name": "adonix",
-  "version": "1.0.0",
-  "description": "Agente local de terminal",
+  "name": "zyn",
+  "version": "1.1.0",
+  "description": "Agente local de terminal profesional",
+  "author": "Maycol y Ado",
   "bin": {
-    "adonix": "./adonix.js"
+    "zyn": "./zyn.js"
   },
   "type": "commonjs",
   "scripts": {
-    "start": "node ./adonix.js",
-    "web": "node ./web/server.js",
-    "test": "node ./adonix.js test",
-    "check": "node --check ./adonix.js && node --check ./src/cli/runtime.js"
+    "start": "node ./zyn.js",
+    "web": "node ./src/web/server.js",
+    "test": "node ./zyn.js test",
+    "check": "node --check ./zyn.js && node --check ./src/cli/runtime.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
@@ -19,7 +20,8 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "ink": "^6.8.0",
-    "react": "^19.2.5",
+    "keypress": "^0.2.1",
+    "react": "^19.0.0",
     "session-file-store": "^1.5.0"
   },
   "engines": {

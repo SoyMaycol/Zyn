@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const store = require('./store');
 const githubApi = require('./githubApi');
 const { runWebAgent } = require('./webAgent');
-const { MODELS, DEFAULT_MODEL_KEY } = require('../src/config');
+const { MODELS, DEFAULT_MODEL_KEY } = require('../config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -280,5 +280,5 @@ app.get('/{*splat}', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`\n  ● Adonix Web → http://localhost:${PORT}\n`);
+  console.log(`\n  ● Zyn Web → http://localhost:${PORT}\n`);
 });
