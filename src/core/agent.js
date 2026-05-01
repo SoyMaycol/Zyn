@@ -2,7 +2,6 @@ const {
   DEFAULT_MODEL_KEY,
   KEEP_RECENT_MESSAGES,
   MAX_HISTORY_CHARS,
-  MAX_TOOL_STEPS,
   MODELS,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
@@ -17,68 +16,75 @@ const {
 } = require('./prompts');
 const {
   executeToolCall,
-  getToolPromptText,
   parseDirectAction,
 } = require('../tools');
-const {
-  appendTranscriptEntry,
-} = require('../utils/transcriptStorage');
-const {
-  estimateHistoryChars,
-  saveState,
-} = require('../utils/sessionStorage');
+const { appendTranscriptEntry } = require('../utils/transcriptStorage');
+const { estimateHistoryChars, saveState } = require('../utils/sessionStorage');
 const { normalizeText, shortText } = require('../utils/text');
 
 async function requestModel(messages, state, ui, options = {}) {
   const {
     label = 'Pensando',
     streamOutput = false,
+    signal,
   } = options;
+
   const stopThinking = ui.startThinkingIndicator(state, label);
   let answerStarted = false;
   let thinkingStarted = false;
+  const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const result = await Promise.race([
-      chat({
-        messages,
-        modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
-        onChunk: (delta, phase) => {
-          if (phase === 'thinking') {
-            if (!thinkingStarted) {
-              stopThinking();
-              ui.beginThinkingStream(state);
-              thinkingStarted = true;
-            }
-            ui.writeThinkingDelta(state, delta);
-            return;
-          }
-
-          if (thinkingStarted) {
-            ui.endThinkingStream(state);
-            thinkingStarted = false;
-          }
-
-          if (streamOutput && !answerStarted) {
+    const result = await chat({
+      messages,
+      modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
+      signal: controller.signal,
+      onChunk: (delta, phase) => {
+        if (phase === 'thinking') {
+          if (!thinkingStarted) {
             stopThinking();
-            ui.beginAssistantStream(state);
-            answerStarted = true;
+            ui.beginThinkingStream(state);
+            thinkingStarted = true;
           }
+          ui.writeThinkingDelta(state, delta);
+          return;
+        }
 
-          if (streamOutput) {
-            ui.writeAssistantDelta(state, delta);
-          }
-        },
-      }),
-      new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error('El modelo tardo demasiado en responder'));
-        }, REQUEST_TIMEOUT_MS);
-      }),
-    ]);
+        if (thinkingStarted) {
+          ui.endThinkingStream(state);
+          thinkingStarted = false;
+        }
+
+        if (streamOutput && !answerStarted) {
+          stopThinking();
+          ui.beginAssistantStream(state);
+          answerStarted = true;
+        }
+
+        if (streamOutput) {
+          ui.writeAssistantDelta(state, delta);
+        }
+      },
+    });
+
     ui.pushAction(state, 'ok', 'Respuesta del modelo recibida');
     return result.answer ?? '';
+  } catch (err) {
+    if (controller.signal.aborted || err?.name === 'AbortError') {
+      throw new Error('Agente detenido por el usuario o por tiempo agotado');
+    }
+    throw err;
   } finally {
+    clearTimeout(timeout);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
     stopThinking();
     if (thinkingStarted) ui.endThinkingStream(state);
     if (streamOutput && answerStarted) {
@@ -145,14 +151,6 @@ async function persistSessionState(state, ui) {
   await saveState(state);
 }
 
-async function appendVisibleTurn(state, role, content) {
-  state.history.push({ role, content });
-  await appendTranscriptEntry(state.sessionId, {
-    type: role,
-    content,
-  });
-}
-
 async function answerFromToolResult(input, call, result, state, ui) {
   const messages = [
     {
@@ -183,7 +181,8 @@ async function answerFromToolResult(input, call, result, state, ui) {
   return normalizeText(output);
 }
 
-async function runAgentTurn(input, state, ui) {
+async function runAgentTurn(input, state, ui, options = {}) {
+  const signal = options.signal;
   state.turnCount += 1;
   if (state.turnCount === 1 && state.title === 'Nueva sesion') {
     state.title = shortText(input, 60) || state.title;
@@ -192,10 +191,7 @@ async function runAgentTurn(input, state, ui) {
 
   const directAction = parseDirectAction(input);
   if (directAction) {
-    await appendTranscriptEntry(state.sessionId, {
-      type: 'user',
-      content: input,
-    });
+    await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
     const result = await executeToolCall(directAction, state, ui);
     await appendTranscriptEntry(state.sessionId, {
       type: 'tool',
@@ -212,22 +208,21 @@ async function runAgentTurn(input, state, ui) {
     });
     ui.logEvent(state, 'ok', 'Respuesta lista');
     await persistSessionState(state, ui);
-    return {
-      content: finalAnswer,
-      rendered: true,
-    };
+    return { content: finalAnswer, rendered: true };
   }
 
   const turnMessages = [{ role: 'user', content: input }];
-  await appendTranscriptEntry(state.sessionId, {
-    type: 'user',
-    content: input,
-  });
+  await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
 
   let lastFingerprint = '';
   let repeatCount = 0;
+  let step = 0;
 
-  for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
+  while (true) {
+    if (signal?.aborted) {
+      throw new Error('Agente detenido por el usuario');
+    }
+
     const injected = typeof state.getQueuedMessages === 'function'
       ? state.getQueuedMessages()
       : [];
@@ -245,6 +240,7 @@ async function runAgentTurn(input, state, ui) {
 
     const primaryPromise = requestModel(messages, state, ui, {
       label: step === 0 ? 'Pensando' : `Paso ${step + 1}`,
+      signal,
     });
 
     let secondaryResults = [];
@@ -257,7 +253,7 @@ async function runAgentTurn(input, state, ui) {
         new Promise(r => setTimeout(() => r(null), CONCUERDO_TIMEOUT)),
       ]);
       const secondaryPromises = otherKeys.map(k =>
-        withTimeout(chatSilent({ messages, modelKey: k }).catch(() => null))
+        withTimeout(chatSilent({ messages, modelKey: k, signal }).catch(() => null))
       );
       secondaryResults = secondaryPromises.map((p, i) => ({ promise: p, key: otherKeys[i] }));
     }
@@ -270,7 +266,7 @@ async function runAgentTurn(input, state, ui) {
       const extras = [];
       let toolSuggestions = [];
 
-      for (let i = 0; i < settled.length; i++) {
+      for (let i = 0; i < settled.length; i += 1) {
         const val = settled[i].status === 'fulfilled' ? settled[i].value : null;
         const label = MODELS[secondaryResults[i].key]?.label || secondaryResults[i].key;
 
@@ -294,7 +290,6 @@ async function runAgentTurn(input, state, ui) {
         parsed = toolSuggestions[0].parsed;
         ui.logEvent(state, 'info', `🤝 ${toolSuggestions.length} modelos concuerdan: ${parsed.tool}`);
       } else if (parsed.type === 'final' && extras.length > 0) {
-        // Sintetizar todas las perspectivas en UNA sola respuesta
         const activeLabel = MODELS[state.activeModel || DEFAULT_MODEL_KEY]?.label || 'Primario';
         ui.logEvent(state, 'info', `🤝 Sintetizando: ${[activeLabel, ...extras.map(e => e.label)].join(' + ')}`);
 
@@ -330,13 +325,13 @@ async function runAgentTurn(input, state, ui) {
         try {
           const synthesis = await requestModel(synthMessages, state, ui, {
             label: 'Concuerdo — unificando',
+            signal,
           });
           if (synthesis?.trim()) {
             parsed = { type: 'final', content: synthesis.trim() };
             ui.logEvent(state, 'info', '🤝 Respuesta unificada lista');
           }
         } catch {
-          // Si falla la sintesis, usar respuesta primaria tal cual
         }
       } else if (parsed.type === 'tool' && toolSuggestions.length > 0) {
         const matching = toolSuggestions.filter(t => t.parsed.tool === parsed.tool);
@@ -356,10 +351,7 @@ async function runAgentTurn(input, state, ui) {
       });
       ui.logEvent(state, 'ok', 'Respuesta lista');
       await persistSessionState(state, ui);
-      return {
-        content,
-        rendered: false,
-      };
+      return { content, rendered: false };
     }
 
     const fingerprint = `${parsed.tool}:${parsed.args?.path || ''}:${(parsed.args?.content || parsed.args?.search || '').length}`;
@@ -371,6 +363,7 @@ async function runAgentTurn(input, state, ui) {
           role: 'user',
           content: 'ATENCION: Estas repitiendo la misma operacion. La operacion anterior ya fue exitosa. Responde con type=final confirmando lo que hiciste.',
         });
+        step += 1;
         continue;
       }
     } else {
@@ -416,26 +409,9 @@ async function runAgentTurn(input, state, ui) {
         content: buildToolErrorMessage(parsed, err.message),
       });
     }
+
+    step += 1;
   }
-
-  const fallback =
-    'No pude completar la tarea dentro del limite de herramientas. Intenta dividirla.';
-
-  turnMessages.push({
-    role: 'assistant',
-    content: fallback,
-  });
-  state.history.push(...turnMessages);
-  await appendTranscriptEntry(state.sessionId, {
-    type: 'assistant',
-    content: fallback,
-  });
-  ui.logEvent(state, 'warn', 'Limite alcanzado');
-  await persistSessionState(state, ui);
-  return {
-    content: fallback,
-    rendered: false,
-  };
 }
 
 module.exports = {

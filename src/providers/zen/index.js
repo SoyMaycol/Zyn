@@ -10,9 +10,14 @@ const HEADERS = {
   'Referer': 'https://opencode.ai/',
 };
 
-async function streamCompletion(messages, modelId, onChunk) {
+async function streamCompletion(messages, modelId, onChunk, signal) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
   try {
     const res = await fetch(`${BASE}/chat/completions`, {
@@ -55,7 +60,6 @@ async function streamCompletion(messages, modelId, onChunk) {
         const delta = parsed?.choices?.[0]?.delta;
         if (!delta) continue;
 
-        // Reasoning (thinking)
         const reasoning = delta.reasoning || delta.reasoning_details?.[0]?.text;
         if (reasoning && reasoning.length > thinking.length) {
           const newDelta = reasoning.slice(thinking.length);
@@ -63,7 +67,6 @@ async function streamCompletion(messages, modelId, onChunk) {
           if (onChunk) onChunk(newDelta, 'thinking');
         }
 
-        // Content
         if (delta.content) {
           answer += delta.content;
           if (onChunk) onChunk(delta.content, 'answer');
@@ -74,20 +77,22 @@ async function streamCompletion(messages, modelId, onChunk) {
     return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeout);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }
 
-async function zen(messages, modelId, onChunk = null) {
+async function zen(messages, modelId, onChunk = null, options = {}) {
   const MAX_RETRIES = 2;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await streamCompletion(messages, modelId, onChunk);
+      const result = await streamCompletion(messages, modelId, onChunk, options.signal);
       return {
         status: true,
         text: result.text,
         thinking: result.thinking,
       };
     } catch (err) {
+      if (err?.name === 'AbortError') throw err;
       const isRetryable = err.message?.includes('429')
         || err.message?.includes('503')
         || err.name === 'AbortError';

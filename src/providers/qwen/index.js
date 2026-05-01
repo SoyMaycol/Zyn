@@ -43,6 +43,10 @@ function cookieString(jar) {
 let cachedJar = null;
 
 async function signin() {
+  if (!QWEN_EMAIL || !QWEN_PASSWORD) {
+    throw new Error('Qwen no está configurado. Define ZYN_QWEN_EMAIL y ZYN_QWEN_PASSWORD.');
+  }
+
   const jar = {};
   const res = await fetch(`${BASE}/api/v2/auths/signin`, {
     method: 'POST',
@@ -72,7 +76,7 @@ async function ensureAuth() {
   return signin();
 }
 
-async function createChat(jar) {
+async function createChat(jar, signal) {
   const res = await fetch(`${BASE}/api/v2/chats/new`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
@@ -84,6 +88,7 @@ async function createChat(jar) {
       timestamp: Date.now(),
       project_id: '',
     }),
+    signal,
   });
 
   const body = await res.json();
@@ -93,8 +98,15 @@ async function createChat(jar) {
   return body.data.id;
 }
 
-async function streamCompletion(chatId, prompt, jar, onChunk) {
+async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   const fid = randomUUID();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
   const payload = {
     stream: true,
@@ -130,9 +142,6 @@ async function streamCompletion(chatId, prompt, jar, onChunk) {
     }],
     timestamp: Math.floor(Date.now() / 1000),
   };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${BASE}/api/v2/chat/completions?chat_id=${chatId}`, {
@@ -195,22 +204,24 @@ async function streamCompletion(chatId, prompt, jar, onChunk) {
     return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeout);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }
 
-async function qwen(prompt, onChunk = null) {
+async function qwen(prompt, onChunk = null, options = {}) {
   const MAX_RETRIES = 2;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
-      const chatId = await createChat(jar);
-      const result = await streamCompletion(chatId, prompt, jar, onChunk);
+      const chatId = await createChat(jar, options.signal);
+      const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal);
       return {
         status: true,
         text: result.text,
         thinking: result.thinking,
       };
     } catch (err) {
+      if (err?.name === 'AbortError') throw err;
       const isAuthError = err.message?.includes('401')
         || err.message?.includes('403')
         || err.message?.includes('auth')
@@ -218,6 +229,9 @@ async function qwen(prompt, onChunk = null) {
       if (isAuthError && attempt < MAX_RETRIES) {
         cachedJar = null;
         continue;
+      }
+      if (isAuthError && /not configured/i.test(err.message || '')) {
+        throw err;
       }
       throw err;
     }

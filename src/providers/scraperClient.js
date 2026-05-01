@@ -1,5 +1,7 @@
 const { qwen } = require('./qwen/index');
 const { zen } = require('./zen/index');
+const { ollama } = require('./ollama/index');
+const { openaiCompatible } = require('./openaiCompatible/index');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 
 function buildPromptFromMessages(messages) {
@@ -18,18 +20,31 @@ function buildPromptFromMessages(messages) {
   return parts.join('\n\n');
 }
 
-async function chat({ messages, onChunk, modelKey }) {
+function getModelDefinition(modelKey) {
   const key = modelKey || DEFAULT_MODEL_KEY;
-  const model = MODELS[key];
-  const provider = model?.provider || 'qwen';
+  return { key, model: MODELS[key] };
+}
 
-  let result;
-  if (provider === 'zen') {
-    result = await zen(messages, model.zenModel, onChunk);
-  } else {
-    const prompt = buildPromptFromMessages(messages);
-    result = await qwen(prompt, onChunk);
+async function runProvider(provider, messages, model, onChunk, options = {}) {
+  switch (provider) {
+    case 'zen':
+      return zen(messages, model.zenModel, onChunk, options);
+    case 'ollama':
+      return ollama(messages, model.ollamaModel || model.model || model.label, onChunk, options);
+    case 'openai-compatible':
+      return openaiCompatible(messages, model.openaiModel || model.model || model.label, onChunk, options);
+    case 'qwen':
+    default: {
+      const prompt = buildPromptFromMessages(messages);
+      return qwen(prompt, onChunk, options);
+    }
   }
+}
+
+async function chat({ messages, onChunk, modelKey, signal }) {
+  const { key, model } = getModelDefinition(modelKey);
+  const provider = model?.provider || 'qwen';
+  const result = await runProvider(provider, messages, model || {}, onChunk, { signal, modelKey: key });
 
   return {
     answer: result.text || '',
@@ -37,20 +52,11 @@ async function chat({ messages, onChunk, modelKey }) {
   };
 }
 
-async function chatSilent({ messages, modelKey }) {
-  const key = modelKey || DEFAULT_MODEL_KEY;
-  const model = MODELS[key];
+async function chatSilent({ messages, modelKey, signal }) {
+  const { key, model } = getModelDefinition(modelKey);
   const provider = model?.provider || 'qwen';
-
-  let result;
-  if (provider === 'zen') {
-    result = await zen(messages, model.zenModel);
-  } else {
-    const prompt = buildPromptFromMessages(messages);
-    result = await qwen(prompt, () => {});
-  }
-
+  const result = await runProvider(provider, messages, model || {}, null, { signal, modelKey: key });
   return { answer: result.text || '' };
 }
 
-module.exports = { chat, chatSilent, buildPromptFromMessages };
+module.exports = { chat, chatSilent, buildPromptFromMessages, getModelDefinition };

@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const store = require('./store');
 const githubApi = require('./githubApi');
 const { runWebAgent } = require('./webAgent');
-const { MODELS, DEFAULT_MODEL_KEY } = require('../config');
+const { MODELS, DEFAULT_MODEL_KEY, listProvidersFromModels } = require('../config');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -137,6 +137,20 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+
+app.get('/api/providers', requireAuth, (req, res) => {
+  const providers = listProvidersFromModels(MODELS).map(provider => ({
+    key: provider.key,
+    label: provider.label,
+    models: provider.models.map(model => ({
+      key: model.key,
+      label: model.label,
+      provider: model.provider,
+    })),
+  }));
+  res.json({ providers });
 });
 
 // ─── Models ──────────────────────────────────────────

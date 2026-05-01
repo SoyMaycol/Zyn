@@ -1,5 +1,6 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsPrompt } = require('./skills');
+const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
 
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
@@ -18,6 +19,9 @@ function buildSystemPrompt(cwd, state = {}) {
   });
 
   const skills = buildSkillsPrompt();
+  const providerGroups = listProvidersFromModels(MODELS)
+    .map(group => `${group.key}: ${group.models.map(m => m.key).join(', ')}`)
+    .join('\n');
 
   const parts = [
     skills,
@@ -26,10 +30,18 @@ function buildSystemPrompt(cwd, state = {}) {
     `- Directorio de trabajo: ${cwd}`,
     `- Sistema: ${platform}`,
     `- Fecha: ${date}`,
+    '',
+    '# Modo de trabajo',
+    '- Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
+    '- Si hace falta, usa herramientas sin pedir permiso extra.',
+    '- Responde solo con el resultado final o con la siguiente accion concreta.',
+    '- Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
+    '',
+    '# Proveedores y modelos disponibles',
+    providerGroups,
   ];
 
   if (state.concuerdo) {
-    const { MODELS, DEFAULT_MODEL_KEY } = require('../config');
     const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
     const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
     const otherLabels = otherKeys.map(k => MODELS[k]?.label || k).join(', ');
@@ -37,13 +49,13 @@ function buildSystemPrompt(cwd, state = {}) {
       '',
       '# Modo Concuerdo (ACTIVO)',
       `Trabajas en colaboracion con ${otherKeys.length} modelos: ${otherLabels}.`,
+      'Cada modelo puede revisar y corregir a los otros antes de dar la respuesta final.',
       'Si el usuario pregunta, confirma que SI trabajas junto a otros modelos.',
     );
   }
 
   return parts.join('\n');
 }
-
 
 function scanJson(text, filterFn) {
   let pos = 0;
@@ -260,111 +272,56 @@ function parseAgentResponse(raw) {
   return { type: 'final', content: text || raw.trim() };
 }
 
-function isInternalHistoryMessage(message) {
-  const content = normalizeText(message?.content ?? '');
-
-  if (message?.role === 'user' && /^TOOL_(RESULT|ERROR)/.test(content)) {
-    return true;
+function sanitizeArgsForModel(parsed) {
+  const args = { ...(parsed.args || {}) };
+  if (typeof args.content === 'string' && args.content.length > 2000) {
+    args.content = `${args.content.slice(0, 2000)}\n... [truncado]`;
   }
-
-  if (message?.role === 'assistant' && /^{"type":"tool"/.test(content)) {
-    return true;
+  if (typeof args.replace === 'string' && args.replace.length > 2000) {
+    args.replace = `${args.replace.slice(0, 2000)}\n... [truncado]`;
   }
-
-  if (message?.role === 'assistant' && /<invoke\s+name=|<\w+:tool_call>/i.test(content)) {
-    return true;
+  if (typeof args.command === 'string' && args.command.length > 1000) {
+    args.command = `${args.command.slice(0, 1000)} ...`;
   }
-
-  return false;
-}
-
-function getVisibleHistoryMessages(history) {
-  return history.filter(message => !isInternalHistoryMessage(message));
+  return args;
 }
 
 function buildConversationMessages(state, turnMessages, systemPrompt) {
-  const messages = [{ role: 'system', content: systemPrompt }];
-
+  const messages = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
   if (state.memorySummary) {
     messages.push({
       role: 'system',
-      content: `Memoria persistente de la sesion:\n${state.memorySummary}`,
+      content: `Memoria resumida anterior:\n${state.memorySummary}`,
     });
   }
-
-  messages.push(...state.history, ...turnMessages);
+  if (Array.isArray(state.history) && state.history.length > 0) {
+    for (const msg of state.history) {
+      messages.push(msg);
+    }
+  }
+  messages.push(...turnMessages);
   return messages;
 }
 
-const WRITE_TOOLS = new Set(['write_file', 'append_file', 'replace_in_file']);
-
-function sanitizeArgsForModel(call) {
-  if (!WRITE_TOOLS.has(call.tool)) return call.args;
-
-  const clean = { path: call.args.path };
-
-  if (call.tool === 'write_file' || call.tool === 'append_file') {
-    clean.contentBytes = (call.args.content || '').length;
-    clean.contentLines = (call.args.content || '').split('\n').length;
-  }
-
-  if (call.tool === 'replace_in_file') {
-    clean.searchBytes = (call.args.search || '').length;
-    clean.replaceBytes = (call.args.replace || '').length;
-    if (call.args.all) clean.all = true;
-  }
-
-  return clean;
-}
-
-function buildToolResultMessage(call, result) {
-  const displayArgs = sanitizeArgsForModel(call);
-
-  const base = JSON.stringify(
-    {
-      tool: call.tool,
-      args: displayArgs,
-      result,
-    },
-    null,
-    2,
-  );
-
-  if (call.tool === 'run_command') {
-    const exitMatch = result.match(/Exit code: (\d+)/);
-    if (exitMatch && parseInt(exitMatch[1], 10) !== 0) {
-      return [
-        base,
-        '',
-        `ATENCION: El comando fallo con exit code ${exitMatch[1]}.`,
-        'Analiza STDERR para entender el error.',
-        'NO repitas el mismo comando. Corrige el problema y reintenta.',
-      ].join('\n');
-    }
-  }
-
-  if (call.tool === 'fetch_url' && /^Status: [45]\d\d/.test(result)) {
-    return [
-      base,
-      '',
-      'ATENCION: La URL respondio con error.',
-      'Verifica la URL e intenta un enfoque diferente.',
-    ].join('\n');
-  }
-
-  return base;
-}
-
-function buildToolErrorMessage(call, errorMessage) {
-  const displayArgs = sanitizeArgsForModel(call);
+function buildToolResultMessage(parsed, result) {
   return [
-    'TOOL_ERROR',
-    `Herramienta: ${call.tool}`,
-    `Args: ${JSON.stringify(displayArgs)}`,
-    `Error: ${errorMessage}`,
+    `Herramienta: ${parsed.tool}`,
+    `Argumentos: ${JSON.stringify(sanitizeArgsForModel(parsed), null, 2)}`,
+    'Resultado:',
+    result,
     '',
-    'Analiza el error. NO repitas la misma llamada que fallo.',
-    'Corrige los argumentos o usa un enfoque diferente.',
+    'Responde con la siguiente accion concreta o con el resultado final.',
+  ].join('\n');
+}
+
+function buildToolErrorMessage(parsed, errorMessage) {
+  return [
+    `La herramienta ${parsed.tool} fallo.`,
+    `Error: ${errorMessage}`,
+    'Corrige la llamada o explica brevemente el problema si no puedes continuar.',
   ].join('\n');
 }
 
@@ -373,7 +330,6 @@ module.exports = {
   buildSystemPrompt,
   buildToolErrorMessage,
   buildToolResultMessage,
-  getVisibleHistoryMessages,
   parseAgentResponse,
   sanitizeArgsForModel,
 };

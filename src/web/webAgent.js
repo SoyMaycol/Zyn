@@ -5,7 +5,7 @@ const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 const githubApi = require('./githubApi');
 const store = require('./store');
 
-const MAX_STEPS = 15;
+const MAX_STEPS = Number.POSITIVE_INFINITY;
 const CONCUERDO_TIMEOUT = 30000;
 const BUFFER_CHECK = 72;
 const WEB_SKILLS = ['core', 'web-agent', 'code-style', 'reasoning', 'methodology'];

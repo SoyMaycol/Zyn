@@ -1,11 +1,13 @@
 const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
-
 const {
   DEFAULT_MODEL_KEY,
   MODELS,
+  listProvidersFromModels,
 } = require('../config');
 const {
   createNewSessionState,
@@ -13,9 +15,15 @@ const {
   loadSessionState,
   saveState,
 } = require('../utils/sessionStorage');
+const {
+  exportTranscriptText,
+  formatTranscriptPreview,
+} = require('../utils/transcriptStorage');
+const { resolveInputPath } = require('../utils/pathUtils');
+const { printTools } = require('../tools');
 
 const SLASH_COMMANDS = [
-  { name: 'help', desc: 'ayuda' },
+  { name: 'help', desc: 'ayuda completa' },
   { name: 'status', desc: 'estado actual' },
   { name: 'history', desc: 'acciones recientes' },
   { name: 'memory', desc: 'memoria resumida' },
@@ -26,22 +34,20 @@ const SLASH_COMMANDS = [
   { name: 'title', desc: 'renombrar sesion' },
   { name: 'model', desc: 'ver/cambiar modelo' },
   { name: 'models', desc: 'listar modelos' },
+  { name: 'providers', desc: 'listar proveedores' },
   { name: 'auto', desc: 'auto-aprobacion' },
-  { name: 'concuerdo', desc: 'modo dual — ambos modelos' },
+  { name: 'concuerdo', desc: 'modo grupo de modelos' },
   { name: 'tools', desc: 'herramientas' },
   { name: 'skills', desc: 'skills del agente' },
+  { name: 'web', desc: 'activar version web' },
+  { name: 'stop', desc: 'detener agente' },
+  { name: 'abort', desc: 'detener agente' },
   { name: 'reset', desc: 'reiniciar contexto' },
   { name: 'cwd', desc: 'directorio' },
   { name: 'transcript', desc: 'ver transcript' },
   { name: 'export', desc: 'exportar a txt' },
   { name: 'exit', desc: 'salir' },
 ];
-const {
-  exportTranscriptText,
-  formatTranscriptPreview,
-} = require('../utils/transcriptStorage');
-const { resolveInputPath } = require('../utils/pathUtils');
-const { printTools } = require('../tools');
 
 function parseSlashCommand(input) {
   const trimmed = input.trim();
@@ -68,37 +74,73 @@ function parseSlashCommand(input) {
 function printHelp() {
   const { paint } = require('./print');
   const m = (t) => paint(t, 'dim');
+  const providers = listProvidersFromModels(MODELS);
 
   console.log('');
   console.log(`  ${paint('◆', 'cyan')} ${paint('Zyn', 'cyan')} ${m('— Ayuda')}`);
   console.log('');
   console.log(`  ${m('Uso')}`);
-  console.log(`    zyn              ${m('modo interactivo')}`);
-  console.log(`    zyn 'pregunta'   ${m('consulta unica')}`);
-  console.log(`    zyn --new        ${m('nueva sesion')}`);
-  console.log(`    zyn --resume ID  ${m('reanudar sesion')}`);
+  console.log(`    zyn                ${m('modo interactivo')}`);
+  console.log(`    zyn 'pregunta'     ${m('consulta unica')}`);
+  console.log(`    zyn --new          ${m('nueva sesion')}`);
+  console.log(`    zyn --resume ID    ${m('reanudar sesion')}`);
   console.log('');
   console.log(`  ${m('Comandos')}`);
-  console.log(`    /help        ${m('ayuda')}`);
-  console.log(`    /status      ${m('estado actual')}`);
-  console.log(`    /history     ${m('acciones recientes')}`);
-  console.log(`    /memory      ${m('memoria resumida')}`);
-  console.log(`    /session     ${m('sesion actual')}`);
-  console.log(`    /sessions    ${m('listar sesiones')}`);
-  console.log(`    /resume X    ${m('reanudar sesion')}`);
-  console.log(`    /new         ${m('nueva sesion')}`);
-  console.log(`    /title X     ${m('renombrar')}`);
-  console.log(`    /transcript  ${m('ver transcript')}`);
-  console.log(`    /export [X]  ${m('exportar a txt')}`);
-  console.log(`    /auto [X]    ${m('auto-aprobacion')}`);
-  console.log(`    /concuerdo   ${m('modo dual — ambos modelos')}`);
-  console.log(`    /model [X]   ${m('ver/cambiar modelo')}`);
-  console.log(`    /reset       ${m('reiniciar contexto')}`);
-  console.log(`    /cwd [X]     ${m('directorio')}`);
-  console.log(`    /tools       ${m('herramientas')}`);
-  console.log(`    /skills      ${m('skills del agente')}`);
-  console.log(`    /exit        ${m('salir')}`);
+  console.log(`    /help            ${m('ayuda')}`);
+  console.log(`    /status          ${m('estado actual')}`);
+  console.log(`    /history         ${m('acciones recientes')}`);
+  console.log(`    /memory          ${m('memoria resumida')}`);
+  console.log(`    /session         ${m('sesion actual')}`);
+  console.log(`    /sessions        ${m('listar sesiones')}`);
+  console.log(`    /resume X        ${m('reanudar sesion')}`);
+  console.log(`    /new             ${m('nueva sesion')}`);
+  console.log(`    /title X         ${m('renombrar')}`);
+  console.log(`    /transcript      ${m('ver transcript')}`);
+  console.log(`    /export [X]      ${m('exportar a txt')}`);
+  console.log(`    /auto [X]        ${m('auto-aprobacion')}`);
+  console.log(`    /concuerdo       ${m('modo grupo de modelos')}`);
+  console.log(`    /model [X]       ${m('ver/cambiar modelo')}`);
+  console.log(`    /models          ${m('listar modelos')}`);
+  console.log(`    /providers       ${m('listar proveedores')}`);
+  console.log(`    /web [start]     ${m('activar version web')}`);
+  console.log(`    /stop            ${m('detener agente')}`);
+  console.log(`    /reset           ${m('reiniciar contexto')}`);
+  console.log(`    /cwd [X]         ${m('directorio')}`);
+  console.log(`    /tools           ${m('herramientas')}`);
+  console.log(`    /skills          ${m('skills del agente')}`);
+  console.log(`    /exit            ${m('salir')}`);
   console.log('');
+  console.log(`  ${m('ESC x2 en TUI')}`);
+  console.log(`    ${m('Pulsa ESC dos veces durante un turno para detener el agente.')}`);
+  console.log('');
+  console.log(`  ${m('Proveedores')}`);
+  for (const provider of providers) {
+    console.log(`    ${provider.key}  ${provider.models.map(mo => mo.label).join(', ')}`);
+  }
+  console.log('');
+}
+
+function printModels() {
+  const providers = listProvidersFromModels(MODELS);
+  for (const provider of providers) {
+    console.log(`\n  ${provider.key}`);
+    for (const model of provider.models) {
+      const active = model.key === (global.__zynActiveModel || DEFAULT_MODEL_KEY) ? ' ◀' : '';
+      console.log(`    ${model.key.padEnd(16)} ${model.label}${active}`);
+    }
+  }
+  console.log('');
+}
+
+async function startWebVersion() {
+  const serverPath = path.join(__dirname, '..', 'web', 'server.js');
+  const child = spawn(process.execPath, [serverPath], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+  return 'http://127.0.0.1:3000';
 }
 
 async function handleLocalCommand(input, state, deps) {
@@ -152,6 +194,7 @@ async function handleLocalCommand(input, state, deps) {
   if (commandName === 'new') {
     const nextState = await createNewSessionState(state.rl);
     applyLoadedState(state, nextState);
+    global.__zynActiveModel = state.activeModel || DEFAULT_MODEL_KEY;
     printBanner(state);
     console.log(`Nueva sesion: ${state.sessionId}`);
     return true;
@@ -169,6 +212,7 @@ async function handleLocalCommand(input, state, deps) {
     }
 
     applyLoadedState(state, loaded);
+    global.__zynActiveModel = state.activeModel || DEFAULT_MODEL_KEY;
     await saveState(state);
     printBanner(state);
     console.log(`Sesion reanudada: ${state.sessionId}`);
@@ -205,6 +249,7 @@ async function handleLocalCommand(input, state, deps) {
     }
 
     state.activeModel = key;
+    global.__zynActiveModel = key;
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
@@ -215,10 +260,20 @@ async function handleLocalCommand(input, state, deps) {
   }
 
   if (commandName === 'models') {
-    for (const [key, info] of Object.entries(MODELS)) {
-      const active = key === (state.activeModel || DEFAULT_MODEL_KEY) ? ' ◀' : '';
-      console.log(`  ${key}  ${info.label}${active}`);
+    printModels();
+    return true;
+  }
+
+  if (commandName === 'providers') {
+    const providers = listProvidersFromModels(MODELS);
+    console.log('');
+    for (const provider of providers) {
+      console.log(`  ${provider.key}`);
+      for (const model of provider.models) {
+        console.log(`    ${model.key.padEnd(16)} ${model.label}`);
+      }
     }
+    console.log('');
     return true;
   }
 
@@ -256,6 +311,22 @@ async function handleLocalCommand(input, state, deps) {
       console.log(`  Primario: ${MODELS[activeKey]?.label || activeKey}`);
     } else {
       console.log('Modo concuerdo desactivado.');
+    }
+    return true;
+  }
+
+  if (commandName === 'web') {
+    const url = await startWebVersion();
+    console.log(`Versión web activada en ${url}`);
+    return true;
+  }
+
+  if (commandName === 'stop' || commandName === 'abort') {
+    if (typeof state.abortCurrentTurn === 'function') {
+      state.abortCurrentTurn();
+      console.log('Agente detenido.');
+    } else {
+      console.log('No hay un turno activo para detener.');
     }
     return true;
   }

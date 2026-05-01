@@ -115,34 +115,57 @@ async function runInteractiveChatClassic(options = {}) {
   console.log('');
 
   const messageQueue = [];
-  let processing = false;
   let pendingExit = false;
+  let currentAbort = null;
 
   state.getQueuedMessages = () => messageQueue.splice(0);
+  state.abortCurrentTurn = () => {
+    if (currentAbort && !currentAbort.signal.aborted) {
+      currentAbort.abort();
+      return true;
+    }
+    return false;
+  };
 
-  const processInput = async (input) => {
+  const runCommandInline = async (input) => {
+    try {
+      const handled = await handleLocalCommand(input, state, getCommandDeps());
+      if (!handled) {
+        console.log('Comando no reconocido. Usa /help.');
+      }
+    } catch (err) {
+      console.error(`Error: ${err.message}`);
+    }
+  };
+
+  const processInput = async (input, { fromQueue = false } = {}) => {
     if (input === '/exit' || input === '/quit') {
       pendingExit = true;
       return;
     }
 
     if (input.startsWith('/')) {
-      try {
-        const handled = await handleLocalCommand(input, state, getCommandDeps());
-        if (handled) return;
-      } catch (err) {
-        console.error(`Error: ${err.message}`);
-        return;
-      }
+      await runCommandInline(input);
+      return;
     }
 
     try {
-      const result = await runAgentTurn(input, state, getUiBindings());
+      currentAbort = new AbortController();
+      state.abortCurrentTurn = () => {
+        if (!currentAbort.signal.aborted) {
+          currentAbort.abort();
+          return true;
+        }
+        return false;
+      };
+      const result = await runAgentTurn(input, state, getUiBindings(), { signal: currentAbort.signal });
       if (!result.rendered) {
         await streamBufferedAssistantMessage(state, result.content);
       }
     } catch (err) {
       logEvent(state, 'error', 'Error', err.message);
+    } finally {
+      currentAbort = null;
     }
   };
 
@@ -156,11 +179,13 @@ async function runInteractiveChatClassic(options = {}) {
         break;
       }
 
-      processing = true;
-
       const lineHandler = (line) => {
         const trimmed = line.trim();
         if (!trimmed) return;
+        if (trimmed.startsWith('/')) {
+          void runCommandInline(trimmed);
+          return;
+        }
         messageQueue.push(trimmed);
         console.log(`  \x1b[33m📩 en cola:\x1b[0m \x1b[90m${shortText(trimmed, 60)}\x1b[0m`);
       };
@@ -171,11 +196,10 @@ async function runInteractiveChatClassic(options = {}) {
       while (messageQueue.length > 0) {
         const next = messageQueue.shift();
         console.log(`\n  \x1b[33m▸\x1b[0m procesando mensaje en cola: \x1b[97m${shortText(next, 50)}\x1b[0m`);
-        await processInput(next);
+        await processInput(next, { fromQueue: true });
       }
 
       rl.removeListener('line', lineHandler);
-      processing = false;
 
       if (pendingExit) {
         logEvent(state, 'info', 'Hasta luego');
@@ -204,7 +228,7 @@ async function runInteractiveChat(options = {}) {
 
 async function runTest() {
   const { MODELS } = require('../config');
-  const { zen } = require('../providers/zenScraper');
+  const { zen } = require('../providers/zen/index');
 
   const C = {
     reset: '\x1b[0m',
@@ -232,11 +256,11 @@ async function runTest() {
   console.log(`  ${C.cyan}[1/4]${C.reset} Config y modelos`);
   const modelKeys = Object.keys(MODELS);
   const zenModels = modelKeys.filter(k => MODELS[k].provider === 'zen');
-  if (modelKeys.includes('qwen') && zenModels.length > 0) {
+  if (modelKeys.length > 0) {
     console.log(`    ${ok('Modelos registrados: ' + modelKeys.join(', '))}`);
     console.log(`    ${ok('Zen models: ' + zenModels.map(k => MODELS[k].label).join(', '))}`);
   } else {
-    console.log(`    ${fail('Faltan modelos esperados')}`);
+    console.log(`    ${fail('No hay modelos registrados')}`);
   }
   console.log('');
 
@@ -245,13 +269,13 @@ async function runTest() {
     ['core/agent', '../core/agent'],
     ['core/prompts', '../core/prompts'],
     ['tools/index', '../tools/index'],
-    ['model/scraperClient', '../model/scraperClient'],
-    ['model/zenScraper', '../model/zenScraper'],
-    ['model/qwenScraper', '../model/qwenScraper'],
+    ['providers/scraperClient', '../providers/scraperClient'],
+    ['providers/zen', '../providers/zen/index'],
+    ['providers/qwen', '../providers/qwen/index'],
   ];
-  for (const [name, path] of modules) {
+  for (const [name, modPath] of modules) {
     try {
-      require(path);
+      require(modPath);
       console.log(`    ${ok(name)}`);
     } catch (err) {
       console.log(`    ${fail(name + ': ' + err.message)}`);
@@ -327,6 +351,22 @@ async function main() {
 
   if (args.includes('-h') || args.includes('--help')) {
     printHelp();
+    return;
+  }
+
+  if (args[0] === 'web' || args.includes('--web')) {
+    const { handleLocalCommand } = require('./commands');
+    const tmpState = { abortCurrentTurn: null };
+    await handleLocalCommand('/web start', tmpState, {
+      applyLoadedState: () => {},
+      appendTranscriptEntry: async () => {},
+      printBanner: () => {},
+      printHistory: () => {},
+      printMemory: () => {},
+      printSession: () => {},
+      printSessions: () => {},
+      printStatus: () => {},
+    });
     return;
   }
 

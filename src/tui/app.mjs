@@ -66,6 +66,7 @@ class UIStore extends EventEmitter {
     this.turnCount = 0;
     this.messageQueue = [];
     this.pendingExit = false;
+    this.lastEscapeAt = 0;
     this._idCounter = 0;
     this._scheduled = false;
   }
@@ -752,7 +753,24 @@ function App({ store, state, onSubmit }) {
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c') { exit(); return; }
-    if (key.escape && !store.processing && !store.confirmRequest) { exit(); return; }
+    if (key.escape) {
+      if (store.processing) {
+        const now = Date.now();
+        if (now - store.lastEscapeAt < 1000) {
+          store.lastEscapeAt = 0;
+          if (typeof state.abortCurrentTurn === 'function') {
+            state.abortCurrentTurn();
+          }
+          store.pendingExit = false;
+          store.addEvent('warn', 'agente detenido', 'Interrumpido con ESC x2');
+        } else {
+          store.lastEscapeAt = now;
+          store.addEvent('info', 'pulsa ESC otra vez', 'para detener el agente');
+        }
+        return;
+      }
+      if (!store.confirmRequest) { exit(); return; }
+    }
     if (!store.confirmRequest) return;
     if (input === 'y' || input === 's') store.resolveConfirm('s');
     else if (input === 'n' || key.return) store.resolveConfirm('n');
@@ -853,14 +871,11 @@ export async function startTUI(options = {}) {
       return;
     }
 
-    store.addItem({ type: 'divider' });
-    store.addItem({ type: 'user', text: input });
-
     if (input.startsWith('/')) {
       const lines = [];
-      const origLog   = console.log;
+      const origLog = console.log;
       const origError = console.error;
-      console.log   = (...args) => lines.push(stripAnsi(args.join(' ')));
+      console.log = (...args) => lines.push(stripAnsi(args.join(' ')));
       console.error = (...args) => lines.push(stripAnsi(args.join(' ')));
 
       try {
@@ -868,12 +883,12 @@ export async function startTUI(options = {}) {
         const deps = {
           appendTranscriptEntry,
           applyLoadedState,
-          printBanner:   printMod.printBanner,
-          printHistory:  printMod.printHistory,
-          printMemory:   printMod.printMemory,
-          printSession:  printMod.printSession,
+          printBanner: printMod.printBanner,
+          printHistory: printMod.printHistory,
+          printMemory: printMod.printMemory,
+          printSession: printMod.printSession,
           printSessions: printMod.printSessions,
-          printStatus:   printMod.printStatus,
+          printStatus: printMod.printStatus,
         };
         const handled = await handleLocalCommand(input, state, deps);
         if (handled && lines.length > 0) {
@@ -884,18 +899,29 @@ export async function startTUI(options = {}) {
       } catch (err) {
         store.addEvent('error', 'error', err.message);
       } finally {
-        console.log   = origLog;
+        console.log = origLog;
         console.error = origError;
       }
       return;
     }
 
+    store.addItem({ type: 'divider' });
+    store.addItem({ type: 'user', text: input });
+
     const origError = console.error;
     console.error = () => {};
 
     try {
-      const ui     = getUiBindings(store, state);
-      const result = await runAgentTurn(input, state, ui);
+      const controller = new AbortController();
+      state.abortCurrentTurn = () => {
+        if (!controller.signal.aborted) {
+          controller.abort();
+          return true;
+        }
+        return false;
+      };
+      const ui = getUiBindings(store, state);
+      const result = await runAgentTurn(input, state, ui, { signal: controller.signal });
       if (!result.rendered && result.content) {
         store.addItem({ type: 'answer', text: result.content });
       }
@@ -903,12 +929,18 @@ export async function startTUI(options = {}) {
       store.addEvent('error', 'error', err.message);
     } finally {
       console.error = origError;
+      state.abortCurrentTurn = null;
     }
   };
 
   let appInstance = null;
 
   const handleSubmit = async (input) => {
+    if (input.startsWith('/') && store.processing) {
+      await processInput(input);
+      return;
+    }
+
     if (store.processing) {
       store.enqueueMessage(input);
       return;

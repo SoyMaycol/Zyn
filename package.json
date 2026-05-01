@@ -26,5 +26,6 @@
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }

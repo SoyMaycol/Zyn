@@ -16,45 +16,54 @@ async function runCollaboration(primaryContent, primaryKey, modelMessages, onEve
   );
 
   const validAnswers = [{ key: primaryKey, content: primaryContent, label: MODELS[primaryKey].label }];
-  for (let i = 0; i < initialAnswers.length; i++) {
-    const res = initialAnswers[i];
-    if (res.status === 'fulfilled' && res.value.answer) {
-      const parsed = parseAgentResponse(res.value.answer);
-      if (parsed.type === 'final' && parsed.content) {
-        validAnswers.push({
-          key: res.value.key,
-          content: parsed.content,
-          label: MODELS[res.value.key].label
-        });
-        onEvent({ type: 'concuerdo_model', label: MODELS[res.value.key].label, status: 'ok' });
-      }
+  for (const result of initialAnswers) {
+    if (result.status !== 'fulfilled' || !result.value?.answer) continue;
+    const parsed = parseAgentResponse(result.value.answer);
+    if (parsed.type === 'final' && parsed.content) {
+      validAnswers.push({
+        key: result.value.key,
+        content: parsed.content,
+        label: MODELS[result.value.key].label,
+      });
+      onEvent({ type: 'concuerdo_model', label: MODELS[result.value.key].label, status: 'ok' });
     }
   }
 
   if (validAnswers.length <= 1) return null;
 
-  onEvent({ type: 'info', content: 'Iniciando fase de revision cruzada...' });
+  onEvent({ type: 'info', content: 'Iniciando revisión cruzada entre modelos...' });
   const reviews = [];
+
   for (const reviewer of validAnswers) {
     if (isAborted?.()) return null;
     const others = validAnswers.filter(a => a.key !== reviewer.key);
     const reviewPrompt = [
       {
         role: 'system',
-        content: `Eres ${reviewer.label}. Tu tarea es revisar las respuestas de otros modelos y proporcionar correcciones o mejoras si es necesario.`
+        content: [
+          `Eres ${reviewer.label}.`,
+          'Tu tarea es auditar respuestas de otros modelos, corregir errores y proponer mejoras directas.',
+          'No expliques teoría. Marca lo correcto, lo dudoso y lo incorrecto.',
+          'Si algo está mal, corrígelo con precisión.',
+          'Si todo está bien, responde TODO CORRECTO.',
+        ].join('\n'),
       },
       {
         role: 'user',
-        content: `Pregunta original: ${modelMessages[modelMessages.length - 1].content}\n\n` +
-                 others.map(o => `Respuesta de ${o.label}:\n${o.content}`).join('\n\n') +
-                 `\n\nAnaliza estas respuestas. Si encuentras errores o puntos de mejora, indícalos brevemente. Si son correctas, di "TODO CORRECTO".`
-      }
+        content: [
+          `Pregunta original:\n${modelMessages[modelMessages.length - 1].content}`,
+          '',
+          ...others.map(o => `Respuesta de ${o.label}:\n${o.content}`),
+          '',
+          'Revisa estas respuestas y devuelve solo la corrección o confirmación final.',
+        ].join('\n'),
+      },
     ];
 
     const reviewRes = await chatSilent({ messages: reviewPrompt, modelKey: reviewer.key }).catch(() => null);
     if (reviewRes?.answer) {
       reviews.push({ from: reviewer.label, review: reviewRes.answer });
-      onEvent({ type: 'info', content: `${reviewer.label} ha completado su revisión.` });
+      onEvent({ type: 'info', content: `${reviewer.label} terminó su revisión.` });
     }
   }
 
@@ -62,16 +71,25 @@ async function runCollaboration(primaryContent, primaryKey, modelMessages, onEve
   const finalPrompt = [
     {
       role: 'system',
-      content: 'Eres Zyn. Tu objetivo es crear la mejor respuesta posible basándote en múltiples perspectivas y sus revisiones cruzadas.'
+      content: [
+        'Eres Zyn.',
+        'Tu trabajo es producir una sola respuesta final profesional, precisa y directa.',
+        'Integra las revisiones cruzadas y corrige cualquier error.',
+        'No menciones el proceso interno.',
+      ].join('\n'),
     },
     {
       role: 'user',
-      content: `Respuestas iniciales:\n` +
-               validAnswers.map(a => `${a.label}: ${a.content}`).join('\n\n') +
-               `\n\nRevisiones cruzadas:\n` +
-               reviews.map(r => `De ${r.from}: ${r.review}`).join('\n\n') +
-               `\n\nCrea la respuesta final unificada, corregida y optimizada. Responde solo con el texto final en español.`
-    }
+      content: [
+        'Respuestas iniciales:',
+        validAnswers.map(a => `${a.label}: ${a.content}`).join('\n\n'),
+        '',
+        'Revisiones cruzadas:',
+        reviews.map(r => `De ${r.from}: ${r.review}`).join('\n\n'),
+        '',
+        'Crea la respuesta final unificada, corregida y optimizada. Responde solo con el texto final en español.',
+      ].join('\n'),
+    },
   ];
 
   const finalRes = await chatSilent({ messages: finalPrompt, modelKey: primaryKey }).catch(() => null);
