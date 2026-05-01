@@ -1,7 +1,7 @@
 # Zyn
 
 <p align="center">
-  <img src="https://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
+  <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
 </p>
 
 <p align="center">
