@@ -38,7 +38,7 @@ Zyn is a local agent for terminal and web workflows. It supports multiple AI pro
 ### Global install
 
 ```bash
-npm install -g git+https://github.com/SoyMaycol/Zyn.git
+npm install zyn-ai -g
 ```
 
 Then run:
