@@ -1,0 +1,1079 @@
+const { chat, chatSilent } = require('../providers/scraperClient');
+const { parseAgentResponse } = require('../core/prompts');
+const { buildSkillsPrompt } = require('../core/skills');
+const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
+const { normalizeLanguage, languageLabel } = require('../i18n');
+const githubApi = require('./githubApi');
+const store = require('./store');
+
+const MAX_STEPS = Number.POSITIVE_INFINITY;
+const CONCUERDO_TIMEOUT = 30000;
+const BUFFER_CHECK = 72;
+const WEB_SKILLS = ['core', 'tools', 'web-agent', 'code-style', 'reasoning', 'methodology'];
+const TOOL_HINT_RE = /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read)"/i;
+const XML_TOOL_RE = /<invoke\s+name=|<\w+:tool_call>/i;
+const INTERNAL_PLAN_START_RE = /^(el usuario|the user|necesito|i need|primero|first|voy a|i will|debo|i should|tengo que|let me|para hacer esto|to do this|mi siguiente paso|my next step|entendido|okay|ok|perfecto|now|ahora)\b/i;
+const INTERNAL_PLAN_ACTION_RE = /(read_file|write_file|leer el archivo|read the file|leer primero|read it first|editar el archivo|edit the file|modificar el archivo|hacer el cambio|quitar el comentario|analizar|analyze|inspeccionar|inspect|usar la herramienta|use the tool|ver el archivo|continuar|continue|resolver|fix the issue|importar|getname|corregir)/i;
+const DEFERAL_RE = /(¿(quieres|necesitas|prefieres).*(vea|revise|aplique|cambie|lea)|si (quieres|necesitas) puedo|puedo ver el codigo exacto|puedo revisar el archivo exacto|voy a leer (ambos|estos|esos) archivos|do you want me to|would you like me to|i can check the exact file|let me read the file first)/i;
+const PENDING_EDIT_RE = /(perfecto, ya tengo todo el codigo|now i can see the full code|veo el problema|i see the problem|el problema esta en|the problem is in|esto muestra|this shows|voy a (agregar|cambiar|modificar|reemplazar|quitar|usar|incorporar|corregir|escribir|aplicar)|i will (add|change|modify|replace|remove|use|fix|write|apply)|necesito (cambiar|modificar|agregar|quitar|usar|corregir|ver|leer)|i need to (change|modify|add|remove|use|fix|see|read)|aqui esta el archivo corregido|here is the corrected file|lo que necesito cambiar|debo cambiar|tengo que cambiar|voy a aplicar el fix|i'm going to apply the fix|voy a incorporar|getname del resolver|corregir la logica|ya tengo|ahora veo|ah, ?getname|ah ya|necesito ver|voy a leer|voy a escribir|archivo corregido|el fix es|la solucion es)/i;
+const USER_WRITE_INTENT_RE = /(agrega|añade|anade|pon(?:er|e|lo|la)?|importa|corrige|arregla|edita|cambia|quita|elimina|reemplaza|modifica|actualiza|sube|commit|aplica|termina|soluciona|hazlo|fix|add|change|edit|replace|import|modify|update|remove|apply)/i;
+const TEXT_FILE_EXTENSIONS = new Set([
+  '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.md', '.txt',
+  '.html', '.css', '.scss', '.sass', '.less', '.yml', '.yaml', '.xml',
+  '.sh', '.bash', '.zsh', '.py', '.go', '.rs', '.java', '.kt', '.swift',
+  '.php', '.rb', '.sql', '.env', '.ini', '.toml',
+]);
+
+function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
+  const language = normalizeLanguage(state.language);
+  const skills = buildSkillsPrompt({ include: WEB_SKILLS });
+  const treeLines = fileTree
+    .filter(f => !f.path.includes('node_modules/') && !f.path.includes('.git/'))
+    .slice(0, 200)
+    .map(f => `  ${f.path} (${f.size}b)`)
+    .join('\n');
+
+  const parts = [
+    skills,
+    '',
+    '# Entorno',
+    `Repository: ${repoOwner}/${repoName}`,
+    `Date: ${new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+    `Response language: ${languageLabel(language)}`,
+    '',
+    '# Autonomy rules',
+    '- If the user asks for a change, make it end to end.',
+    '- If the user says "continue", keep working.',
+    '- If you do not know the exact file, use search_text, glob_files, or list_dir.',
+    '- Do not ask "do you want" questions when you can investigate yourself.',
+    '- Do not narrate plans instead of acting.',
+    '- Use tools immediately when a file must be read, changed, or verified.',
+    '- Do not give a conclusion unless you have actually used a tool or verified the result.',
+    '- If you have not tested anything, say that clearly and keep investigating.',
+    '',
+    'Repository files:',
+    treeLines,
+  ];
+
+  if (state.group) {
+    const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
+    const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
+    const otherLabels = otherKeys.map(k => MODELS[k]?.label || k).join(', ');
+    parts.push(
+      '',
+      '# Group mode (ACTIVE)',
+      `You work with ${otherKeys.length} models: ${otherLabels}.`,
+      'If asked, confirm that you work with other models.',
+    );
+  }
+
+  return parts.join('\n');
+}
+
+function normalizeClassifierText(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
+function looksLikeToolPayload(text) {
+  const sample = text.trimStart().slice(0, 240);
+  if (!sample) return false;
+
+  return /^\{/.test(sample)
+    || XML_TOOL_RE.test(sample)
+    || /^```(?:json)?/i.test(sample)
+    || /"type"\s*:\s*"tool"/i.test(sample)
+    || TOOL_HINT_RE.test(sample);
+}
+
+function looksLikeInternalPlan(text) {
+  const sample = normalizeClassifierText(String(text || '').trimStart().slice(0, 400));
+  if (!sample || looksLikeToolPayload(sample)) return false;
+
+  return INTERNAL_PLAN_START_RE.test(sample) && INTERNAL_PLAN_ACTION_RE.test(sample);
+}
+
+function looksLikeDeferral(text) {
+  const sample = normalizeClassifierText(String(text || '').trimStart().slice(0, 400));
+  if (!sample || looksLikeToolPayload(sample)) return false;
+  return DEFERAL_RE.test(sample);
+}
+
+function looksLikePendingEdit(text) {
+  const sample = normalizeClassifierText(String(text || '').trimStart().slice(0, 700));
+  if (!sample || looksLikeToolPayload(sample)) return false;
+  return PENDING_EDIT_RE.test(sample);
+}
+
+
+function looksLikeActionRequest(text) {
+  const sample = normalizeClassifierText(String(text || ''));
+  if (!sample) return false;
+  return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
+}
+
+function buildForcedWritePrompt(state) {
+  const path = state.lastReadPath || 'archivo-leido';
+  const content = state.lastReadContent || '';
+
+  return [
+    `Ya leiste ${path} y ya identificaste el cambio.`,
+    'No describas el fix.',
+    'Responde AHORA SOLO con un JSON valido de write_file.',
+    `El path debe ser exactamente "${path}".`,
+    'El campo content debe incluir el archivo COMPLETO ya corregido.',
+    'Si de verdad necesitas otro archivo auxiliar, usa read_file para ese archivo. Si no, emite write_file ya.',
+    '',
+    `Archivo actual (${path}):`,
+    content,
+  ].join('\n');
+}
+
+function normalizeRepoPath(value = '') {
+  return String(value).replace(/^\.?\//, '').replace(/\/+$/, '').trim();
+}
+
+function escapeRegex(text) {
+  return text.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+}
+
+function globToRegExp(pattern = '') {
+  const normalized = normalizeRepoPath(pattern);
+  if (!normalized) return /^.*$/;
+
+  let source = '^';
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    const next = normalized[i + 1];
+
+    if (ch === '*' && next === '*') {
+      source += '.*';
+      i++;
+      continue;
+    }
+
+    if (ch === '*') {
+      source += '[^/]*';
+      continue;
+    }
+
+    if (ch === '?') {
+      source += '.';
+      continue;
+    }
+
+    source += escapeRegex(ch);
+  }
+
+  source += '$';
+  return new RegExp(source, 'i');
+}
+
+function matchesPathPrefix(filePath, prefix = '') {
+  const cleanPrefix = normalizeRepoPath(prefix);
+  if (!cleanPrefix) return true;
+  return filePath === cleanPrefix || filePath.startsWith(`${cleanPrefix}/`);
+}
+
+function isLikelyTextFile(file) {
+  if (!file?.path || file.size > 200_000) return false;
+  const dot = file.path.lastIndexOf('.');
+  if (dot === -1) return true;
+  return TEXT_FILE_EXTENSIONS.has(file.path.slice(dot).toLowerCase());
+}
+
+function normalizeReplyFingerprint(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[^\p{L}\p{N}./_-]+/gu, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function getLatestUserPrompt(history) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i];
+    if (item?.role !== 'user') continue;
+    const content = String(item.content || '').trim();
+    if (!content || /^TOOL_RESULT\b/.test(content)) continue;
+    return content;
+  }
+  return '';
+}
+
+function extractMentionedPaths(text, fileTree) {
+  const sample = String(text || '');
+  if (!sample.trim()) return [];
+
+  const found = new Set();
+  const directMatches = sample.match(/(?:[\w.-]+\/)+[\w.-]+\.[\w-]+|[\w.-]+\.[\w-]+/g) || [];
+
+  for (const raw of directMatches) {
+    const token = normalizeRepoPath(raw);
+    if (!token) continue;
+
+    const exact = fileTree.find(file => file.path === token);
+    if (exact) {
+      found.add(exact.path);
+      continue;
+    }
+
+    const bySuffix = fileTree.filter(file => file.path.endsWith(`/${token}`) || file.path === token);
+    for (const file of bySuffix.slice(0, 3)) found.add(file.path);
+  }
+
+  if (found.size) return [...found].slice(0, 3);
+
+  for (const file of fileTree) {
+    const base = file.path.split('/').pop();
+    if (!base) continue;
+    const safe = escapeRegex(base);
+    if (new RegExp(`(^|\\W)${safe}(\\W|$)`, 'i').test(sample)) {
+      found.add(file.path);
+      if (found.size >= 3) break;
+    }
+  }
+
+  return [...found];
+}
+
+function extractSearchPattern(text, fallbackText = '') {
+  const primary = String(text || '');
+  const secondary = String(fallbackText || '');
+
+  const slash = primary.match(/\/([a-z0-9_-]+)/i) || secondary.match(/\/([a-z0-9_-]+)/i);
+  if (slash?.[1]) return slash[1];
+
+  const quoted = primary.match(/["'`](.+?)["'`]/) || secondary.match(/["'`](.+?)["'`]/);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+
+  const candidates = `${primary} ${secondary}`
+    .match(/[A-Za-z_][A-Za-z0-9._/-]{2,}/g) || [];
+
+  const stop = new Set([
+    'quiero', 'cuando', 'muestre', 'muestra', 'usuario', 'nombre', 'nombres',
+    'database', 'desde', 'base', 'datos', 'resolver', 'archivo', 'archivos',
+    'comentario', 'continua', 'corrige', 'arregla', 'problema', 'necesito',
+    'puede', 'puedes', 'debe', 'debes', 'hacer', 'haciendo', 'mencion',
+  ]);
+
+  const token = candidates.find(word => !stop.has(word.toLowerCase()));
+  return token || '';
+}
+
+function getEditTargetScore(path, sourceText = '', latestUserPrompt = '') {
+  let score = 0;
+  const lowerPath = String(path || '').toLowerCase();
+  const filename = lowerPath.split('/').pop() || '';
+  const source = `${sourceText} ${latestUserPrompt}`.toLowerCase();
+  const basenameNoExt = filename.replace(/\.[^.]+$/, '');
+
+  if (filename && source.includes(filename)) score += 10;
+  if (basenameNoExt && source.includes(basenameNoExt)) score += 5;
+  if (lowerPath && source.includes(lowerPath)) score += 12;
+
+  if (/\.(js|ts|jsx|tsx|py|go|java|php|rb)$/.test(lowerPath)) score += 2;
+  if (/^(comandos|commands|cmds|src\/commands|plugins)\//.test(lowerPath)) score += 4;
+  if (/^(core|utils|lib|helpers)\//.test(lowerPath)) score += 1;
+  if (/resolver|database|config|index/.test(filename) && source.includes(filename)) score += 2;
+
+  return score;
+}
+
+function pickWriteTarget(sourceText, conversationMessages, state) {
+  const latestUserPrompt = getLatestUserPrompt(conversationMessages);
+  const available = state.readOrder.filter(path => state.readContents[path]);
+  if (!available.length) return '';
+
+  const mentioned = [
+    ...extractMentionedPaths(sourceText, state.fileTree),
+    ...extractMentionedPaths(latestUserPrompt, state.fileTree),
+  ];
+
+  for (const path of mentioned) {
+    if (state.readContents[path]) return path;
+  }
+
+  let bestPath = available[0];
+  let bestScore = -Infinity;
+
+  for (const path of available) {
+    const score = getEditTargetScore(path, sourceText, latestUserPrompt);
+    if (score > bestScore) {
+      bestScore = score;
+      bestPath = path;
+    }
+  }
+
+  return bestPath;
+}
+
+function buildForcedWritePrompt(state, conversationMessages, sourceText = '') {
+  const path = pickWriteTarget(sourceText, conversationMessages, state) || state.lastReadPath || 'archivo-leido';
+  const content = state.readContents[path] || state.lastReadContent || '';
+  const supportPaths = state.readOrder
+    .filter(item => item !== path && state.readContents[item])
+    .slice(-2);
+
+  return [
+    `Ya leiste ${path} y ya identificaste el cambio.`,
+    'No describas el fix.',
+    'Responde AHORA SOLO con un JSON valido de write_file.',
+    `El path debe ser exactamente "${path}".`,
+    'El campo content debe incluir el archivo COMPLETO ya corregido.',
+    'Cualquier archivo del repo puede ser el objetivo real, incluido core/*. No asumas que core solo es auxiliar.',
+    'Si de verdad necesitas otro archivo auxiliar, usa read_file para ese archivo. Si no, emite write_file ya.',
+    '',
+    `Current target file (${path}):`,
+    content,
+    ...supportPaths.flatMap(item => [
+      '',
+      `Auxiliary file already read (${item}):`,
+      state.readContents[item],
+    ]),
+  ].join('\n');
+}
+
+async function runForcedToolPass({ modelKey, toolCtx, loopState, modelMessages, sourceText = '' }) {
+  const targetPath = pickWriteTarget(sourceText, modelMessages, loopState);
+  if (!targetPath) return null;
+
+  const latestUserPrompt = getLatestUserPrompt(modelMessages);
+  const supportPaths = loopState.readOrder
+    .filter(item => item !== targetPath && loopState.readContents[item])
+    .slice(-2);
+
+  const messages = [
+    {
+      role: 'system',
+      content: [
+        'You are Zyn in recovery mode.',
+        'You must respond ONLY with valid tool JSON.',
+        'Do not explain, do not use markdown, do not write extra text.',
+        'If you already have enough context to edit, respond with write_file.',
+        'If an exact dependency is still missing, respond with read_file for a single file.',
+      ].join(' '),
+    },
+    {
+      role: 'user',
+      content: [
+        `Original request: ${latestUserPrompt}`,
+        sourceText ? `Contexto adicional: ${sourceText}` : '',
+        `Target file: ${targetPath}`,
+        `Current content of ${targetPath}:`,
+        loopState.readContents[targetPath] || '',
+        ...supportPaths.flatMap(item => [
+          '',
+          `Auxiliary file ${item}:`,
+          loopState.readContents[item],
+        ]),
+        '',
+        'Responde ahora SOLO con JSON de tool call.',
+      ].filter(Boolean).join('\n'),
+    },
+  ];
+
+  try {
+    const result = await chatSilent({ messages, modelKey });
+    const parsed = parseAgentResponse(result.answer || '');
+    return parsed.type === 'tool' ? { parsed, raw: result.answer || '' } : null;
+  } catch {
+    return null;
+  }
+}
+
+function getFilesByGlob(fileTree, { pattern, path }) {
+  const regex = globToRegExp(pattern || '**/*');
+  return fileTree
+    .filter(file => matchesPathPrefix(file.path, path))
+    .filter(file => regex.test(file.path))
+    .map(file => file.path);
+}
+
+async function searchTextInRepo(ctx, { pattern, path, glob }) {
+  const query = String(pattern || '').trim();
+  if (!query) return [];
+
+  const regex = glob ? globToRegExp(glob) : null;
+  const candidates = ctx.fileTree
+    .filter(file => matchesPathPrefix(file.path, path))
+    .filter(file => !regex || regex.test(file.path))
+    .filter(isLikelyTextFile)
+    .slice(0, 60);
+
+  const results = [];
+  const needle = query.toLowerCase();
+
+  for (const file of candidates) {
+    try {
+      const current = await readRepoFile(ctx, file.path);
+      const lines = current.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+
+      for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].toLowerCase().includes(needle)) continue;
+        results.push(`${file.path}:${i + 1}: ${lines[i].trim()}`);
+        if (results.length >= 50) return results;
+      }
+    } catch {}
+  }
+
+  return results;
+}
+
+async function attemptAutomaticRecovery(sourceText, conversationMessages, ctx, state) {
+  const fingerprint = normalizeReplyFingerprint(sourceText);
+  const latestUserPrompt = getLatestUserPrompt(conversationMessages);
+  const mentionedPaths = extractMentionedPaths(sourceText, ctx.fileTree);
+
+  for (const path of mentionedPaths) {
+    const key = `read:${path}`;
+    if (state.autoActions.has(key)) continue;
+    state.autoActions.add(key);
+    const toolResult = await executeTool('read_file', { path }, ctx);
+    return {
+      assistant: sourceText,
+      followUps: [{ tool: 'read_file', content: toolResult }],
+    };
+  }
+
+  const pattern = extractSearchPattern(sourceText, latestUserPrompt);
+  if (pattern) {
+    const key = `search:${pattern.toLowerCase()}`;
+    if (!state.autoActions.has(key)) {
+      state.autoActions.add(key);
+      const toolResult = await executeTool('search_text', {
+        pattern,
+        glob: '**/*.js',
+      }, ctx);
+      return {
+        assistant: sourceText,
+        followUps: [{ tool: 'search_text', content: toolResult }],
+      };
+    }
+  }
+
+  if (fingerprint && state.lastFingerprint === fingerprint) {
+    state.repeatCount += 1;
+  } else {
+    state.lastFingerprint = fingerprint;
+    state.repeatCount = 1;
+  }
+
+  return null;
+}
+
+async function readRepoFile(ctx, path) {
+  if (!ctx.fileCache.has(path)) {
+    ctx.fileCache.set(path, githubApi.readFile(ctx.token, ctx.owner, ctx.repo, path));
+  }
+  return ctx.fileCache.get(path);
+}
+
+async function applyToolCall(parsed, answer, toolCtx, loopState, modelMessages) {
+  if (parsed.tool === 'read_file' && parsed.args?.path) {
+    loopState.lastReadPath = parsed.args.path;
+  }
+  if (parsed.tool === 'write_file') {
+    loopState.lastReadPath = parsed.args?.path || loopState.lastReadPath;
+  }
+
+  loopState.toolCalls = (loopState.toolCalls || 0) + 1;
+  const toolResult = await executeTool(parsed.tool, parsed.args, toolCtx);
+
+  if (parsed.tool === 'read_file' && parsed.args?.path) {
+    loopState.lastReadContent = toolResult;
+    loopState.readContents[parsed.args.path] = toolResult;
+    if (!loopState.readOrder.includes(parsed.args.path)) {
+      loopState.readOrder.push(parsed.args.path);
+    }
+    loopState.readCounts[parsed.args.path] = (loopState.readCounts[parsed.args.path] || 0) + 1;
+    loopState.totalReads = (loopState.totalReads || 0) + 1;
+  }
+
+  if (parsed.tool === 'write_file') {
+    loopState.writesDone = (loopState.writesDone || 0) + 1;
+    loopState.totalReads = 0;
+  }
+
+  modelMessages.push({ role: 'assistant', content: answer });
+  modelMessages.push({ role: 'user', content: `TOOL_RESULT [${parsed.tool}]:\n${toolResult}` });
+
+  return { toolResult };
+}
+
+async function executeTool(tool, args, ctx) {
+  ctx.onEvent({ type: 'tool', name: tool, path: args.path || args.query || '' });
+
+  try {
+    switch (tool) {
+      case 'read_file': {
+        const file = await readRepoFile(ctx, args.path);
+        ctx.onEvent({ type: 'tool_done', content: `${args.path} leido` });
+        return file.content;
+      }
+      case 'write_file': {
+        if (!args.content || args.content.length < 2) {
+          const msg = 'Error: empty content. Read the file first with read_file.';
+          ctx.onEvent({ type: 'tool_error', content: msg });
+          return msg;
+        }
+        const writeResult = await githubApi.writeFile(
+          ctx.token,
+          ctx.owner,
+          ctx.repo,
+          args.path,
+          args.content,
+          {
+          name: ctx.authorName,
+          email: ctx.email,
+          },
+        );
+        const shortSha = writeResult.commitSha.slice(0, 7);
+        const commitLabel = shortSha
+          ? `${writeResult.commitMessage} · ${shortSha}`
+          : writeResult.commitMessage;
+        ctx.onEvent({
+          type: 'tool_done',
+          content: `Commit real: ${commitLabel}`,
+          meta: {
+            path: writeResult.path,
+            addedLines: writeResult.addedLines,
+            removedLines: writeResult.removedLines,
+            commitSha: writeResult.commitSha,
+            commitUrl: writeResult.commitUrl,
+          },
+        });
+        return [
+          `Archivo ${writeResult.path} actualizado y commiteado.`,
+          `Diff: +${writeResult.addedLines} -${writeResult.removedLines}`,
+          `Commit real: ${writeResult.commitMessage}`,
+          writeResult.commitSha ? `SHA: ${writeResult.commitSha}` : '',
+          writeResult.commitUrl ? `URL: ${writeResult.commitUrl}` : '',
+          `Autor: ${writeResult.authorName} <${writeResult.authorEmail}>`,
+        ].filter(Boolean).join('\n');
+      }
+      case 'list_dir': {
+        const dir = (args.path || '').replace(/\/$/, '');
+        const items = ctx.fileTree
+          .filter(f => dir ? f.path.startsWith(dir + '/') : true)
+          .slice(0, 100)
+          .map(f => f.path);
+        ctx.onEvent({ type: 'tool_done', content: `${items.length} archivos` });
+        return items.join('\n') || 'Empty directory';
+      }
+      case 'search_text': {
+        const matches = await searchTextInRepo(ctx, args);
+        ctx.onEvent({ type: 'tool_done', content: `${matches.length} coincidencias` });
+        return matches.join('\n') || 'Sin resultados';
+      }
+      case 'glob_files': {
+        const matches = getFilesByGlob(ctx.fileTree, {
+          pattern: args.pattern || args.glob || '**/*',
+          path: args.path || '',
+        }).slice(0, 100);
+        ctx.onEvent({ type: 'tool_done', content: `${matches.length} resultados` });
+        return matches.join('\n') || 'Sin resultados';
+      }
+      case 'file_info': {
+        const info = ctx.fileTree.find(f => f.path === args.path);
+        if (!info) {
+          ctx.onEvent({ type: 'tool_error', content: 'File not found' });
+          return 'File not found en el repo.';
+        }
+        ctx.onEvent({ type: 'tool_done', content: args.path });
+        return `path: ${info.path}\nsize: ${info.size} bytes`;
+      }
+      default: {
+        const msg = `Herramienta "${tool}" no disponible en modo web.`;
+        ctx.onEvent({ type: 'tool_done', content: msg });
+        return msg;
+      }
+    }
+  } catch (err) {
+    const msg = `Error: ${err.message}`;
+    ctx.onEvent({ type: 'tool_error', content: msg });
+    return msg;
+  }
+}
+
+async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted) {
+  const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
+  if (!otherKeys.length) return null;
+
+  onEvent({ type: 'group_start', models: otherKeys.map(k => MODELS[k].label) });
+
+  const withTimeout = (p) => Promise.race([
+    p,
+    new Promise(r => setTimeout(() => r(null), CONCUERDO_TIMEOUT)),
+  ]);
+
+  const results = await Promise.allSettled(
+    otherKeys.map(k => withTimeout(chatSilent({ messages: modelMessages, modelKey: k }).catch(() => null)))
+  );
+
+  const extras = [];
+  for (let i = 0; i < results.length; i++) {
+    if (isAborted?.()) return null;
+    const val = results[i].status === 'fulfilled' ? results[i].value : null;
+    const label = MODELS[otherKeys[i]]?.label || otherKeys[i];
+
+    if (val?.answer?.trim()) {
+      const altParsed = parseAgentResponse(val.answer);
+      if (altParsed.type === 'final' && altParsed.content?.trim()) {
+        extras.push({ content: altParsed.content, label });
+        onEvent({ type: 'group_model', label, status: 'ok' });
+      } else {
+        onEvent({ type: 'group_model', label, status: 'skip' });
+      }
+    } else {
+      onEvent({ type: 'group_model', label, status: 'timeout' });
+    }
+  }
+
+  if (!extras.length) return null;
+
+  onEvent({ type: 'synth_start' });
+  const primaryLabel = MODELS[primaryKey]?.label || primaryKey;
+  const synthMessages = [
+    {
+      role: 'system',
+      content: language === 'es'
+        ? `Eres Zyn. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.`
+        : `You are Zyn. Several models analyzed the same question.\nCreate ONE unified final answer.\nBlend the useful unique points. Be direct. Respond in English.\nDo NOT mention that you are synthesizing or that multiple models are involved.`,
+    },
+    {
+      role: 'user',
+      content: [
+        `Response from ${primaryLabel}:\n${primaryContent}`,
+        ...extras.map(e => `\nResponse from ${e.label}:\n${e.content}`),
+        language === 'es' ? '\nCrea la respuesta final unificada:' : '\nCreate the final unified response:',
+      ].join('\n'),
+    },
+  ];
+  try {
+    let synthAnswer = '';
+    await chat({
+      messages: synthMessages,
+      modelKey: primaryKey,
+      onChunk: (delta, phase) => {
+        if (isAborted?.()) return;
+        if (phase !== 'thinking') {
+          synthAnswer += delta;
+          onEvent({ type: 'synth_delta', content: delta });
+        }
+      },
+    });
+    return synthAnswer.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function runWebAgent({ chatData, user, onEvent, isAborted }) {
+  const { repoOwner, repoName, messages: history } = chatData;
+  const modelKey = chatData.activeModel || DEFAULT_MODEL_KEY;
+  const group = Boolean(chatData.concuerdo || chatData.group);
+
+  const modelLabel = MODELS[modelKey]?.label || modelKey;
+  onEvent({ type: 'model_info', model: modelKey, label: modelLabel, group });
+
+  let fileTree = [];
+  try {
+    fileTree = await githubApi.getTree(user.githubToken, repoOwner, repoName);
+    onEvent({ type: 'status', content: `${fileTree.length} archivos en el repo` });
+  } catch (err) {
+    onEvent({ type: 'error', content: `Error cargando repo: ${err.message}` });
+    return;
+  }
+
+  const systemPrompt = buildSystemPrompt(repoOwner, repoName, fileTree, {
+    group,
+    activeModel: modelKey,
+    language: chatData.language || 'en',
+  });
+
+  const modelMessages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map(m => ({ role: m.role, content: m.content })),
+  ];
+
+  const toolCtx = {
+    token: user.githubToken,
+    owner: repoOwner,
+    repo: repoName,
+    email: user.githubEmail,
+    authorName: user.githubUsername || user.githubName || user.username || 'Zyn',
+    fileTree,
+    fileCache: new Map(),
+    onEvent,
+  };
+  const userLatest = [...history].reverse().find(m => m.role === 'user')?.content || '';
+  const userWantsEdit = USER_WRITE_INTENT_RE.test(normalizeClassifierText(userLatest));
+
+  const loopState = {
+    autoActions: new Set(),
+    lastFingerprint: '',
+    repeatCount: 0,
+    lastReadPath: '',
+    lastReadContent: '',
+    readCounts: {},
+    readContents: {},
+    readOrder: [],
+    totalReads: 0,
+    writesDone: 0,
+    toolCalls: 0,
+    userWantsEdit,
+    fileTree,
+  };
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    if (isAborted?.()) return;
+
+    let answer = '';
+    let thinkingContent = '';
+    let thinkStarted = false;
+    let thinkStart = 0;
+    let streamStarted = false;
+    let isToolBuf = false;
+    let isPlanBuf = false;
+
+    try {
+      const result = await chat({
+        messages: modelMessages,
+        modelKey,
+        onChunk: (delta, phase) => {
+          if (isAborted?.()) return;
+
+          if (phase === 'thinking') {
+            if (!thinkStarted) {
+              thinkStarted = true;
+              thinkStart = Date.now();
+              onEvent({ type: 'thinking_start' });
+            }
+            thinkingContent += delta;
+            onEvent({ type: 'thinking_delta', content: delta });
+            return;
+          }
+
+          answer += delta;
+
+          if (!streamStarted && !isToolBuf && !isPlanBuf) {
+            if (looksLikeToolPayload(answer)) {
+              isToolBuf = true;
+              return;
+            }
+
+            if (
+              looksLikeInternalPlan(answer)
+              || looksLikeDeferral(answer)
+              || looksLikePendingEdit(answer)
+            ) {
+              isPlanBuf = true;
+              return;
+            }
+
+            const trimmed = answer.trimStart();
+            if (trimmed.length < BUFFER_CHECK) return;
+
+            streamStarted = true;
+            onEvent({ type: 'delta', content: answer });
+            return;
+          }
+
+          if (streamStarted) {
+            onEvent({ type: 'delta', content: delta });
+          }
+        },
+      });
+      answer = result.answer || answer;
+    } catch (err) {
+      onEvent({ type: 'error', content: `Error del modelo: ${err.message}` });
+      return;
+    }
+
+    if (thinkStarted) {
+      const dur = ((Date.now() - thinkStart) / 1000).toFixed(1);
+      onEvent({ type: 'thinking_end', duration: dur });
+    }
+
+    if (!String(answer || '').trim()) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      const recovery = await attemptAutomaticRecovery(
+        `${thinkingContent}\n${answer}`.trim(),
+        modelMessages,
+        toolCtx,
+        loopState,
+      );
+      if (recovery) {
+        modelMessages.push({ role: 'assistant', content: recovery.assistant });
+        for (const item of recovery.followUps) {
+          modelMessages.push({ role: 'user', content: `TOOL_RESULT [${item.tool}]:\n${item.content}` });
+        }
+        loopState.repeatCount = 0;
+        continue;
+      }
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'Terminaste de pensar pero no emitiste ninguna respuesta.',
+          'Debes continuar ahora mismo.',
+          'Si necesitas actuar, usa una herramienta.',
+          'Si ya resolviste la tarea, responde solo con el resultado final.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    const parsed = parseAgentResponse(answer);
+
+    if (parsed.type === 'final' && looksLikeToolPayload(parsed.content || answer)) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'Tu ultima salida parecia un tool call JSON malformado o incompleto.',
+          'No muestres JSON al usuario.',
+          'Si necesitas una herramienta, responde SOLO con JSON valido.',
+          'Si ya terminaste, responde SOLO con texto final limpio.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'final' && looksLikeInternalPlan(parsed.content || answer)) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      const recovery = await attemptAutomaticRecovery(
+        parsed.content || answer,
+        modelMessages,
+        toolCtx,
+        loopState,
+      );
+      if (recovery) {
+        modelMessages.push({ role: 'assistant', content: recovery.assistant });
+        for (const item of recovery.followUps) {
+          modelMessages.push({ role: 'user', content: `TOOL_RESULT [${item.tool}]:\n${item.content}` });
+        }
+        loopState.repeatCount = 0;
+        continue;
+      }
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'Tu ultima salida fue un plan interno.',
+          'No expliques tu plan al usuario.',
+          'Si necesitas leer o editar, usa la herramienta correspondiente.',
+          'Si ya terminaste, responde solo con el resultado final.',
+          'Continua la tarea ahora.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'final' && looksLikeDeferral(parsed.content || answer)) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      const recovery = await attemptAutomaticRecovery(
+        parsed.content || answer,
+        modelMessages,
+        toolCtx,
+        loopState,
+      );
+      if (recovery) {
+        modelMessages.push({ role: 'assistant', content: recovery.assistant });
+        for (const item of recovery.followUps) {
+          modelMessages.push({ role: 'user', content: `TOOL_RESULT [${item.tool}]:\n${item.content}` });
+        }
+        loopState.repeatCount = 0;
+        continue;
+      }
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'No pidas permiso ni delegues el siguiente paso.',
+          'Busca los archivos necesarios con las herramientas disponibles, aplica el cambio y solo despues responde con el resultado final.',
+          'Continua ahora.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    if (
+      parsed.type === 'final'
+      && loopState.userWantsEdit
+      && loopState.totalReads >= 2
+      && loopState.readOrder.length > 0
+      && (loopState.writesDone || 0) === 0
+    ) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      if (!loopState.lastReadPath) {
+        loopState.lastReadPath = loopState.readOrder[loopState.readOrder.length - 1];
+        loopState.lastReadContent = loopState.readContents[loopState.lastReadPath] || '';
+      }
+      const forced = await runForcedToolPass({
+        modelKey,
+        toolCtx,
+        loopState,
+        modelMessages,
+        sourceText: `${thinkingContent}\n${parsed.content || answer}`.trim(),
+      });
+      if (forced) {
+        await applyToolCall(forced.parsed, forced.raw, toolCtx, loopState, modelMessages);
+        loopState.repeatCount = 0;
+        continue;
+      }
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: buildForcedWritePrompt(loopState, modelMessages, parsed.content || answer),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'final' && loopState.lastReadPath && looksLikePendingEdit(parsed.content || answer)) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      const forced = await runForcedToolPass({
+        modelKey,
+        toolCtx,
+        loopState,
+        modelMessages,
+        sourceText: `${thinkingContent}\n${parsed.content || answer}`.trim(),
+      });
+      if (forced) {
+        await applyToolCall(forced.parsed, forced.raw, toolCtx, loopState, modelMessages);
+        loopState.repeatCount = 0;
+        continue;
+      }
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: buildForcedWritePrompt(loopState, modelMessages, parsed.content || answer),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'final' && !String(parsed.content || '').trim()) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'Tu respuesta final quedo vacia.',
+          'No la dejes vacia.',
+          'Usa herramientas si hace falta o responde con el resultado final completo.',
+          'Continua ahora.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'final' && looksLikeActionRequest(userLatest) && (loopState.toolCalls || 0) === 0) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'No has usado ninguna herramienta todavia.',
+          'No cierres con una conclusion ni con pasos teoricos.',
+          'Primero intenta una herramienta real adecuada para la tarea.',
+          'Si ninguna herramienta aplica, dilo de forma breve y honesta.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    const fingerprint = normalizeReplyFingerprint(parsed.content || answer);
+    if (fingerprint) {
+      if (loopState.lastFingerprint === fingerprint) {
+        loopState.repeatCount += 1;
+      } else {
+        loopState.lastFingerprint = fingerprint;
+        loopState.repeatCount = 1;
+      }
+    }
+
+    if (parsed.type === 'final' && loopState.repeatCount >= 3) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      const forced = await runForcedToolPass({
+        modelKey,
+        toolCtx,
+        loopState,
+        modelMessages,
+        sourceText: `${thinkingContent}\n${parsed.content || answer}`.trim(),
+      });
+      if (forced) {
+        await applyToolCall(forced.parsed, forced.raw, toolCtx, loopState, modelMessages);
+        loopState.repeatCount = 0;
+        continue;
+      }
+      const recovery = await attemptAutomaticRecovery(
+        `${thinkingContent}\n${parsed.content || answer}`.trim(),
+        modelMessages,
+        toolCtx,
+        loopState,
+      );
+      if (recovery) {
+        modelMessages.push({ role: 'assistant', content: recovery.assistant });
+        for (const item of recovery.followUps) {
+          modelMessages.push({ role: 'user', content: `TOOL_RESULT [${item.tool}]:\n${item.content}` });
+        }
+        loopState.repeatCount = 0;
+        continue;
+      }
+    }
+
+    // ── Final response ──
+    if (parsed.type === 'final') {
+      if (group) {
+        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted);
+        if (synthResult) {
+          chatData.messages.push({ role: 'assistant', content: synthResult, ts: Date.now() });
+          store.saveChat(chatData);
+          onEvent({ type: 'done', content: synthResult });
+          return;
+        }
+      }
+
+      chatData.messages.push({ role: 'assistant', content: parsed.content, ts: Date.now() });
+      store.saveChat(chatData);
+      onEvent({ type: 'done', content: parsed.content });
+      return;
+    }
+
+    // ── Tool call ──
+    if (parsed.type === 'tool') {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      await applyToolCall(parsed, answer, toolCtx, loopState, modelMessages);
+      if (
+        parsed.tool === 'read_file'
+        && parsed.args?.path
+        && (loopState.readCounts[parsed.args.path] >= 3 || loopState.totalReads >= 3)
+      ) {
+        const forced = await runForcedToolPass({
+          modelKey,
+          toolCtx,
+          loopState,
+          modelMessages,
+          sourceText: `${thinkingContent}\n${answer}`.trim(),
+        });
+        if (forced) {
+          await applyToolCall(forced.parsed, forced.raw, toolCtx, loopState, modelMessages);
+          loopState.repeatCount = 0;
+          continue;
+        }
+        modelMessages.push({
+          role: 'user',
+          content: buildForcedWritePrompt(loopState, modelMessages, `${thinkingContent}\n${answer}`.trim()),
+        });
+      }
+    }
+  }
+
+  onEvent({ type: 'error', content: 'Se alcanzo el limite de pasos.' });
+}
+
+module.exports = { runWebAgent };

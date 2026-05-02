@@ -1,0 +1,33 @@
+{
+  "name": "zyn-ai",
+  "version": "1.2.0",
+  "description": "Professional local terminal and web agent",
+  "author": "Maycol y Ado",
+  "bin": {
+    "Zyn": "./zyn.js",
+    "zyn": "./zyn.js"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "start": "node ./zyn.js",
+    "web": "node ./src/web/server.js",
+    "test": "node ./zyn.js test",
+    "check": "node --check ./zyn.js && node --check ./src/cli/runtime.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "ink": "^6.8.0",
+    "keypress": "^0.2.1",
+    "react": "^19.0.0",
+    "session-file-store": "^1.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "preferGlobal": true
+}

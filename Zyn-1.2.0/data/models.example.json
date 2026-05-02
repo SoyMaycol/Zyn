@@ -1,0 +1,15 @@
+{
+  "models": {
+    "local-llama": {
+      "label": "Local Llama",
+      "provider": "ollama",
+      "ollamaModel": "llama3.1:8b"
+    },
+    "my-openai-model": {
+      "label": "Mi modelo OpenAI-compatible",
+      "provider": "openai-compatible",
+      "openaiModel": "gpt-4o-mini",
+      "baseUrl": "https://api.example.com/v1"
+    }
+  }
+}
