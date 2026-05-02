@@ -1,7 +1,6 @@
 const readline = require('readline/promises');
 
 const { handleLocalCommand, printHelp } = require('./commands');
-const { t } = require('../i18n');
 const {
   beginAssistantStream,
   beginThinkingStream,
@@ -86,7 +85,7 @@ async function runSinglePrompt(prompt, options = {}) {
     if (process.stdout.isTTY) {
       await printWelcome();
       printBanner(state);
-      logEvent(state, 'info', resumed ? t(state.language, 'sessionResumed') : t(state.language, 'newSessionCreated'));
+      logEvent(state, 'info', resumed ? 'session resumed' : 'new session');
       console.log('');
     }
 
@@ -112,7 +111,7 @@ async function runInteractiveChatClassic(options = {}) {
   const { state, resumed } = await loadOrCreateSessionState(rl, options);
   await printWelcome();
   printBanner(state);
-  logEvent(state, 'info', resumed ? t(state.language, 'sessionResumed') : t(state.language, 'helpShort'));
+  logEvent(state, 'info', resumed ? 'session resumed' : 'chat active — /help for commands');
   console.log('');
 
   const messageQueue = [];
@@ -132,7 +131,7 @@ async function runInteractiveChatClassic(options = {}) {
     try {
       const handled = await handleLocalCommand(input, state, getCommandDeps());
       if (!handled) {
-        console.log(state.language === 'es' ? 'Comando no reconocido. Usa /help.' : 'Unrecognized command. Use /help.');
+        console.log('Comando no reconocido. Usa /help.');
       }
     } catch (err) {
       console.error(`Error: ${err.message}`);
@@ -176,7 +175,7 @@ async function runInteractiveChatClassic(options = {}) {
       if (!input) continue;
 
       if (input === '/exit' || input === '/quit') {
-        logEvent(state, 'info', t(state.language, 'exitNow'));
+        logEvent(state, 'info', 'Hasta luego');
         break;
       }
 
@@ -196,14 +195,14 @@ async function runInteractiveChatClassic(options = {}) {
 
       while (messageQueue.length > 0) {
         const next = messageQueue.shift();
-        console.log(`\n  \x1b[33m▸\x1b[0m ${state.language === 'es' ? 'procesando mensaje en cola' : 'processing queued message'}: \x1b[97m${shortText(next, 50)}\x1b[0m`);
+        console.log(`\n  \x1b[33m▸\x1b[0m procesando mensaje en cola: \x1b[97m${shortText(next, 50)}\x1b[0m`);
         await processInput(next, { fromQueue: true });
       }
 
       rl.removeListener('line', lineHandler);
 
       if (pendingExit) {
-        logEvent(state, 'info', t(state.language, 'exitNow'));
+        logEvent(state, 'info', 'Hasta luego');
         break;
       }
     }

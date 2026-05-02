@@ -136,12 +136,11 @@ function printBanner(state) {
   const key = state.activeModel || DEFAULT_MODEL_KEY;
   const model = (MODELS[key]?.label || key).toLowerCase();
   const cwd = state.cwd || process.cwd();
-  const lang = state.language || 'en';
 
   console.log('');
   console.log(`  ${c('●', C.accent)} ${c(APP_NAME, C.bold, C.white)}  ${c('·', C.darkGray)}  ${c(model, C.gray)}`);
   console.log(`  ${c('cwd:', C.darkGray)} ${c(cwd, C.gray)}`);
-  console.log(`  ${c(t(lang, 'helpShort'), C.darkGray)}`);
+  console.log(`  ${c('/help for commands', C.darkGray)}`);
   console.log('');
 }
 
@@ -294,8 +293,7 @@ function endThinkingStream(state) {
     }
 
     const elapsed = ((Date.now() - state.thinkingStream.started) / 1000).toFixed(1);
-    const lang = state.language || 'en';
-    process.stderr.write(`  ${c('○', C.gray)} ${c(t(lang, 'thinkingPast'))} ${elapsed}s\n`);
+    process.stderr.write(`  ${c('○', C.gray)} ${c(`thinking ${elapsed}s`, C.dim, C.gray)}\n`);
   }
 
   state.thinkingStream = null;
@@ -418,10 +416,10 @@ function printStatus(state) {
     [t(lang, 'titleLabel'), state.title],
     [t(lang, 'modelLabel'), model],
     [t(lang, 'cwdLabel'), state.cwd],
-    [t(lang, 'autoLabel'), state.autoApprove ? (lang === 'es' ? 'sí' : 'on') : (lang === 'es' ? 'no' : 'off')],
+    [t(lang, 'autoLabel'), state.autoApprove ? 'on' : 'off'],
     [t(lang, 'turnsLabel'), String(state.turnCount)],
     [t(lang, 'messagesLabel'), String(state.history.length)],
-    [t(lang, 'memoryLabel'), state.memorySummary ? (lang === 'es' ? 'sí' : 'yes') : (lang === 'es' ? 'no' : 'no')],
+    [t(lang, 'memoryLabel'), state.memorySummary ? 'yes' : 'no'],
   ];
 
   console.log('');
@@ -480,9 +478,9 @@ function printSession(state) {
   console.log('');
 }
 
-function printSessions(sessions, lang = 'en') {
+function printSessions(sessions) {
   if (sessions.length === 0) {
-    console.log(`  ${c(t(lang, 'noSavedSessions'), C.gray)}`);
+    console.log(`  ${c(t('en', 'noSavedSessions'), C.gray)}`);
     return;
   }
 

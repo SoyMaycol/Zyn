@@ -7,8 +7,7 @@ const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
   'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url', 'fetch_html', 'fetch_json', 'fetch_links', 'fetch_images', 'fetch_meta', 'fetch_text', 'create_media',
-  'web_search', 'web_read',
+  'fetch_url', 'web_search', 'web_read',
 ]);
 
 
@@ -31,26 +30,22 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
   const languageInstructions = language === 'es'
     ? [
         'Responde siempre en español.',
-        'Usa solo español en la respuesta. No mezcles ingles y espanol en la misma salida.',
         'Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
         'Si hace falta, usa herramientas sin pedir permiso extra.',
         'Responde solo con el resultado final o con la siguiente accion concreta.',
         'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
         'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
         'Si la tarea requiere comprobar algo, primero intenta una herramienta real y espera el resultado antes de concluir.',
-        'Cuando uses run_command, incluye timeoutMs si el comando puede colgarse o tardar mucho.',
         'No cierres con una conclusion si todavia no has probado nada.',
       ]
     : [
         'Always respond in English.',
-        'Use only English in the response. Do not mix English and Spanish in the same output.',
         'Execute the task directly. Do not give tutorials or instructions when you can act yourself.',
         'Use tools when needed without asking for extra permission.',
         'Reply only with the final result or the next concrete action.',
         'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
         'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
         'If the task requires verification, try a real tool first and wait for its result before concluding.',
-        'When using run_command, include timeoutMs if the command may hang or take a long time.',
         'Do not end with a conclusion if you have not tested anything yet.',
       ];
 
@@ -178,13 +173,6 @@ const TOOL_ARG_KEYS = {
   append_file: ['path', 'content'],
   replace_in_file: ['path', 'search', 'replace', 'all'],
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
-  fetch_html: ['url'],
-  fetch_json: ['url'],
-  fetch_links: ['url', 'selector', 'limit'],
-  fetch_images: ['url', 'selector', 'limit'],
-  fetch_meta: ['url'],
-  fetch_text: ['url', 'selector', 'limit'],
-  create_media: ['outputPath', 'width', 'height', 'background', 'elements', 'format'],
   web_search: ['query'],
   web_read: ['url'],
 };

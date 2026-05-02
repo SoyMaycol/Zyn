@@ -8,9 +8,6 @@ const {
   CURRENT_SESSION_FILE,
   DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
-  LEGACY_CURRENT_SESSION_FILE,
-  LEGACY_SESSIONS_DIR,
-  LEGACY_TRANSCRIPTS_DIR,
   SESSIONS_DIR,
 } = require('../config');
 const { getTranscriptPath } = require('./transcriptStorage');
@@ -75,45 +72,7 @@ async function setCurrentSessionId(sessionId) {
 
 async function getCurrentSessionId() {
   const data = await readJson(CURRENT_SESSION_FILE);
-  if (data?.sessionId) return data.sessionId;
-
-  const legacy = await readJson(LEGACY_CURRENT_SESSION_FILE);
-  return legacy?.sessionId ?? null;
-}
-
-async function copyIfExists(fromPath, toPath) {
-  try {
-    await fsp.mkdir(path.dirname(toPath), { recursive: true });
-    await fsp.copyFile(fromPath, toPath);
-    return true;
-  } catch (err) {
-    if (err.code === 'ENOENT') return false;
-    throw err;
-  }
-}
-
-async function migrateLegacySessionFiles(sessionId) {
-  if (!sessionId) return null;
-
-  const legacySessionPath = path.join(LEGACY_SESSIONS_DIR, `${sessionId}.json`);
-  const modernSessionPath = getSessionPath(sessionId);
-  const legacyTranscriptPath = path.join(LEGACY_TRANSCRIPTS_DIR, `${sessionId}.jsonl`);
-  const modernTranscriptPath = getTranscriptPath(sessionId);
-
-  const migratedSession = await copyIfExists(legacySessionPath, modernSessionPath);
-  const migratedTranscript = await copyIfExists(legacyTranscriptPath, modernTranscriptPath);
-
-  if (!migratedSession) return null;
-
-  const data = await readJson(modernSessionPath);
-  if (!data) return null;
-
-  return {
-    ...data,
-    sessionId,
-    sessionPath: modernSessionPath,
-    transcriptPath: migratedTranscript ? modernTranscriptPath : (data.transcriptPath || modernTranscriptPath),
-  };
+  return data?.sessionId ?? null;
 }
 
 function applyLoadedState(state, loaded) {
@@ -174,12 +133,7 @@ async function createNewSessionState(rl) {
 async function loadSessionState(sessionId, rl) {
   await ensureSessionStorage();
   const filePath = getSessionPath(sessionId);
-  let data = await readJson(filePath);
-
-  if (!data) {
-    data = await migrateLegacySessionFiles(sessionId);
-  }
-
+  const data = await readJson(filePath);
   if (!data) {
     return null;
   }

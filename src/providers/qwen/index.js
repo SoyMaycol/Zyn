@@ -76,13 +76,13 @@ async function ensureAuth() {
   return signin();
 }
 
-async function createChat(jar, signal, modelId = MODEL) {
+async function createChat(jar, signal) {
   const res = await fetch(`${BASE}/api/v2/chats/new`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
       title: 'New Chat',
-      models: [modelId],
+      models: [MODEL],
       chat_mode: 'normal',
       chat_type: 't2t',
       timestamp: Date.now(),
@@ -98,7 +98,7 @@ async function createChat(jar, signal, modelId = MODEL) {
   return body.data.id;
 }
 
-async function streamCompletion(chatId, prompt, jar, onChunk, signal, modelId = MODEL) {
+async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   const fid = randomUUID();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -114,7 +114,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal, modelId = 
     incremental_output: true,
     chat_id: chatId,
     chat_mode: 'normal',
-    model: modelId,
+    model: MODEL,
     parent_id: null,
     messages: [{
       fid,
@@ -125,7 +125,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal, modelId = 
       user_action: 'chat',
       files: [],
       timestamp: Math.floor(Date.now() / 1000),
-      models: [modelId],
+      models: [MODEL],
       chat_type: 't2t',
       feature_config: {
         thinking_enabled: true,
@@ -213,9 +213,8 @@ async function qwen(prompt, onChunk = null, options = {}) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
-      const modelId = options.modelId || MODEL;
-      const chatId = await createChat(jar, options.signal, modelId);
-      const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal, modelId);
+      const chatId = await createChat(jar, options.signal);
+      const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal);
       return {
         status: true,
         text: result.text,

@@ -8,8 +8,8 @@ function buildUrl(baseUrl) {
 }
 
 async function streamCompletion(messages, modelId, onChunk, signal, options = {}) {
-  const baseUrl = options.baseUrl || options.model?.baseUrl || DEFAULT_BASE_URL;
-  const apiKey = options.apiKey || options.model?.apiKey || DEFAULT_API_KEY;
+  const baseUrl = options.baseUrl || DEFAULT_BASE_URL;
+  const apiKey = options.apiKey || DEFAULT_API_KEY;
   if (!baseUrl) {
     throw new Error('openai-compatible no está configurado. Define OPENAI_COMPAT_BASE_URL.');
   }

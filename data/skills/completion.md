@@ -18,4 +18,3 @@
 - Apply the fix.
 - Verify the result.
 - Report the result plainly.
-- If the task requires an action and you haven't used a tool yet, don't give a final conclusion.

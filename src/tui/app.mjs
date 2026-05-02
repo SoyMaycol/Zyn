@@ -6,7 +6,6 @@ import { EventEmitter } from 'events';
 const require = createRequire(import.meta.url);
 const { runAgentTurn } = require('../core/agent');
 const { handleLocalCommand, SLASH_COMMANDS } = require('../cli/commands');
-const { t, normalizeLanguage } = require('../i18n');
 const {
   loadOrCreateSessionState,
   applyLoadedState,
@@ -24,14 +23,6 @@ const MAX_THINKING_LINES = 20;
 const SPIN_MS = 80;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
-
-function currentLang() {
-  return normalizeLanguage(global.__zynLanguage || 'en');
-}
-
-function uiText(es, en) {
-  return currentLang() === 'es' ? es : en;
-}
 
 const T = {
   bg:          '#0d0d0d',
@@ -381,8 +372,7 @@ function Banner({ model, resumed, width, cwd }) {
     return s + ' '.repeat(Math.max(0, inner - s.length));
   };
 
-  const lang = currentLang();
-  const sessionLabel = resumed ? (lang === 'es' ? 'sesión reanudada' : 'session resumed') : (lang === 'es' ? 'sesión nueva' : 'new session');
+  const sessionLabel = resumed ? 'sesion reanudada' : 'sesion nueva';
   const cwdShort = cwd && cwd.length > inner - 6 ? '...' + cwd.slice(-(inner - 9)) : (cwd || '.');
 
   return h(Box, { flexDirection: 'column', paddingTop: 1, paddingBottom: 0 },
@@ -395,12 +385,12 @@ function Banner({ model, resumed, width, cwd }) {
     ),
     h(Box, {},
       h(Text, { color: T.border }, '  \u2502 '),
-      h(Text, { color: T.textMuted }, pad((lang === 'es' ? 'modelo: ' : 'model: ') + model + ' \u00b7 ' + sessionLabel)),
+      h(Text, { color: T.textMuted }, pad('modelo: ' + model + ' \u00b7 ' + sessionLabel)),
       h(Text, { color: T.border }, ' \u2502'),
     ),
     h(Box, {},
       h(Text, { color: T.border }, '  \u2502 '),
-      h(Text, { color: T.textMuted }, pad((lang === 'es' ? 'cwd: ' : 'cwd: ') + cwdShort)),
+      h(Text, { color: T.textMuted }, pad('cwd: ' + cwdShort)),
       h(Text, { color: T.border }, ' \u2502'),
     ),
     h(Text, { color: T.border }, botLine),
@@ -451,7 +441,7 @@ function UserMessage({ text }) {
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
         h(Text, { color: T.accent, bold: true }, '\u29bf'),
-        h(Text, { color: T.textDim, bold: true }, currentLang() === 'es' ? 'Tú' : 'You'),
+        h(Text, { color: T.textDim, bold: true }, 'You'),
       ),
       h(Box, { paddingLeft: 2 },
         h(Text, { color: T.text, wrap: 'wrap' }, text),
@@ -475,8 +465,8 @@ function ThinkingBlock({ text, elapsed, live, width }) {
   const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '\u25d0';
 
   const label = live
-    ? pulseChar + '  ' + (currentLang() === 'es' ? 'Pensando...' : 'Thinking...')
-    : '\u25d0  ' + (currentLang() === 'es' ? 'Pensé ' : 'Thought ') + elapsed + 's';
+    ? pulseChar + '  Pensando...'
+    : '\u25d0  Penso ' + elapsed + 's';
 
   return h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 1 },
     h(Text, { color: T.textGhost }, label),
@@ -544,10 +534,10 @@ function ConfirmBar({ title, detail }) {
       : null,
     h(Box, { marginTop: 0, paddingLeft: 2, gap: 2 },
       h(Text, { color: T.green, bold: true }, '[y]'),
-      h(Text, { color: T.textMuted }, currentLang() === 'es' ? 'permitir' : 'allow'),
+      h(Text, { color: T.textMuted }, 'permitir'),
       h(Text, { color: T.textInvis }, '\u00b7'),
       h(Text, { color: T.red, bold: true }, '[n]'),
-      h(Text, { color: T.textMuted }, currentLang() === 'es' ? 'denegar' : 'deny'),
+      h(Text, { color: T.textMuted }, 'denegar'),
     ),
   );
 }
@@ -576,13 +566,13 @@ function StatusBar({ model, processing, width, turnCount }) {
           ? h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame])
           : null,
         turnCount > 0
-          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + (currentLang() === 'es' ? (turnCount === 1 ? ' turno' : ' turnos') : (turnCount === 1 ? ' turn' : ' turns')))
+          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + (turnCount === 1 ? ' turno' : ' turnos'))
           : null,
       ),
       h(Box, { gap: 1 },
-        h(Text, { color: T.textInvis }, currentLang() === 'es' ? '/ayuda' : '/help'),
+        h(Text, { color: T.textInvis }, '/help'),
         h(Text, { color: T.textInvis }, '\u00b7'),
-        h(Text, { color: T.textInvis }, currentLang() === 'es' ? 'esc salir' : 'esc exit'),
+        h(Text, { color: T.textInvis }, 'esc salir'),
       ),
     ),
   );
@@ -731,7 +721,7 @@ function InputBar({ onSubmit, processing }) {
   const after = value.slice(cursor + 1);
 
   const promptColor = processing ? T.amber : T.accent;
-  const placeholder = processing ? (currentLang() === 'es' ? ' En cola — escribe y se procesará después...' : ' Queued — type and it will process later...') : (currentLang() === 'es' ? ' Escribe un mensaje...' : ' Type a message...');
+  const placeholder = processing ? ' En cola — escribe y se procesará después...' : ' Escribe un mensaje...';
 
   const inputLine = h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0, marginTop: 1 },
     h(Text, { color: promptColor }, processing ? '\u{1F4E9} ' : '\u276f '),
@@ -779,7 +769,7 @@ function InputBar({ onSubmit, processing }) {
         ? h(Text, { color: T.textInvis }, '  \u2193 mas')
         : null,
       h(Box, { paddingTop: 0 },
-        h(Text, { color: T.textInvis }, currentLang() === 'es' ? 'Tab completar · ↑↓ navegar' : 'Tab complete · ↑↓ navigate'),
+        h(Text, { color: T.textInvis }, 'Tab completar \u00b7 \u2191\u2193 navegar'),
       ),
     ),
   );
@@ -787,20 +777,19 @@ function InputBar({ onSubmit, processing }) {
 
 function App({ store, state, onSubmit }) {
   useStore(store);
-  global.__zynLanguage = state?.language || 'en';
   const { exit } = useApp();
   const { width } = useDimensions();
 
   const modelKey   = state?.activeModel || DEFAULT_MODEL_KEY;
   const modelLabel = state?.concuerdo
-    ? ((state.language === 'es' ? 'Concuerdo' : 'Group') + ' · ' + Object.values(MODELS).map(m => m.label).join(', '))
+    ? 'Concuerdo · ' + Object.values(MODELS).map(m => m.label).join(', ')
     : (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
   const handleInput = useCallback((text) => {
     if (text === '/exit' || text === '/quit') {
       if (store.processing) {
         store.pendingExit = true;
-        store.addEvent('info', uiText('saliendo al terminar el turno actual', 'exiting after current turn'));
+        store.addEvent('info', 'saliendo al terminar el turno actual');
         return;
       }
       exit();
@@ -820,10 +809,10 @@ function App({ store, state, onSubmit }) {
             state.abortCurrentTurn();
           }
           store.pendingExit = false;
-          store.addEvent('warn', uiText('agente detenido', 'agent stopped'), uiText('Interrumpido con ESC x2', 'Interrupted with ESC x2'));
+          store.addEvent('warn', 'agente detenido', 'Interrumpido con ESC x2');
         } else {
           store.lastEscapeAt = now;
-          store.addEvent('info', uiText('pulsa ESC otra vez', 'press ESC again'), uiText('para detener el agente', 'to stop the agent'));
+          store.addEvent('info', 'pulsa ESC otra vez', 'para detener el agente');
         }
         return;
       }
@@ -925,7 +914,7 @@ export async function startTUI(options = {}) {
   const processInput = async (input) => {
     if (input === '/exit' || input === '/quit') {
       store.pendingExit = true;
-      store.addEvent('info', uiText('hasta luego', 'goodbye'));
+      store.addEvent('info', 'hasta luego');
       return;
     }
 
@@ -953,7 +942,7 @@ export async function startTUI(options = {}) {
           const clean = lines.filter(l => l.trim()).join('\n');
           if (clean) store.addItem({ type: 'system', text: clean });
         }
-        if (!handled) store.addEvent('warn', uiText('comando no reconocido', 'unrecognized command'), input);
+        if (!handled) store.addEvent('warn', 'comando no reconocido', input);
       } catch (err) {
         store.addEvent('error', 'error', err.message);
       } finally {

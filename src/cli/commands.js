@@ -4,8 +4,7 @@ const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
-const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels, saveExternalModels, getExternalModelsSnapshot, refreshModels } = require('../config');
-const { describeProviderConfig, listConfiguredProviders, removeProviderConfig, syncProvider, upsertProviderConfig } = require('../providers/catalog');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
@@ -25,7 +24,6 @@ const SLASH_COMMANDS = [
   { name: 'model', desc: 'view/change model' },
   { name: 'models', desc: 'list models' },
   { name: 'providers', desc: 'list providers' },
-  { name: 'provider', desc: 'configure provider' },
   { name: 'lang', desc: 'change language' },
   { name: 'language', desc: 'change language' },
   { name: 'auto', desc: 'auto-approval' },
@@ -52,97 +50,6 @@ function parseSlashCommand(input) {
   return { commandName: withoutSlash.slice(0, spaceIndex), args: withoutSlash.slice(spaceIndex + 1).trim() };
 }
 
-function slugifyKey(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'provider';
-}
-
-function normalizeBaseUrl(value) {
-  return String(value || '').trim().replace(/\/+$/, '');
-}
-
-async function fetchDetectedModelIds(baseUrl, apiKey) {
-  const cleanBase = normalizeBaseUrl(baseUrl);
-  const endpoints = [
-    `${cleanBase}/models`,
-    `${cleanBase}/v1/models`,
-  ];
-
-  const headers = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-  };
-
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
-
-  for (const endpoint of endpoints) {
-    try {
-      const res = await fetch(endpoint, { headers });
-      if (!res.ok) continue;
-      const json = await res.json().catch(() => null);
-      const items = Array.isArray(json?.data) ? json.data : Array.isArray(json?.models) ? json.models : Array.isArray(json) ? json : [];
-      const ids = items
-        .map(item => item?.id || item?.name || item?.model || item?.slug)
-        .filter(Boolean)
-        .map(String);
-      if (ids.length > 0) return ids;
-    } catch {}
-  }
-
-  throw new Error('Unable to detect models from that provider.');
-}
-
-async function registerOpenAICompatibleProvider(state, name, baseUrl, apiKey) {
-  const modelIds = await fetchDetectedModelIds(baseUrl, apiKey);
-  const cleanBase = normalizeBaseUrl(baseUrl);
-  const external = getExternalModelsSnapshot();
-  const used = new Set(Object.keys(MODELS));
-  const prefix = slugifyKey(name);
-
-  for (const modelId of modelIds) {
-    const modelSlug = slugifyKey(modelId);
-    let key = `${prefix}-${modelSlug}`;
-    let counter = 2;
-    while (used.has(key)) {
-      key = `${prefix}-${modelSlug}-${counter++}`;
-    }
-    used.add(key);
-    external[key] = {
-      label: `${name} / ${modelId}`,
-      provider: 'openai-compatible',
-      providerGroup: name,
-      providerLabel: name,
-      baseUrl: cleanBase,
-      apiKey,
-      openaiModel: modelId,
-      remoteProviderName: name,
-      remoteModelId: modelId,
-    };
-  }
-
-  await saveExternalModels(external);
-  refreshModels();
-  return modelIds;
-}
-
-async function removeProviderModels(name) {
-  const external = getExternalModelsSnapshot();
-  const next = {};
-  for (const [key, model] of Object.entries(external)) {
-    if ((model.providerGroup || model.remoteProviderName || model.provider) === name) continue;
-    next[key] = model;
-  }
-  await saveExternalModels(next);
-  refreshModels();
-}
-
 function printHelp(state = {}) {
   const { paint } = require('./print');
   const lang = normalizeLanguage(state.language || DEFAULT_LANGUAGE);
@@ -163,12 +70,9 @@ function printHelp(state = {}) {
     console.log(`    /${cmd.name.padEnd(14)} ${m(cmd.desc)}`);
   }
   console.log('');
-  console.log(`  /config lang en|es   ${m(lang === 'es' ? 'cambiar idioma de sesión' : 'change session language')}`);
-  console.log(`  /config model KEY    ${m(lang === 'es' ? 'cambiar modelo activo' : 'change active model')}`);
-  console.log(`  /config show         ${m(lang === 'es' ? 'mostrar configuración actual' : 'show current config')}`);
-  console.log(`  /provider add NAME URL KEY ${m(lang === 'es' ? 'registrar proveedor y detectar modelos' : 'register provider + auto-detect models')}`);
-  console.log(`  /provider list       ${m(lang === 'es' ? 'listar proveedores remotos guardados' : 'list saved remote providers')}`);
-  console.log(`  /provider remove NAME ${m(lang === 'es' ? 'eliminar modelos del proveedor' : 'remove provider models')}`);
+  console.log(`  /config lang en|es   ${m('change session language')}`);
+  console.log(`  /config model KEY    ${m('change active model')}`);
+  console.log(`  /config show         ${m('show current config')}`);
   console.log('');
   console.log(`  ${m(t(lang, 'escTwice'))}`);
   console.log(`    ${m(t(lang, 'escTwiceDesc'))}`);
@@ -329,7 +233,7 @@ async function handleLocalCommand(input, state, deps) {
       type: 'system',
       content: `Title updated: ${args}`,
     });
-    console.log(`${t(state.language, 'titleLabel')}: ${state.title}`);
+    console.log(`Title updated: ${state.title}`);
     return true;
   }
 
@@ -366,7 +270,7 @@ async function handleLocalCommand(input, state, deps) {
         type: 'system',
         content: `Model switched to: ${MODELS[key].label}`,
       });
-      console.log(`${t(state.language, 'modelLabel')}: ${MODELS[key].label}`);
+      console.log(`Model: ${MODELS[key].label}`);
       return true;
     }
 
@@ -376,7 +280,7 @@ async function handleLocalCommand(input, state, deps) {
       }
       state.autoApprove = value === 'on';
       await saveState(state);
-      console.log(state.autoApprove ? (state.language === 'es' ? 'Aprobación automática activada.' : 'Auto approval enabled.') : (state.language === 'es' ? 'Aprobación automática desactivada.' : 'Auto approval disabled.'));
+      console.log(state.autoApprove ? 'Auto approval enabled.' : 'Auto approval disabled.');
       return true;
     }
 
@@ -386,7 +290,7 @@ async function handleLocalCommand(input, state, deps) {
       }
       state.concuerdo = value === 'on';
       await saveState(state);
-      console.log(state.concuerdo ? (state.language === 'es' ? 'Modo grupo activado.' : 'Group mode enabled.') : (state.language === 'es' ? 'Modo grupo desactivado.' : 'Group mode disabled.'));
+      console.log(state.concuerdo ? 'Group mode enabled.' : 'Group mode disabled.');
       return true;
     }
 
@@ -436,97 +340,6 @@ async function handleLocalCommand(input, state, deps) {
   if (commandName === 'models') {
     printModels();
     return true;
-  }
-
-  if (commandName === 'provider') {
-    const [sub = 'list', ...rest] = args ? args.split(/\s+/) : ['list'];
-
-    if (sub === 'list') {
-      const providers = listConfiguredProviders();
-      console.log('');
-      if (providers.length === 0) {
-        console.log('  No provider configs saved yet.');
-      }
-      for (const provider of providers) {
-        console.log(`  ${provider.provider || provider.key}`);
-        console.log(`    baseUrl : ${normalizeBaseUrl(provider.baseUrl || '') || '[none]'}`);
-        console.log(`    apiKey  : ${provider.apiKey ? '[saved]' : '[none]'}`);
-        console.log(`    models  : ${Number(provider.modelCount || 0)}`);
-      }
-      console.log('');
-      return true;
-    }
-
-    if (sub === 'show') {
-      const providerKey = (rest[0] || '').trim();
-      if (!providerKey) throw new Error('Use /provider show <provider>');
-      const cfg = describeProviderConfig(providerKey);
-      if (!cfg) throw new Error(`Provider not configured: ${providerKey}`);
-      console.log('');
-      console.log(`  provider : ${cfg.provider || providerKey}`);
-      console.log(`  baseUrl  : ${normalizeBaseUrl(cfg.baseUrl || '') || '[none]'}`);
-      console.log(`  apiKey   : ${cfg.apiKey ? '[saved]' : '[none]'}`);
-      console.log(`  models   : ${Number(cfg.modelCount || 0)}`);
-      console.log('');
-      return true;
-    }
-
-    if (sub === 'remove' || sub === 'delete') {
-      const providerKey = (rest[0] || '').trim();
-      if (!providerKey) throw new Error('Use /provider remove <provider>');
-      removeProviderConfig(providerKey);
-      for (const key of Object.keys(MODELS)) {
-        if (MODELS[key]?.provider === providerKey) delete MODELS[key];
-      }
-      console.log(`Provider removed: ${providerKey}`);
-      return true;
-    }
-
-    if (sub === 'set' || sub === 'config' || sub === 'add') {
-      const providerKey = (rest[0] || '').trim();
-      const baseUrl = (rest[1] || '').trim();
-      const apiKey = rest.slice(2).join(' ').trim();
-      if (!providerKey) throw new Error('Use /provider set <provider> <baseUrl> <apiKey>');
-
-      const normalizedKey = providerKey.toLowerCase();
-      const allowed = new Set(['ollama', 'openai-compatible', 'zen', 'qwen']);
-      if (!allowed.has(normalizedKey)) {
-        throw new Error(`Provider not supported: ${providerKey}`);
-      }
-
-      const config = {
-        baseUrl: baseUrl || undefined,
-        apiKey: apiKey || undefined,
-      };
-      upsertProviderConfig(normalizedKey, config);
-      const models = await syncProvider(normalizedKey);
-      for (const key of Object.keys(MODELS)) {
-        if (MODELS[key]?.provider === normalizedKey) delete MODELS[key];
-      }
-      for (const model of models) {
-        MODELS[model.key] = model;
-      }
-      console.log(`Provider configured: ${normalizedKey}`);
-      console.log(`Models: ${models.map(m => m.key).join(', ')}`);
-      return true;
-    }
-
-    if (sub === 'sync') {
-      const providerKey = (rest[0] || '').trim().toLowerCase();
-      if (!providerKey) throw new Error('Use /provider sync <provider>');
-      const models = await syncProvider(providerKey);
-      for (const key of Object.keys(MODELS)) {
-        if (MODELS[key]?.provider === providerKey) delete MODELS[key];
-      }
-      for (const model of models) {
-        MODELS[model.key] = model;
-      }
-      console.log(`Provider synced: ${providerKey}`);
-      console.log(`Models: ${models.map(m => m.key).join(', ')}`);
-      return true;
-    }
-
-    throw new Error('Use /provider list|show|set|sync|remove');
   }
 
   if (commandName === 'providers') {

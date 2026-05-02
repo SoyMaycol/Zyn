@@ -1,11 +1,6 @@
 const { REQUEST_TIMEOUT_MS } = require('../../config');
 
-const DEFAULT_BASE_URL = 'https://opencode.ai/zen/v1';
-
-function normalizeBaseUrl(baseUrl = DEFAULT_BASE_URL) {
-  const value = String(baseUrl || DEFAULT_BASE_URL).trim().replace(/\/$/, '');
-  return value.endsWith('/v1') ? value : `${value}/v1`;
-}
+const BASE = 'https://opencode.ai/zen/v1';
 
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -15,7 +10,7 @@ const HEADERS = {
   'Referer': 'https://opencode.ai/',
 };
 
-async function streamCompletion(messages, modelId, onChunk, signal, baseUrl = DEFAULT_BASE_URL) {
+async function streamCompletion(messages, modelId, onChunk, signal) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const onExternalAbort = () => controller.abort();
@@ -25,8 +20,7 @@ async function streamCompletion(messages, modelId, onChunk, signal, baseUrl = DE
   }
 
   try {
-    const base = normalizeBaseUrl(baseUrl);
-    const res = await fetch(`${base}/chat/completions`, {
+    const res = await fetch(`${BASE}/chat/completions`, {
       method: 'POST',
       headers: HEADERS,
       body: JSON.stringify({
@@ -91,7 +85,7 @@ async function zen(messages, modelId, onChunk = null, options = {}) {
   const MAX_RETRIES = 2;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const result = await streamCompletion(messages, modelId, onChunk, options.signal, options.baseUrl);
+      const result = await streamCompletion(messages, modelId, onChunk, options.signal);
       return {
         status: true,
         text: result.text,
