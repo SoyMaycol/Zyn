@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -67,16 +67,16 @@
           <span class="text-emerald-600 font-bold text-lg">A</span>
         </div>
         <h1 class="text-base font-semibold tracking-tight">Zyn</h1>
-        <p class="text-[11px] text-neutral-400 mt-1">agente de ingenieria de software</p>
+        <p class="text-[11px] text-neutral-400 mt-1">software engineering agent</p>
       </div>
       <div class="space-y-2.5">
         <input id="authUser" type="text" placeholder="username" autocomplete="username"
           class="w-full px-3 py-2.5 rounded-xl bg-white border border-neutral-200 text-sm focus:border-neutral-400 outline-none transition-colors placeholder-neutral-300">
-        <input id="authPass" type="password" placeholder="contrasena" autocomplete="current-password"
+        <input id="authPass" type="password" placeholder="password" autocomplete="current-password"
           class="w-full px-3 py-2.5 rounded-xl bg-white border border-neutral-200 text-sm focus:border-neutral-400 outline-none transition-colors placeholder-neutral-300">
         <button id="authBtn" onclick="doAuth()"
           class="w-full py-2.5 rounded-xl bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-800 active:scale-[0.98] transition-all">
-          Entrar
+          Sign in
         </button>
       </div>
       <p class="text-center mt-4 text-[11px] text-neutral-400">
@@ -106,12 +106,12 @@
 
       <div class="px-3 py-2">
         <button onclick="showRepoSelector()" class="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-[11px] transition-colors text-neutral-500">
-          <span class="text-emerald-600">+</span> Nuevo chat
+          <span class="text-emerald-600">+</span> New chat
         </button>
       </div>
 
       <div class="flex-1 overflow-y-auto px-2 py-1 space-y-0.5" id="chatList">
-        <p class="text-[11px] text-neutral-300 px-2 py-4 text-center">Sin chats</p>
+        <p class="text-[11px] text-neutral-300 px-2 py-4 text-center">No chats yet</p>
       </div>
 
       <div class="px-3 py-3 border-t border-neutral-100">
@@ -122,7 +122,7 @@
           </div>
           <div class="flex items-center gap-0.5">
             <button onclick="openSettings()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Settings">⚙</button>
-            <button onclick="doLogout()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Logout">↗</button>
+            <button onclick="doLog out()" class="w-6 h-6 rounded hover:bg-neutral-100 flex items-center justify-center transition-colors text-neutral-400 text-[10px]" title="Log out">↗</button>
           </div>
         </div>
       </div>
@@ -145,6 +145,9 @@
           </div>
           <button id="groupBtn" onclick="toggleConcuerdo()" class="hidden px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent" title="Group mode">
             ⊕ group
+          </button>
+          <button id="langBtn" onclick="toggleLanguage()" class="hidden px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent" title="Language">
+            EN
           </button>
         </div>
       </div>
@@ -192,7 +195,7 @@
         <button onclick="closeRepoSheet()" class="w-7 h-7 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors text-neutral-500 text-xs">✕</button>
       </div>
       <div class="px-4 py-2">
-        <input id="repoSearch" type="text" placeholder="buscar..." oninput="filterRepos()"
+        <input id="repoSearch" type="text" placeholder="search..." oninput="filterRepos()"
           class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
       </div>
       <div id="repoList" class="overflow-y-auto flex-1 px-4 pb-4 space-y-0.5">
@@ -214,10 +217,10 @@
           <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">GitHub token</label>
           <input id="setToken" type="password" placeholder="ghp_xxxxxxxxxxxx"
             class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
-          <p class="text-[10px] text-neutral-300 mt-1">Permisos: repo, read:user</p>
+          <p class="text-[10px] text-neutral-300 mt-1">Permissions: repo, read:user</p>
         </div>
         <div>
-          <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">Email de GitHub</label>
+          <label class="text-[11px] text-neutral-500 mb-1.5 block font-medium">GitHub email</label>
           <input id="setEmail" type="email" placeholder="tu@email.com"
             class="w-full px-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-sm focus:border-neutral-400 outline-none placeholder-neutral-300">
         </div>
@@ -239,12 +242,14 @@
     let models = [];
     let defaultModel = 'qwen';
     let chatSettings = {};
+    let currentLanguage = 'en';
     let isStreaming = false;
     let slashIdx = -1;
 
     const SLASH_COMMANDS = [
       { cmd: '/concuerdo', desc: 'Toggle group mode', icon: '⊕' },
       { cmd: '/model', desc: 'Change AI model', icon: '◈' },
+      { cmd: '/lang', desc: 'Change language', icon: '🌐' },
       { cmd: '/clear', desc: 'Clear messages', icon: '⌧' },
       { cmd: '/help', desc: 'View commands', icon: '?' },
     ];
@@ -258,7 +263,7 @@
       });
       if (res.status === 401 && !url.includes('/auth/')) {
         showAuth();
-        throw new Error('Sesion expirada');
+        throw new Error('Session expired');
       }
       return res;
     }
@@ -326,7 +331,7 @@
     // Auth
     function toggleAuthMode() {
       authMode = authMode === 'login' ? 'register' : 'login';
-      $('authBtn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+      $('authBtn').textContent = authMode === 'login' ? 'Sign in' : 'Create account';
       $('authToggle').textContent = authMode === 'login' ? 'No account? Sign up' : 'Already have an account? Sign in';
       $('authError').classList.add('hidden');
     }
@@ -349,11 +354,11 @@
         $('authError').classList.remove('hidden');
       } finally {
         $('authBtn').disabled = false;
-        $('authBtn').textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+        $('authBtn').textContent = authMode === 'login' ? 'Sign in' : 'Create account';
       }
     }
 
-    async function doLogout() {
+    async function doLog out() {
       await api('/api/auth/logout', { method: 'POST' });
       currentUser = null;
       currentChatId = null;
@@ -400,7 +405,7 @@
     function renderChatList(chats) {
       const el = $('chatList');
       if (!chats.length) {
-        el.innerHTML = '<p class="text-[11px] text-neutral-300 px-2 py-4 text-center">Sin chats</p>';
+        el.innerHTML = '<p class="text-[11px] text-neutral-300 px-2 py-4 text-center">No chats yet</p>';
         return;
       }
       el.innerHTML = chats.map(c => `
@@ -419,24 +424,26 @@
       try {
         const res = await api(`/api/chats/${chatId}`);
         const chat = await res.json();
-        chatSettings = { activeModel: chat.activeModel || defaultModel, concuerdo: chat.concuerdo || false };
+        chatSettings = { activeModel: chat.activeModel || defaultModel, concuerdo: chat.concuerdo || false, language: chat.language || 'en' };
+        currentLanguage = chatSettings.language;
         $('chatTitle').textContent = chat.title;
         $('emptyState').classList.add('hidden');
         $('chatView').classList.remove('hidden');
         $('modelBtn').classList.remove('hidden');
         $('modelBtn').classList.add('flex');
         $('groupBtn').classList.remove('hidden');
+        $('langBtn').classList.remove('hidden');
         updateModelUI();
         renderMessages(chat.messages);
         loadChats();
         if (window.innerWidth < 1024) toggleSidebar();
       } catch {
-        showToast('Error abriendo chat');
+        showToast('Error opening chat');
       }
     }
 
     async function deleteChat(chatId) {
-      if (!confirm('Eliminar este chat?')) return;
+      if (!confirm('Delete this chat?')) return;
       try {
         await api(`/api/chats/${chatId}`, { method: 'DELETE' });
         if (chatId === currentChatId) {
@@ -447,11 +454,12 @@
           $('chatTitle').textContent = 'Zyn';
           $('modelBtn').classList.add('hidden');
           $('groupBtn').classList.add('hidden');
+          $('langBtn').classList.add('hidden');
         }
         loadChats();
-        showToast('Chat eliminado');
+        showToast('Chat deleted');
       } catch {
-        showToast('Error eliminando');
+        showToast('Error deleting');
       }
     }
 
@@ -489,7 +497,7 @@
       updateModelUI();
       try {
         await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ activeModel: key }) });
-        showToast(`Modelo: ${models.find(m => m.key === key)?.label || key}`);
+        showToast(`Model: ${models.find(m => m.key === key)?.label || key}`);
       } catch {}
     }
 
@@ -503,10 +511,25 @@
       } catch {}
     }
 
+    async function toggleLanguage() {
+      if (!currentChatId) return;
+      const next = (chatSettings.language || currentLanguage || 'en') === 'en' ? 'es' : 'en';
+      chatSettings.language = next;
+      currentLanguage = next;
+      updateModelUI();
+      try {
+        await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ language: next }) });
+        showToast(next === 'en' ? 'Language: English' : 'Idioma: Español');
+      } catch {}
+    }
+
     function updateModelUI() {
       const active = chatSettings.activeModel || defaultModel;
       const label = models.find(m => m.key === active)?.label || active;
       $('modelLabel').textContent = label.toLowerCase();
+      const langBtn = $('langBtn');
+      const lang = chatSettings.language || currentLanguage || 'en';
+      if (langBtn) langBtn.textContent = lang.toUpperCase();
       const btn = $('groupBtn');
       if (chatSettings.concuerdo) {
         btn.className = 'flex px-2.5 py-1 rounded-lg text-[10px] transition-all bg-emerald-50 text-emerald-600 border border-emerald-200';
@@ -514,7 +537,7 @@
         btn.className = 'flex px-2.5 py-1 rounded-lg text-[10px] transition-all text-neutral-300 hover:text-neutral-500 border border-transparent';
       }
       const modelNames = models.map(m => m.label.toLowerCase()).join(', ');
-      $('statusBar').textContent = chatSettings.concuerdo ? `⊕ group · ${modelNames}` : label.toLowerCase();
+      $('statusBar').textContent = chatSettings.concuerdo ? `⊕ group · ${modelNames} · ${lang.toUpperCase()}` : `${label.toLowerCase()} · ${lang.toUpperCase()}`;
     }
 
     // Messages
@@ -576,6 +599,7 @@
       autoResize($('chatInput'));
       if (cmd === '/concuerdo') toggleConcuerdo();
       else if (cmd === '/model') toggleModelMenu();
+      else if (cmd === '/lang') toggleLanguage();
       else if (cmd === '/clear') { $('messagesArea').innerHTML = ''; showToast('Chat cleared'); }
       else if (cmd === '/help') {
         const area = $('messagesArea');
@@ -888,7 +912,7 @@
           $('repoList').innerHTML = `
             <div class="text-center py-8">
               <p class="text-[11px] text-red-500">${esc(err.message)}</p>
-              <button onclick="closeRepoSheet(); openSettings()" class="mt-3 px-4 py-2 rounded-xl bg-neutral-100 text-[11px] text-neutral-600">Configurar token</button>
+              <button onclick="closeRepoSheet(); openSettings()" class="mt-3 px-4 py-2 rounded-xl bg-neutral-100 text-[11px] text-neutral-600">Set up token</button>
             </div>`;
           return;
         }
@@ -916,7 +940,7 @@
               <p class="text-[12px] font-medium text-neutral-700 truncate">${esc(r.fullName)}</p>
               <div class="flex items-center gap-2 mt-0.5">
                 ${r.language ? `<span class="text-[10px] text-neutral-400">${esc(r.language)}</span>` : ''}
-                ${r.private ? '<span class="text-[10px] text-amber-600">privado</span>' : ''}
+                ${r.private ? '<span class="text-[10px] text-amber-600">private</span>' : ''}
                 <span class="text-[10px] text-neutral-300">${timeAgo(r.updatedAt)}</span>
               </div>
             </div>
@@ -932,7 +956,7 @@
         const chat = await res.json();
         openChat(chat.id);
       } catch {
-        showToast('Error creando chat');
+        showToast('Error creating chat');
       }
     }
 
@@ -962,7 +986,7 @@
         currentUser.hasGithub = true;
         currentUser.githubEmail = githubEmail;
       } catch (err) {
-        showToast(err.message || 'Error guardando');
+        showToast(err.message || 'Error saving');
       }
     }
 

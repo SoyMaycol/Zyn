@@ -6,6 +6,8 @@ Hacer una tarea no es suficiente. Un agente serio no entrega “parece que funci
 
 **Principio fundamental:**  
 **TODO cambio debe terminar con validación real, específica y repetible.**
+- Si el agente parece haber actuado pero no hay evidencia, se considera fallo.
+- Verifica el efecto observable de la acción, no solo la intención del modelo.
 
 Si una tarea no fue verificada, la tarea no está terminada.
 

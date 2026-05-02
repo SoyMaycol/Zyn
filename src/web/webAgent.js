@@ -1,7 +1,7 @@
-const { chat, chatSilent } = require('../src/model/scraperClient');
-const { parseAgentResponse } = require('../src/core/prompts');
-const { buildSkillsPrompt } = require('../src/core/skills');
-const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
+const { chat, chatSilent } = require('../providers/scraperClient');
+const { parseAgentResponse } = require('../core/prompts');
+const { buildSkillsPrompt } = require('../core/skills');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS } = require('../config');
 const { normalizeLanguage } = require('../i18n');
 const githubApi = require('./githubApi');
 const store = require('./store');
@@ -26,6 +26,7 @@ const TEXT_FILE_EXTENSIONS = new Set([
 
 function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
   const skills = buildSkillsPrompt({ include: WEB_SKILLS });
+  const language = normalizeLanguage(state.language || DEFAULT_LANGUAGE);
   const treeLines = fileTree
     .filter(f => !f.path.includes('node_modules/') && !f.path.includes('.git/'))
     .slice(0, 200)
@@ -35,15 +36,24 @@ function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
   const parts = [
     skills,
     '',
-    '# Entorno',
+    language === 'es' ? '# Entorno' : '# Environment',
     `Repository: ${repoOwner}/${repoName}`,
-    `Date: ${new Date().toLocaleDateString(normalizeLanguage(state.language) === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+    `Date: ${new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
     '',
     '# Autonomy rules',
-    '- If the user asks for a change, make it end to end.',
-    '- If the user says "continue", keep working.',
-    '- If you do not know the exact file, use search_text, glob_files, or list_dir.',
-    '- Do not ask "do you want" questions when you can investigate yourself.',
+    ...(language === 'es' ? [
+      '- Si el usuario pide un cambio, hazlo de principio a fin.',
+      '- Si el usuario dice "continua", sigue trabajando.',
+      '- Si no conoces el archivo exacto, usa search_text, glob_files o list_dir.',
+      '- No hagas preguntas de "quieres que" cuando puedas investigar por tu cuenta.',
+      '- Si el usuario pide instalar algo, usa la herramienta adecuada y completa la tarea.',
+    ] : [
+      '- If the user asks for a change, make it end to end.',
+      '- If the user says "continue", keep working.',
+      '- If you do not know the exact file, use search_text, glob_files, or list_dir.',
+      '- Do not ask "do you want" questions when you can investigate yourself.',
+      '- If the user asks to install something, use the appropriate tool and finish the task.',
+    ]),
     '',
     'Repository files:',
     treeLines,
@@ -585,7 +595,7 @@ async function executeTool(tool, args, ctx) {
   }
 }
 
-async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted) {
+async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted, language = 'en') {
   const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
   if (!otherKeys.length) return null;
 
@@ -626,7 +636,7 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
   const synthMessages = [
     {
       role: 'system',
-      content: 'Eres Zyn. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.',
+      content: language === 'es' ? 'Eres Zyn. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.' : 'You are Zyn. Several models analyzed the same question.\nCreate ONE unified final answer.\nIntegrate unique perspectives. Be direct. Respond in English.\nDo NOT mention that you are synthesizing or that multiple models are involved.',
     },
     {
       role: 'user',
@@ -661,6 +671,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const { repoOwner, repoName, messages: history } = chatData;
   const modelKey = chatData.activeModel || DEFAULT_MODEL_KEY;
   const group = chatData.group || false;
+  const language = normalizeLanguage(chatData.language || DEFAULT_LANGUAGE);
 
   const modelLabel = MODELS[modelKey]?.label || modelKey;
   onEvent({ type: 'model_info', model: modelKey, label: modelLabel, group });
@@ -677,6 +688,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const systemPrompt = buildSystemPrompt(repoOwner, repoName, fileTree, {
     group,
     activeModel: modelKey,
+    language,
   });
 
   const modelMessages = [
@@ -876,11 +888,9 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       modelMessages.push({ role: 'assistant', content: answer });
       modelMessages.push({
         role: 'user',
-        content: [
-          'No pidas permiso ni delegues el siguiente paso.',
-          'Busca los archivos necesarios con las herramientas disponibles, aplica el cambio y solo despues responde con el resultado final.',
-          'Continua ahora.',
-        ].join(' '),
+        content: language === 'es'
+          ? 'No pidas permiso ni delegues el siguiente paso. Usa las herramientas disponibles, aplica el cambio y responde solo con el resultado final.'
+          : 'Do not ask for permission or delegate the next step. Use the available tools, apply the change, and reply only with the final result.',
       });
       continue;
     }
@@ -997,7 +1007,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     // ── Final response ──
     if (parsed.type === 'final') {
       if (group) {
-        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted);
+        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted, language);
         if (synthResult) {
           chatData.messages.push({ role: 'assistant', content: synthResult, ts: Date.now() });
           store.saveChat(chatData);

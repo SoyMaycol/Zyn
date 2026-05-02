@@ -945,6 +945,18 @@ function parseDirectAction(input) {
     };
   }
 
+  const ollamaInstallMatch = text.match(/^(?:instala|install|setup|configura|set up)\s+ollama\b.*$/i);
+  if (ollamaInstallMatch) {
+    const isTermux = !!(process.env.TERMUX_VERSION || process.env.TERMUX_PREFIX || String(process.env.PREFIX || '').includes('com.termux'));
+    const command = isTermux
+      ? 'pkg update -y && pkg install -y ollama'
+      : 'curl -fsSL https://ollama.com/install.sh | sh';
+    return {
+      tool: 'run_command',
+      args: { command },
+    };
+  }
+
   const listLooseMatch = text.match(
     /^(?:ls|dir|lista)\s+([/~.\w-][^\s]*)$/i,
   );
