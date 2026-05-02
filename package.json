@@ -1,6 +1,6 @@
 {
   "name": "zyn-ai",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Professional local terminal and web agent",
   "author": "Maycol y Ado",
   "bin": {
