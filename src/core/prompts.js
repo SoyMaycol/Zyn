@@ -2,7 +2,7 @@ const { normalizeText } = require('../utils/text');
 const { buildSkillsPrompt } = require('./skills');
 const { getToolPromptText } = require('../tools');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
-const { normalizeLanguage, languageLabel } = require('../i18n');
+const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
@@ -11,8 +11,8 @@ const KNOWN_TOOLS = new Set([
 ]);
 
 
-function buildSystemPrompt(cwd, state = {}) {
-  const language = normalizeLanguage(state.language);
+function buildSystemPrompt(cwd, state = {}, options = {}) {
+  const language = normalizeLanguage(options.language || state.language || detectLanguage(options.input || '', state.language));
   const platform = process.platform === 'linux' ? 'Linux'
     : process.platform === 'darwin' ? 'macOS'
     : process.platform;
@@ -35,9 +35,8 @@ function buildSystemPrompt(cwd, state = {}) {
         'Responde solo con el resultado final o con la siguiente accion concreta.',
         'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
         'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
-        'Antes de dar por terminada una tarea tecnica, verifica el resultado con la herramienta adecuada.',
-        'Si no probaste lo que hiciste, no lo presentes como concluido.',
-        'Si necesitas leer, editar o ejecutar, usa una herramienta ahora mismo.',
+        'Si la tarea requiere comprobar algo, primero intenta una herramienta real y espera el resultado antes de concluir.',
+        'No cierres con una conclusion si todavia no has probado nada.',
       ]
     : [
         'Always respond in English.',
@@ -46,9 +45,8 @@ function buildSystemPrompt(cwd, state = {}) {
         'Reply only with the final result or the next concrete action.',
         'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
         'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
-        'Before treating a technical task as finished, verify the result with the right tool.',
-        'If you did not test what you changed, do not present it as complete.',
-        'If you need to read, edit, or execute something, use a tool now.',
+        'If the task requires verification, try a real tool first and wait for its result before concluding.',
+        'Do not end with a conclusion if you have not tested anything yet.',
       ];
 
   const parts = [

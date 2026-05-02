@@ -48,6 +48,8 @@ function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
     '- Do not ask "do you want" questions when you can investigate yourself.',
     '- Do not narrate plans instead of acting.',
     '- Use tools immediately when a file must be read, changed, or verified.',
+    '- Do not give a conclusion unless you have actually used a tool or verified the result.',
+    '- If you have not tested anything, say that clearly and keep investigating.',
     '',
     'Repository files:',
     treeLines,
@@ -103,6 +105,13 @@ function looksLikePendingEdit(text) {
   const sample = normalizeClassifierText(String(text || '').trimStart().slice(0, 700));
   if (!sample || looksLikeToolPayload(sample)) return false;
   return PENDING_EDIT_RE.test(sample);
+}
+
+
+function looksLikeActionRequest(text) {
+  const sample = normalizeClassifierText(String(text || ''));
+  if (!sample) return false;
+  return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
 }
 
 function buildForcedWritePrompt(state) {
@@ -471,6 +480,7 @@ async function applyToolCall(parsed, answer, toolCtx, loopState, modelMessages) 
     loopState.lastReadPath = parsed.args?.path || loopState.lastReadPath;
   }
 
+  loopState.toolCalls = (loopState.toolCalls || 0) + 1;
   const toolResult = await executeTool(parsed.tool, parsed.args, toolCtx);
 
   if (parsed.tool === 'read_file' && parsed.args?.path) {
@@ -714,6 +724,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     readOrder: [],
     totalReads: 0,
     writesDone: 0,
+    toolCalls: 0,
     userWantsEdit,
     fileTree,
   };
@@ -955,6 +966,21 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
           'No la dejes vacia.',
           'Usa herramientas si hace falta o responde con el resultado final completo.',
           'Continua ahora.',
+        ].join(' '),
+      });
+      continue;
+    }
+
+    if (parsed.type === 'final' && looksLikeActionRequest(userLatest) && (loopState.toolCalls || 0) === 0) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'No has usado ninguna herramienta todavia.',
+          'No cierres con una conclusion ni con pasos teoricos.',
+          'Primero intenta una herramienta real adecuada para la tarea.',
+          'Si ninguna herramienta aplica, dilo de forma breve y honesta.',
         ].join(' '),
       });
       continue;

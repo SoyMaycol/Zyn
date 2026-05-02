@@ -21,6 +21,14 @@ const {
 const { appendTranscriptEntry } = require('../utils/transcriptStorage');
 const { estimateHistoryChars, saveState } = require('../utils/sessionStorage');
 const { normalizeText, shortText } = require('../utils/text');
+const { detectLanguage } = require('../i18n');
+
+
+function looksLikeActionRequest(text) {
+  const sample = normalizeText(String(text || '')).toLowerCase();
+  if (!sample) return false;
+  return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
+}
 
 async function requestModel(messages, state, ui, options = {}) {
   const {
@@ -192,6 +200,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
+    toolUsedThisTurn = true;
     const result = await executeToolCall(directAction, state, ui);
     await appendTranscriptEntry(state.sessionId, {
       type: 'tool',
@@ -217,6 +226,9 @@ async function runAgentTurn(input, state, ui, options = {}) {
   let lastFingerprint = '';
   let repeatCount = 0;
   let step = 0;
+  const turnLanguage = detectLanguage(input, state.language);
+  let toolUsedThisTurn = false;
+  let finalWithoutToolRetries = 0;
 
   while (true) {
     if (signal?.aborted) {
@@ -235,7 +247,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     const messages = buildConversationMessages(
       state,
       turnMessages,
-      buildSystemPrompt(state.cwd, state),
+      buildSystemPrompt(state.cwd, state, { input, language: detectLanguage(input, state.language) }),
     );
 
     const primaryPromise = requestModel(messages, state, ui, {
@@ -343,6 +355,27 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
     if (parsed.type === 'final') {
       const content = parsed.content.trim();
+      if (looksLikeActionRequest(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
+        finalWithoutToolRetries += 1;
+        ui.logEvent(state, 'warn', turnLanguage === 'es' ? 'Sin prueba real todavía' : 'No real attempt yet', turnLanguage === 'es' ? 'Primero intenta una herramienta antes de concluir.' : 'Try a real tool before concluding.');
+        turnMessages.push({ role: 'assistant', content: content || raw.trim() });
+        turnMessages.push({
+          role: 'user',
+          content: [
+            turnLanguage === 'es'
+              ? 'Aun no has probado nada. No des una conclusion ni pasos teoricos.'
+              : 'You have not actually tried anything yet. Do not give a conclusion or theory steps.',
+            turnLanguage === 'es'
+              ? 'Primero intenta una herramienta real adecuada para la tarea.'
+              : 'First try a real tool that fits the task.',
+            turnLanguage === 'es'
+              ? 'Si ninguna herramienta aplica, dilo explicitamente con una sola frase corta y honesta.'
+              : 'If no tool applies, say so explicitly in one short honest sentence.',
+          ].join(' '),
+        });
+        step += 1;
+        continue;
+      }
       turnMessages.push({ role: 'assistant', content: content || raw.trim() });
       state.history.push(...turnMessages);
       await appendTranscriptEntry(state.sessionId, {
@@ -385,6 +418,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     });
 
     try {
+      toolUsedThisTurn = true;
       const result = await executeToolCall(parsed, state, ui);
       await appendTranscriptEntry(state.sessionId, {
         type: 'tool',

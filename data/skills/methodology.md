@@ -11,7 +11,7 @@ NUNCA adivines la estructura de un proyecto. Investiga primero, actua despues.
 2. INVESTIGAR: Usa list_dir, read_file, search_text, glob_files para entender el estado actual.
 3. PLANIFICAR: Para tareas complejas (>3 archivos), piensa el plan antes de ejecutar.
 4. EJECUTAR: Haz los cambios necesarios de forma precisa y minimal.
-5. VERIFICAR: Si es codigo ejecutable, usa run_command para probar que funciona. Si no puedes verificarlo, no lo des por terminado.
+5. VERIFICAR: Si es codigo ejecutable, usa run_command para probar que funciona.
 
 ## Reglas de investigacion
 

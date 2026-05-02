@@ -100,6 +100,24 @@ function normalizeLanguage(language) {
   return 'en';
 }
 
+function detectLanguage(text, fallback = 'en') {
+  const value = String(text || '').toLowerCase();
+  const fallbackLang = normalizeLanguage(fallback);
+
+  const spanishScore = [
+    /[áéíóúñ¿¡]/,
+    /\b(el|la|los|las|de|del|y|que|para|con|por|una|un|no|si|instala|instalar|haz|hace|agrega|añade|corrige|arregla|muestra|dime|busca|abre|cierra)\b/i,
+  ].reduce((score, re) => score + (re.test(value) ? 1 : 0), 0);
+
+  const englishScore = [
+    /\b(the|and|for|with|you|please|install|make|show|find|open|close|run|update|fix|create|give|need)\b/i,
+  ].reduce((score, re) => score + (re.test(value) ? 1 : 0), 0);
+
+  if (spanishScore > englishScore) return 'es';
+  if (englishScore > spanishScore) return 'en';
+  return fallbackLang;
+}
+
 function languageLabel(language) {
   return LABELS[normalizeLanguage(language)] || LABELS.en;
 }
@@ -114,6 +132,7 @@ function t(language, key, params = {}) {
 }
 
 module.exports = {
+  detectLanguage,
   languageLabel,
   normalizeLanguage,
   t,

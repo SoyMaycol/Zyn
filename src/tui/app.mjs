@@ -188,7 +188,7 @@ function useDimensions() {
 
 function parseInline(text) {
   const parts = [];
-  const regex = /(\*\*(.+?)\*\*)|(`(.+?)`)/g;
+  const regex = /(\*\*(.+?)\*\*)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
   let lastIndex = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
@@ -197,6 +197,7 @@ function parseInline(text) {
     }
     if (match[2]) parts.push({ t: 'bold', v: match[2] });
     else if (match[4]) parts.push({ t: 'code', v: match[4] });
+    else if (match[6] && match[7]) parts.push({ t: 'link', text: match[6], url: match[7] });
     lastIndex = regex.lastIndex;
   }
   if (lastIndex < text.length) {
@@ -213,6 +214,10 @@ function InlineLine({ text, color }) {
     ...parts.map((p, i) => {
       if (p.t === 'bold') return h(Text, { key: String(i), color: base, bold: true }, p.v);
       if (p.t === 'code') return h(Text, { key: String(i), color: T.cyan, backgroundColor: T.codeBg }, ' ' + p.v + ' ');
+      if (p.t === 'link') return h(Box, { key: String(i), flexWrap: 'wrap' },
+        h(Text, { color: T.accent, underline: true }, p.text),
+        h(Text, { color: T.textMuted }, ' (' + p.url + ')'),
+      );
       return h(Text, { key: String(i), color: base }, p.v);
     }),
   );
@@ -241,6 +246,29 @@ function parseMarkdownBlocks(text) {
     if (hMatch) {
       blocks.push({ type: 'header', level: hMatch[1].length, text: hMatch[2] });
       i++;
+      continue;
+    }
+    const hrMatch = line.match(/^\s*(---+|\*\*\*+)\s*$/);
+    if (hrMatch) {
+      blocks.push({ type: 'hr' });
+      i++;
+      continue;
+    }
+    const quoteMatch = line.match(/^\s*>\s?(.*)$/);
+    if (quoteMatch) {
+      blocks.push({ type: 'quote', text: quoteMatch[1] });
+      i++;
+      continue;
+    }
+    const tableCandidate = line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1]);
+    if (tableCandidate) {
+      const table = [line];
+      i += 2;
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+        table.push(lines[i]);
+        i++;
+      }
+      blocks.push({ type: 'table', rows: table });
       continue;
     }
     const ulMatch = line.match(/^(\s*)[-*]\s+(.+)/);
@@ -306,6 +334,25 @@ function MarkdownContent({ text, width }) {
           return block.text.trim()
             ? h(Box, { key: String(i) }, h(InlineLine, { text: block.text }))
             : h(Box, { key: String(i), height: 1 });
+        case 'quote':
+          return h(Box, { key: String(i), marginLeft: 1 },
+            h(Text, { color: T.textMuted }, '> '),
+            h(InlineLine, { text: block.text, color: T.textMuted }),
+          );
+        case 'hr':
+          return h(Text, { key: String(i), color: T.borderLight }, '─'.repeat(Math.max(10, Math.min(width || 80, 70))));
+        case 'table': {
+          const rows = block.rows.map(row => row.split('|').map(cell => cell.trim()).filter(Boolean));
+          const widthByCol = [];
+          for (const row of rows) {
+            row.forEach((cell, idx) => { widthByCol[idx] = Math.max(widthByCol[idx] || 0, cell.length); });
+          }
+          return h(Box, { key: String(i), flexDirection: 'column' },
+            ...rows.map((row, rowIdx) => h(Text, { key: String(rowIdx), color: rowIdx === 0 ? T.accent : T.textMuted },
+              row.map((cell, idx) => String(cell).padEnd(widthByCol[idx] || cell.length)).join(' | ')
+            )),
+          );
+        }
         default:
           return null;
       }

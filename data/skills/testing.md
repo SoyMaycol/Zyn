@@ -9,9 +9,6 @@ Hacer una tarea no es suficiente. Un agente serio no entrega “parece que funci
 
 Si una tarea no fue verificada, la tarea no está terminada.
 
-Antes de afirmar que algo funciona, el agente debe ejecutar una verificación real, no una suposición con buena autoestima.
-Si no hay prueba ejecutada, no hay conclusión de éxito.
-
 Este skill existe para que el agente:
 - entienda el proyecto antes de actuar,
 - adapte su estrategia al lenguaje, framework o entorno,
@@ -25,6 +22,3 @@ Este skill existe para que el agente:
 
 ```text
 NO HAY ENTREGA SIN VERIFICACIÓN
-NO HAY ÉXITO SIN PRUEBA REAL
-NO HAY CONCLUSIÓN SIN EVIDENCIA
-```
