@@ -39,6 +39,14 @@
     "react": "^19.0.0",
     "session-file-store": "^1.5.0"
   },
+  "repository": {
+  "type": "git",
+  "url": "https://github.com/SoyMaycol/Zyn"
+  },
+  "homepage": "https://github.com/SoyMaycol/Zyn#readme",
+  "bugs": {
+  "url": "https://github.com/SoyMaycol/Zyn/issues"
+  },
   "engines": {
     "node": ">=18"
   },
