@@ -35,6 +35,8 @@ function buildSystemPrompt(cwd, state = {}) {
         'Responde solo con el resultado final o con la siguiente accion concreta.',
         'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
         'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
+        'Antes de dar por terminada una tarea tecnica, verifica el resultado con la herramienta adecuada.',
+        'Si no probaste lo que hiciste, no lo presentes como concluido.',
         'Si necesitas leer, editar o ejecutar, usa una herramienta ahora mismo.',
       ]
     : [
@@ -44,6 +46,8 @@ function buildSystemPrompt(cwd, state = {}) {
         'Reply only with the final result or the next concrete action.',
         'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
         'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
+        'Before treating a technical task as finished, verify the result with the right tool.',
+        'If you did not test what you changed, do not present it as complete.',
         'If you need to read, edit, or execute something, use a tool now.',
       ];
 
