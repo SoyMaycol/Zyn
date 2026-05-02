@@ -660,62 +660,6 @@ async function handleLocalCommand(input, state, deps) {
     return true;
   }
 
-  if (commandName === 'provider') {
-    const [sub, ...rest] = args.split(/\s+/);
-    const name = sub === 'add' || sub === 'sync' || sub === 'remove' || sub === 'list' ? rest.shift() : sub;
-    const tail = sub === 'add' || sub === 'sync' || sub === 'remove' ? rest.join(' ').trim() : rest.join(' ').trim();
-
-    if (!sub || sub === 'help') {
-      console.log(t(state.language, 'providerUsage'));
-      return true;
-    }
-
-    if (sub === 'list') {
-      const providers = listProvidersFromModels(MODELS);
-      console.log('');
-      console.log(`  ${t(state.language, 'providerList')}:`);
-      for (const provider of providers) {
-        console.log(`  - ${provider.key} (${provider.models.length} ${t(state.language, 'providerModels')})`);
-      }
-      console.log('');
-      return true;
-    }
-
-    if (sub === 'remove') {
-      const providerName = name?.trim();
-      if (!providerName) throw new Error(t(state.language, 'providerMissing'));
-      await removeProviderModels(providerName);
-      console.log(`${t(state.language, 'providerRemoved')}: ${providerName}`);
-      return true;
-    }
-
-    if (sub === 'sync') {
-      const providerName = name?.trim();
-      if (!providerName) throw new Error(t(state.language, 'providerMissing'));
-      const providerModels = Object.entries(MODELS).filter(([, model]) => (model.providerGroup || model.remoteProviderName || model.provider) === providerName);
-      if (providerModels.length === 0) {
-        throw new Error(`${t(state.language, 'providerUnknown')}: ${providerName}`);
-      }
-      const first = providerModels[0][1];
-      const ids = await registerOpenAICompatibleProvider(state, providerName, first.baseUrl, first.apiKey);
-      console.log(`${t(state.language, 'providerSync')}: ${providerName} (${ids.length})`);
-      return true;
-    }
-
-    if (sub === 'add') {
-      const providerName = name?.trim();
-      const [baseUrl, apiKey] = tail.split(/\s+/, 2);
-      if (!providerName) throw new Error(t(state.language, 'providerMissing'));
-      if (!baseUrl) throw new Error(t(state.language, 'providerMissingUrl'));
-      if (!apiKey) throw new Error(t(state.language, 'providerMissingKey'));
-      const ids = await registerOpenAICompatibleProvider(state, providerName, baseUrl, apiKey);
-      console.log(`${t(state.language, 'providerAdded')}: ${providerName} (${ids.length} ${t(state.language, 'providerModels')})`);
-      return true;
-    }
-
-    throw new Error(t(state.language, 'providerInvalid'));
-  }
-
   return false;
 }
 

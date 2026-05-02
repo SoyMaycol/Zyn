@@ -98,7 +98,7 @@ async function createChat(jar, signal, modelId = MODEL) {
   return body.data.id;
 }
 
-async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
+async function streamCompletion(chatId, prompt, jar, onChunk, signal, modelId = MODEL) {
   const fid = randomUUID();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -114,7 +114,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
     incremental_output: true,
     chat_id: chatId,
     chat_mode: 'normal',
-    model: MODEL,
+    model: modelId,
     parent_id: null,
     messages: [{
       fid,
@@ -215,7 +215,7 @@ async function qwen(prompt, onChunk = null, options = {}) {
       const jar = await ensureAuth();
       const modelId = options.modelId || MODEL;
       const chatId = await createChat(jar, options.signal, modelId);
-      const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal);
+      const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal, modelId);
       return {
         status: true,
         text: result.text,

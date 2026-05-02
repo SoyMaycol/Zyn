@@ -29,6 +29,10 @@ function currentLang() {
   return normalizeLanguage(global.__zynLanguage || 'en');
 }
 
+function uiText(es, en) {
+  return currentLang() === 'es' ? es : en;
+}
+
 const T = {
   bg:          '#0d0d0d',
   surface:     '#1a1a1a',
@@ -796,7 +800,7 @@ function App({ store, state, onSubmit }) {
     if (text === '/exit' || text === '/quit') {
       if (store.processing) {
         store.pendingExit = true;
-        store.addEvent('info', 'saliendo al terminar el turno actual');
+        store.addEvent('info', uiText('saliendo al terminar el turno actual', 'exiting after current turn'));
         return;
       }
       exit();
@@ -816,10 +820,10 @@ function App({ store, state, onSubmit }) {
             state.abortCurrentTurn();
           }
           store.pendingExit = false;
-          store.addEvent('warn', 'agente detenido', 'Interrumpido con ESC x2');
+          store.addEvent('warn', uiText('agente detenido', 'agent stopped'), uiText('Interrumpido con ESC x2', 'Interrupted with ESC x2'));
         } else {
           store.lastEscapeAt = now;
-          store.addEvent('info', 'pulsa ESC otra vez', 'para detener el agente');
+          store.addEvent('info', uiText('pulsa ESC otra vez', 'press ESC again'), uiText('para detener el agente', 'to stop the agent'));
         }
         return;
       }
@@ -921,7 +925,7 @@ export async function startTUI(options = {}) {
   const processInput = async (input) => {
     if (input === '/exit' || input === '/quit') {
       store.pendingExit = true;
-      store.addEvent('info', 'hasta luego');
+      store.addEvent('info', uiText('hasta luego', 'goodbye'));
       return;
     }
 
@@ -949,7 +953,7 @@ export async function startTUI(options = {}) {
           const clean = lines.filter(l => l.trim()).join('\n');
           if (clean) store.addItem({ type: 'system', text: clean });
         }
-        if (!handled) store.addEvent('warn', 'comando no reconocido', input);
+        if (!handled) store.addEvent('warn', uiText('comando no reconocido', 'unrecognized command'), input);
       } catch (err) {
         store.addEvent('error', 'error', err.message);
       } finally {
