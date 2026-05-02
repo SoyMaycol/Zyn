@@ -7,7 +7,7 @@ const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
   'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url', 'fetch_links', 'fetch_meta', 'fetch_text', 'create_canvas_media',
+  'fetch_url', 'fetch_html', 'fetch_json', 'fetch_links', 'fetch_images', 'fetch_meta', 'fetch_text', 'create_media',
   'web_search', 'web_read',
 ]);
 
@@ -31,6 +31,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
   const languageInstructions = language === 'es'
     ? [
         'Responde siempre en español.',
+        'Usa solo español en la respuesta. No mezcles ingles y espanol en la misma salida.',
         'Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
         'Si hace falta, usa herramientas sin pedir permiso extra.',
         'Responde solo con el resultado final o con la siguiente accion concreta.',
@@ -42,6 +43,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       ]
     : [
         'Always respond in English.',
+        'Use only English in the response. Do not mix English and Spanish in the same output.',
         'Execute the task directly. Do not give tutorials or instructions when you can act yourself.',
         'Use tools when needed without asking for extra permission.',
         'Reply only with the final result or the next concrete action.',
@@ -176,10 +178,13 @@ const TOOL_ARG_KEYS = {
   append_file: ['path', 'content'],
   replace_in_file: ['path', 'search', 'replace', 'all'],
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
+  fetch_html: ['url'],
+  fetch_json: ['url'],
   fetch_links: ['url', 'selector', 'limit'],
+  fetch_images: ['url', 'selector', 'limit'],
   fetch_meta: ['url'],
   fetch_text: ['url', 'selector', 'limit'],
-  create_canvas_media: ['outputPath', 'width', 'height', 'background', 'elements', 'format'],
+  create_media: ['outputPath', 'width', 'height', 'background', 'elements', 'format'],
   web_search: ['query'],
   web_read: ['url'],
 };

@@ -66,8 +66,8 @@ make_dir { path }
 
 ## Ejecucion
 
-run_command { command }
-  Ejecuta comando en bash. Timeout: 2 minutos. Retorna { exitCode, stdout, stderr }.
+run_command { command, timeoutMs? }
+  Ejecuta comando en bash. Timeout: 2 minutos por defecto. Retorna { exitCode, stdout, stderr }.
   Directorio de trabajo: el cwd actual del agente.
   REGLAS:
   - Siempre usa flags no-interactivos: -y, --yes, --no-pager, --quiet
@@ -99,4 +99,6 @@ Pregunta: "que archivos hay?" → list_dir o glob_files
 Pregunta: "que dice este archivo?" → read_file
 Pregunta: "ejecuta esto" → run_command
 Pregunta: "crea/edita archivo" → read_file primero, luego write_file o replace_in_file
-Pregunta: "descarga/scrapea" → fetch_url
+Pregunta: "descarga/scrapea" → fetch_url, fetch_html, fetch_json o fetch_images
+
+- No cierres una tarea de accion si no ejecutaste al menos un intento real.

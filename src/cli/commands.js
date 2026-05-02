@@ -5,6 +5,7 @@ const { spawn } = require('child_process');
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
 const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels, saveExternalModels, getExternalModelsSnapshot, refreshModels } = require('../config');
+const { describeProviderConfig, listConfiguredProviders, removeProviderConfig, syncProvider, upsertProviderConfig } = require('../providers/catalog');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
@@ -24,7 +25,6 @@ const SLASH_COMMANDS = [
   { name: 'model', desc: 'view/change model' },
   { name: 'models', desc: 'list models' },
   { name: 'providers', desc: 'list providers' },
-  { name: 'provider', desc: 'configure provider' },
   { name: 'provider', desc: 'configure provider' },
   { name: 'lang', desc: 'change language' },
   { name: 'language', desc: 'change language' },

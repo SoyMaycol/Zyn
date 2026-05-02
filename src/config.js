@@ -84,10 +84,41 @@ function loadExternalModels() {
   return raw && typeof raw === 'object' ? raw : {};
 }
 
+let externalModelsCache = loadExternalModels();
+
 const MODELS = {
   ...BUILTIN_MODELS,
-  ...loadExternalModels(),
+  ...externalModelsCache,
 };
+
+function getExternalModelsSnapshot() {
+  return { ...externalModelsCache };
+}
+
+function saveExternalModels(models = {}) {
+  externalModelsCache = { ...models };
+  fs.mkdirSync(path.dirname(MODELS_FILE), { recursive: true });
+  fs.writeFileSync(MODELS_FILE, JSON.stringify(externalModelsCache, null, 2), 'utf8');
+  refreshModels();
+  return getExternalModelsSnapshot();
+}
+
+function refreshModels() {
+  const next = {
+    ...BUILTIN_MODELS,
+    ...loadExternalModels(),
+  };
+
+  for (const key of Object.keys(MODELS)) {
+    delete MODELS[key];
+  }
+
+  for (const [key, value] of Object.entries(next)) {
+    MODELS[key] = value;
+  }
+
+  externalModelsCache = loadExternalModels();
+}
 
 const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
 const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_LANGUAGE || process.env.ZYN_DEFAULT_LANG || 'en');
@@ -107,6 +138,13 @@ const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
 const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
 const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
 const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
+
+const LEGACY_DATA_ROOT = path.join(APP_ROOT, '.zyn');
+const LEGACY_SESSION_ROOT = path.join(LEGACY_DATA_ROOT, 'chat');
+const LEGACY_SESSIONS_DIR = path.join(LEGACY_SESSION_ROOT, 'sessions');
+const LEGACY_CURRENT_SESSION_FILE = path.join(LEGACY_SESSION_ROOT, 'current-session.json');
+const LEGACY_TRANSCRIPTS_DIR = path.join(LEGACY_SESSION_ROOT, 'transcripts');
+
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 function listProvidersFromModels(models = MODELS) {
@@ -148,6 +186,12 @@ module.exports = {
   MODELS,
   MODELS_FILE,
   PROVIDERS_FILE,
+  LEGACY_CURRENT_SESSION_FILE,
+  LEGACY_SESSIONS_DIR,
+  LEGACY_TRANSCRIPTS_DIR,
+  getExternalModelsSnapshot,
+  refreshModels,
+  saveExternalModels,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,

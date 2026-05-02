@@ -20,16 +20,19 @@ const TOOL_DEFINITIONS = [
   { name: 'search_text', usage: '{ pattern, path?, glob? }' },
   { name: 'glob_files', usage: '{ pattern, path? }' },
   { name: 'file_info', usage: '{ path }' },
-  { name: 'run_command', usage: '{ command }' },
+  { name: 'run_command', usage: '{ command, timeoutMs? }' },
   { name: 'make_dir', usage: '{ path }' },
   { name: 'write_file', usage: '{ path, content }' },
   { name: 'append_file', usage: '{ path, content }' },
   { name: 'replace_in_file', usage: '{ path, search, replace, all? }' },
   { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
+  { name: 'fetch_html', usage: '{ url }' },
+  { name: 'fetch_json', usage: '{ url }' },
   { name: 'fetch_links', usage: '{ url, selector?, limit? }' },
+  { name: 'fetch_images', usage: '{ url, selector?, limit? }' },
   { name: 'fetch_meta', usage: '{ url }' },
   { name: 'fetch_text', usage: '{ url, selector?, limit? }' },
-  { name: 'create_canvas_media', usage: '{ outputPath, width, height, background?, elements, format? }' },
+  { name: 'create_media', usage: '{ outputPath, width, height, background?, elements, format? }' },
   { name: 'web_search', usage: '{ query }' },
   { name: 'web_read', usage: '{ url }' },
 ];
@@ -82,13 +85,35 @@ function getToolPromptText() {
     '  Ejecuta la accion directamente. No expliques pasos al usuario salvo que sea estrictamente necesario.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
     '',
-    '## Web',
+    '## Web y scraping',
     '',
     'fetch_url { url, selector?, attribute?, limit? }',
     '  Sin selector: retorna HTML completo de la pagina.',
     '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
+    '',
+    'fetch_html { url }',
+    '  Descarga HTML completo de una pagina.',
+    '',
+    'fetch_json { url }',
+    '  Descarga una URL JSON y devuelve los datos parseados.',
+    '',
+    'fetch_links { url, selector?, limit? }',
+    '  Extrae enlaces de la pagina.',
+    '',
+    'fetch_images { url, selector?, limit? }',
+    '  Extrae imagenes y sus URLs absolutas.',
+    '',
+    'fetch_meta { url }',
+    '  Extrae titulo, description, canonical y metadatos Open Graph.',
+    '',
+    'fetch_text { url, selector?, limit? }',
+    '  Extrae texto limpio de una pagina o seccion.',
+    '',
+    'create_media { outputPath, width, height, background?, elements, format? }',
+    '  Genera una imagen o SVG a partir de una escena descriptiva.',
+    '  elements puede incluir rect, circle, ellipse, line, text, path e image.',
     '',
     'web_search { query }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
@@ -136,6 +161,20 @@ function describeToolCall(call) {
       const sel = call.args.selector ? ` → ${shortText(call.args.selector, 30)}` : '';
       return `Fetch ${shortText(cleanedUrl, 50)}${sel}`;
     }
+    case 'fetch_html':
+      return `HTML ${shortText(cleanUrl(call.args.url || ''), 60)}`;
+    case 'fetch_json':
+      return `JSON ${shortText(cleanUrl(call.args.url || ''), 60)}`;
+    case 'fetch_links':
+      return `Links ${shortText(cleanUrl(call.args.url || ''), 60)}`;
+    case 'fetch_images':
+      return `Images ${shortText(cleanUrl(call.args.url || ''), 60)}`;
+    case 'fetch_meta':
+      return `Meta ${shortText(cleanUrl(call.args.url || ''), 60)}`;
+    case 'fetch_text':
+      return `Text ${shortText(cleanUrl(call.args.url || ''), 60)}`;
+    case 'create_media':
+      return `Media ${shortText(call.args.outputPath || '', 60)}`;
     case 'web_search':
       return `Buscando "${shortText(call.args.query || '', 50)}"`;
     case 'web_read': {
@@ -913,19 +952,159 @@ async function fetchTextTool(args, state, paint) {
   return truncateText(`URL: ${url}\nStatus: ${res.status}\nSelector: ${selector}\n\n${parts.length ? parts.join('\n\n') : '[sin texto]'}`);
 }
 
+async function fetchHtmlTool(args, state, paint) {
+  if (!args.url || typeof args.url !== 'string') {
+    throw new Error('fetch_html requiere url');
+  }
+
+  const url = cleanUrl(args.url);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`URL invalida: ${url}`);
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Solo se permite http y https');
+  }
+
+  const allowed = await askConfirmation(state.rl, 'Leer HTML', url, paint, state);
+  if (!allowed) return 'Extraccion cancelada por el usuario.';
+
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+    timeout: 15000,
+    maxContentLength: 1024000,
+    maxRedirects: 5,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+
+  return truncateText(`URL: ${url}\nStatus: ${res.status}\n\n${typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2)}`);
+}
+
+async function fetchJsonTool(args, state, paint) {
+  if (!args.url || typeof args.url !== 'string') {
+    throw new Error('fetch_json requiere url');
+  }
+
+  const url = cleanUrl(args.url);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`URL invalida: ${url}`);
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Solo se permite http y https');
+  }
+
+  const allowed = await askConfirmation(state.rl, 'Leer JSON', url, paint, state);
+  if (!allowed) return 'Extraccion cancelada por el usuario.';
+
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json,text/plain,*/*',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+    timeout: 15000,
+    maxContentLength: 1024000,
+    maxRedirects: 5,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+
+  let data;
+  try {
+    data = JSON.parse(typeof res.data === 'string' ? res.data : JSON.stringify(res.data));
+  } catch {
+    data = res.data;
+  }
+
+  return truncateText(`URL: ${url}\nStatus: ${res.status}\n\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}`);
+}
+
+async function fetchImagesTool(args, state, paint) {
+  if (!args.url || typeof args.url !== 'string') {
+    throw new Error('fetch_images requiere url');
+  }
+
+  const url = cleanUrl(args.url);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`URL invalida: ${url}`);
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Solo se permite http y https');
+  }
+
+  const allowed = await askConfirmation(state.rl, 'Extraer imagenes', url, paint, state);
+  if (!allowed) return 'Extraccion cancelada por el usuario.';
+
+  const axios = require('axios');
+  const cheerio = require('cheerio');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    },
+    timeout: 15000,
+    maxContentLength: 1024000,
+    maxRedirects: 5,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+
+  const $ = cheerio.load(res.data);
+  const selector = typeof args.selector === 'string' && args.selector.trim() ? args.selector.trim() : 'img, source, meta[property="og:image"]';
+  const limit = Math.min(Number(args.limit) || 20, 50);
+  const images = [];
+
+  $(selector).each((i, el) => {
+    if (images.length >= limit) return false;
+    const raw = $(el).attr('src') || $(el).attr('content') || $(el).attr('data-src') || $(el).attr('data-original') || '';
+    if (!raw) return;
+    let absolute = raw;
+    try { absolute = new URL(raw, url).href; } catch {}
+    const alt = $(el).attr('alt') || $(el).attr('title') || '';
+    images.push(`${absolute}${alt ? `\n${alt}` : ''}`);
+  });
+
+  return truncateText(`URL: ${url}\nStatus: ${res.status}\nSelector: ${selector}\n\n${images.length ? images.join('\n\n') : '[sin imagenes]'}`);
+}
+
 async function createCanvasMediaTool(args, state, paint) {
   const outputPath = typeof args.outputPath === 'string' ? args.outputPath.trim() : '';
   const width = Number(args.width);
   const height = Number(args.height);
-  if (!outputPath) throw new Error('create_canvas_media requiere outputPath');
+  if (!outputPath) throw new Error('create_media requiere outputPath');
   if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-    throw new Error('create_canvas_media requiere width y height validos');
+    throw new Error('create_media requiere width y height validos');
   }
 
   const elements = Array.isArray(args.elements) ? args.elements : [];
   const allowed = await askConfirmation(
     state.rl,
-    'Crear media con canvas',
+    'Crear media',
     `${outputPath}\n${width}x${height}\nElementos: ${elements.length}`,
     paint,
     state,
@@ -1044,8 +1223,17 @@ async function executeToolCall(call, state, ui) {
     case 'fetch_url':
       result = await fetchUrlTool(call.args, state, ui.paint);
       break;
+    case 'fetch_html':
+      result = await fetchHtmlTool(call.args, state, ui.paint);
+      break;
+    case 'fetch_json':
+      result = await fetchJsonTool(call.args, state, ui.paint);
+      break;
     case 'fetch_links':
       result = await fetchLinksTool(call.args, state, ui.paint);
+      break;
+    case 'fetch_images':
+      result = await fetchImagesTool(call.args, state, ui.paint);
       break;
     case 'fetch_meta':
       result = await fetchMetaTool(call.args, state, ui.paint);
@@ -1053,7 +1241,7 @@ async function executeToolCall(call, state, ui) {
     case 'fetch_text':
       result = await fetchTextTool(call.args, state, ui.paint);
       break;
-    case 'create_canvas_media':
+    case 'create_media':
       result = await createCanvasMediaTool(call.args, state, ui.paint);
       break;
     case 'web_search':
@@ -1084,7 +1272,9 @@ function buildOllamaInstallCommand() {
 }
 
 function parseDirectAction(input) {
-  const text = input.trim();
+  const text = String(input || '')
+    .trim()
+    .replace(/[.!?。！？]+$/g, '');
 
   const runMatch = text.match(/^(?:ejecuta|corre)\s+(?:el\s+)?comando\s+([\s\S]+)$/i);
   if (runMatch) {
@@ -1094,7 +1284,7 @@ function parseDirectAction(input) {
     };
   }
 
-  if (/^(?:instala|installa|install)\s+ollama$/i.test(text)) {
+  if (/^(?:instala|installa|install)\b[\s\S]*\bollama\b/i.test(text)) {
     return {
       tool: 'run_command',
       args: { command: buildOllamaInstallCommand() },

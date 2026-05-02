@@ -18,3 +18,5 @@
 - Apply the fix.
 - Verify the result.
 - Report the result plainly.
+- Si la tarea pide una accion y aun no usaste una herramienta, no des una conclusion final.
+

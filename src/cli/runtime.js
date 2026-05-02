@@ -86,7 +86,7 @@ async function runSinglePrompt(prompt, options = {}) {
     if (process.stdout.isTTY) {
       await printWelcome();
       printBanner(state);
-      logEvent(state, 'info', resumed ? 'session resumed' : 'new session');
+      logEvent(state, 'info', resumed ? t(state.language, 'sessionResumed') : t(state.language, 'newSessionCreated'));
       console.log('');
     }
 
@@ -112,7 +112,7 @@ async function runInteractiveChatClassic(options = {}) {
   const { state, resumed } = await loadOrCreateSessionState(rl, options);
   await printWelcome();
   printBanner(state);
-  logEvent(state, 'info', resumed ? 'session resumed' : 'chat active — /help for commands');
+  logEvent(state, 'info', resumed ? t(state.language, 'sessionResumed') : t(state.language, 'helpShort'));
   console.log('');
 
   const messageQueue = [];
@@ -176,7 +176,7 @@ async function runInteractiveChatClassic(options = {}) {
       if (!input) continue;
 
       if (input === '/exit' || input === '/quit') {
-        logEvent(state, 'info', state.language === 'es' ? 'Hasta luego' : 'Goodbye');
+        logEvent(state, 'info', t(state.language, 'exitNow'));
         break;
       }
 
@@ -203,7 +203,7 @@ async function runInteractiveChatClassic(options = {}) {
       rl.removeListener('line', lineHandler);
 
       if (pendingExit) {
-        logEvent(state, 'info', state.language === 'es' ? 'Hasta luego' : 'Goodbye');
+        logEvent(state, 'info', t(state.language, 'exitNow'));
         break;
       }
     }
