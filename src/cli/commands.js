@@ -30,6 +30,7 @@ const SLASH_COMMANDS = [
   { name: 'concuerdo', desc: 'group model mode' },
   { name: 'tools', desc: 'tools' },
   { name: 'skills', desc: 'agent skills' },
+  { name: 'config', desc: 'view/change session settings' },
   { name: 'web', desc: 'open web version' },
   { name: 'stop', desc: 'stop agent' },
   { name: 'abort', desc: 'stop agent' },
@@ -69,6 +70,10 @@ function printHelp(state = {}) {
     console.log(`    /${cmd.name.padEnd(14)} ${m(cmd.desc)}`);
   }
   console.log('');
+  console.log(`  /config lang en|es   ${m('change session language')}`);
+  console.log(`  /config model KEY    ${m('change active model')}`);
+  console.log(`  /config show         ${m('show current config')}`);
+  console.log('');
   console.log(`  ${m(t(lang, 'escTwice'))}`);
   console.log(`    ${m(t(lang, 'escTwiceDesc'))}`);
   console.log('');
@@ -90,6 +95,28 @@ function printModels() {
       console.log(`    ${model.key.padEnd(16)} ${model.label}${active}`);
     }
   }
+  console.log('');
+}
+
+function printConfig(state) {
+  const key = state.activeModel || DEFAULT_MODEL_KEY;
+  const model = MODELS[key];
+  const provider = model?.provider || 'unknown';
+
+  console.log('');
+  console.log(`  Language : ${languageLabel(normalizeLanguage(state.language))} (${normalizeLanguage(state.language)})`);
+  console.log(`  Model    : ${key} (${model?.label || '?'})`);
+  console.log(`  Provider : ${provider}`);
+  console.log(`  Auto     : ${state.autoApprove ? 'on' : 'off'}`);
+  console.log(`  Group    : ${state.concuerdo ? 'on' : 'off'}`);
+  console.log(`  CWD      : ${state.cwd}`);
+  console.log('');
+  console.log('  Commands:');
+  console.log('    /config lang en|es');
+  console.log('    /config model <key>');
+  console.log('    /config auto on|off');
+  console.log('    /config group on|off');
+  console.log('    /config cwd <path>');
   console.log('');
 }
 
@@ -208,6 +235,81 @@ async function handleLocalCommand(input, state, deps) {
     });
     console.log(`Title updated: ${state.title}`);
     return true;
+  }
+
+  if (commandName === 'config') {
+    if (!args || args === 'show') {
+      printConfig(state);
+      return true;
+    }
+
+    const [sub, ...rest] = args.split(/\s+/);
+    const value = rest.join(' ').trim();
+
+    if (sub === 'lang' || sub === 'language') {
+      const nextLanguage = normalizeLanguage(value);
+      if (!['en', 'es'].includes(nextLanguage)) {
+        throw new Error(t(state.language, 'langInvalid'));
+      }
+      state.language = nextLanguage;
+      await saveState(state);
+      console.log(`${t(state.language, 'langChanged')}: ${languageLabel(nextLanguage)} (${nextLanguage})`);
+      return true;
+    }
+
+    if (sub === 'model') {
+      const key = value.toLowerCase().trim();
+      if (!MODELS[key]) {
+        const available = Object.keys(MODELS).join(', ');
+        throw new Error(`${t(state.language, 'modelInvalid')}: ${available}`);
+      }
+      state.activeModel = key;
+      global.__zynActiveModel = key;
+      await saveState(state);
+      await appendTranscriptEntry(state.sessionId, {
+        type: 'system',
+        content: `Model switched to: ${MODELS[key].label}`,
+      });
+      console.log(`Model: ${MODELS[key].label}`);
+      return true;
+    }
+
+    if (sub === 'auto') {
+      if (value !== 'on' && value !== 'off') {
+        throw new Error('Use /config auto on|off');
+      }
+      state.autoApprove = value === 'on';
+      await saveState(state);
+      console.log(state.autoApprove ? 'Auto approval enabled.' : 'Auto approval disabled.');
+      return true;
+    }
+
+    if (sub === 'group' || sub === 'concuerdo') {
+      if (value !== 'on' && value !== 'off') {
+        throw new Error('Use /config group on|off');
+      }
+      state.concuerdo = value === 'on';
+      await saveState(state);
+      console.log(state.concuerdo ? 'Group mode enabled.' : 'Group mode disabled.');
+      return true;
+    }
+
+    if (sub === 'cwd' || sub === 'pwd') {
+      if (!value) {
+        throw new Error(t(state.language, 'missingPath'));
+      }
+      const resolved = resolveInputPath(value, state.cwd);
+      const stats = await fsp.stat(resolved).catch(() => null);
+      if (!stats?.isDirectory()) {
+        throw new Error(t(state.language, 'noDirectory'));
+      }
+      state.cwd = resolved;
+      await saveState(state);
+      console.log(state.cwd);
+      return true;
+    }
+
+    throw new Error('Use /config show|lang|model|auto|group|cwd');
   }
 
   if (commandName === 'model') {

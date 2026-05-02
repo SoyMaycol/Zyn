@@ -2,7 +2,7 @@ const { chatSilent } = require('../providers/scraperClient');
 const { parseAgentResponse } = require('../core/prompts');
 const { MODELS } = require('../config');
 
-async function runCollaboration(primaryContent, primaryKey, modelMessages, onEvent, isAborted) {
+async function runCollaboration(primaryContent, primaryKey, modelMessages, onEvent, isAborted, language = 'en') {
   const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
   if (!otherKeys.length) return null;
 

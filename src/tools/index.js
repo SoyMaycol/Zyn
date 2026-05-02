@@ -805,6 +805,18 @@ async function executeToolCall(call, state, ui) {
   return result;
 }
 
+function buildOllamaInstallCommand() {
+  const isTermux = Boolean(
+    process.env.TERMUX_VERSION
+    || process.env.TERMUX_APP_PACKAGE
+    || (process.env.PREFIX && process.env.PREFIX.includes('com.termux'))
+  );
+
+  return isTermux
+    ? 'pkg update -y && pkg install -y ollama'
+    : 'curl -fsSL https://ollama.com/install.sh | sh';
+}
+
 function parseDirectAction(input) {
   const text = input.trim();
 
@@ -813,6 +825,13 @@ function parseDirectAction(input) {
     return {
       tool: 'run_command',
       args: { command: runMatch[1].trim() },
+    };
+  }
+
+  if (/^(?:instala|installa|install)\s+ollama$/i.test(text)) {
+    return {
+      tool: 'run_command',
+      args: { command: buildOllamaInstallCommand() },
     };
   }
 
@@ -942,18 +961,6 @@ function parseDirectAction(input) {
     return {
       tool: 'fetch_url',
       args: { url: fetchMatch[1].trim() },
-    };
-  }
-
-  const ollamaInstallMatch = text.match(/^(?:instala|install|setup|configura|set up)\s+ollama\b.*$/i);
-  if (ollamaInstallMatch) {
-    const isTermux = !!(process.env.TERMUX_VERSION || process.env.TERMUX_PREFIX || String(process.env.PREFIX || '').includes('com.termux'));
-    const command = isTermux
-      ? 'pkg update -y && pkg install -y ollama'
-      : 'curl -fsSL https://ollama.com/install.sh | sh';
-    return {
-      tool: 'run_command',
-      args: { command },
     };
   }
 

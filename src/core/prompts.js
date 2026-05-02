@@ -1,5 +1,6 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsPrompt } = require('./skills');
+const { getToolPromptText } = require('../tools');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
 const { normalizeLanguage, languageLabel } = require('../i18n');
 
@@ -31,23 +32,26 @@ function buildSystemPrompt(cwd, state = {}) {
         'Responde siempre en español.',
         'Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
         'Si hace falta, usa herramientas sin pedir permiso extra.',
-        'No entregues tutoriales cuando puedas actuar directamente.',
         'Responde solo con el resultado final o con la siguiente accion concreta.',
-        'Si el usuario pide editar, corregir, crear, mover, buscar, instalar o ejecutar, hazlo directamente.',
-        'Si el usuario pide instalar Ollama u otra dependencia, ejecuta la instalacion adecuada para el entorno y reporta el resultado.',
+        'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
+        'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
+        'Si necesitas leer, editar o ejecutar, usa una herramienta ahora mismo.',
       ]
     : [
         'Always respond in English.',
         'Execute the task directly. Do not give tutorials or instructions when you can act yourself.',
         'Use tools when needed without asking for extra permission.',
-        'Do not turn execution requests into tutorials.',
         'Reply only with the final result or the next concrete action.',
-        'If the user asks to edit, fix, create, move, search, install, or execute, do it directly.',
-        'If the user asks to install Ollama or another dependency, choose the correct install path for the current environment and carry it out.',
+        'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
+        'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
+        'If you need to read, edit, or execute something, use a tool now.',
       ];
 
   const parts = [
     skills,
+    '',
+    '# Tool use',
+    getToolPromptText(),
     '',
     '# Environment',
     `- Working directory: ${cwd}`,
@@ -242,22 +246,6 @@ function extractLongValueTool(text, tool, longArg) {
   return { type: 'tool', tool, args };
 }
 
-
-const ACTION_REQUEST_RE = /(?:agrega|añade|anade|instala|install|setup|corrige|arregla|edita|cambia|quita|elimina|reemplaza|modifica|actualiza|sube|aplica|termina|soluciona|hazlo|fix|add|change|edit|replace|remove|execute|run|install)/i;
-const DEFERRAL_RE = /(?:do you want|would you like|prefer(?:s| you)|quieres que|prefieres|te explico|voy a explicar|let me explain|i can show you|puedo mostrarte|should i|deberia|debo preguntar)/i;
-const PLAN_RE = /(?:voy a|i will|primero|first|despues|then|te explico|let me|i should|debo|tengo que|haré|hare|plan de accion|action plan)/i;
-
-function looksLikeExecutionDeferral(text) {
-  const sample = String(text || '').trim();
-  if (!sample) return true;
-  const normalized = sample.toLowerCase();
-  return DEFERRAL_RE.test(normalized) || PLAN_RE.test(normalized);
-}
-
-function userWantsAction(text) {
-  return ACTION_REQUEST_RE.test(String(text || ''));
-}
-
 function extractSimpleArgsTool(text, tool) {
   const args = {};
   const keys = TOOL_ARG_KEYS[tool] || [];
@@ -369,6 +357,4 @@ module.exports = {
   buildToolResultMessage,
   parseAgentResponse,
   sanitizeArgsForModel,
-  looksLikeExecutionDeferral,
-  userWantsAction,
 };

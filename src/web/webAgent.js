@@ -1,15 +1,15 @@
 const { chat, chatSilent } = require('../providers/scraperClient');
 const { parseAgentResponse } = require('../core/prompts');
 const { buildSkillsPrompt } = require('../core/skills');
-const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS } = require('../config');
-const { normalizeLanguage } = require('../i18n');
+const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
+const { normalizeLanguage, languageLabel } = require('../i18n');
 const githubApi = require('./githubApi');
 const store = require('./store');
 
 const MAX_STEPS = Number.POSITIVE_INFINITY;
 const CONCUERDO_TIMEOUT = 30000;
 const BUFFER_CHECK = 72;
-const WEB_SKILLS = ['core', 'web-agent', 'code-style', 'reasoning', 'methodology'];
+const WEB_SKILLS = ['core', 'tools', 'web-agent', 'code-style', 'reasoning', 'methodology'];
 const TOOL_HINT_RE = /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read)"/i;
 const XML_TOOL_RE = /<invoke\s+name=|<\w+:tool_call>/i;
 const INTERNAL_PLAN_START_RE = /^(el usuario|the user|necesito|i need|primero|first|voy a|i will|debo|i should|tengo que|let me|para hacer esto|to do this|mi siguiente paso|my next step|entendido|okay|ok|perfecto|now|ahora)\b/i;
@@ -25,8 +25,8 @@ const TEXT_FILE_EXTENSIONS = new Set([
 ]);
 
 function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
+  const language = normalizeLanguage(state.language);
   const skills = buildSkillsPrompt({ include: WEB_SKILLS });
-  const language = normalizeLanguage(state.language || DEFAULT_LANGUAGE);
   const treeLines = fileTree
     .filter(f => !f.path.includes('node_modules/') && !f.path.includes('.git/'))
     .slice(0, 200)
@@ -36,24 +36,18 @@ function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
   const parts = [
     skills,
     '',
-    language === 'es' ? '# Entorno' : '# Environment',
+    '# Entorno',
     `Repository: ${repoOwner}/${repoName}`,
     `Date: ${new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+    `Response language: ${languageLabel(language)}`,
     '',
     '# Autonomy rules',
-    ...(language === 'es' ? [
-      '- Si el usuario pide un cambio, hazlo de principio a fin.',
-      '- Si el usuario dice "continua", sigue trabajando.',
-      '- Si no conoces el archivo exacto, usa search_text, glob_files o list_dir.',
-      '- No hagas preguntas de "quieres que" cuando puedas investigar por tu cuenta.',
-      '- Si el usuario pide instalar algo, usa la herramienta adecuada y completa la tarea.',
-    ] : [
-      '- If the user asks for a change, make it end to end.',
-      '- If the user says "continue", keep working.',
-      '- If you do not know the exact file, use search_text, glob_files, or list_dir.',
-      '- Do not ask "do you want" questions when you can investigate yourself.',
-      '- If the user asks to install something, use the appropriate tool and finish the task.',
-    ]),
+    '- If the user asks for a change, make it end to end.',
+    '- If the user says "continue", keep working.',
+    '- If you do not know the exact file, use search_text, glob_files, or list_dir.',
+    '- Do not ask "do you want" questions when you can investigate yourself.',
+    '- Do not narrate plans instead of acting.',
+    '- Use tools immediately when a file must be read, changed, or verified.',
     '',
     'Repository files:',
     treeLines,
@@ -595,7 +589,7 @@ async function executeTool(tool, args, ctx) {
   }
 }
 
-async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted, language = 'en') {
+async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted) {
   const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
   if (!otherKeys.length) return null;
 
@@ -636,18 +630,19 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
   const synthMessages = [
     {
       role: 'system',
-      content: language === 'es' ? 'Eres Zyn. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.' : 'You are Zyn. Several models analyzed the same question.\nCreate ONE unified final answer.\nIntegrate unique perspectives. Be direct. Respond in English.\nDo NOT mention that you are synthesizing or that multiple models are involved.',
+      content: language === 'es'
+        ? `Eres Zyn. Varios modelos analizaron la misma pregunta.\nCrea UNA SOLA respuesta final unificada.\nIntegra perspectivas unicas. Se directo. Responde en espanol.\nNO menciones que sintetizas ni que hay multiples modelos.`
+        : `You are Zyn. Several models analyzed the same question.\nCreate ONE unified final answer.\nBlend the useful unique points. Be direct. Respond in English.\nDo NOT mention that you are synthesizing or that multiple models are involved.`,
     },
     {
       role: 'user',
       content: [
         `Response from ${primaryLabel}:\n${primaryContent}`,
         ...extras.map(e => `\nResponse from ${e.label}:\n${e.content}`),
-        '\nCreate the final unified response:',
+        language === 'es' ? '\nCrea la respuesta final unificada:' : '\nCreate the final unified response:',
       ].join('\n'),
     },
   ];
-
   try {
     let synthAnswer = '';
     await chat({
@@ -670,8 +665,7 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
 async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const { repoOwner, repoName, messages: history } = chatData;
   const modelKey = chatData.activeModel || DEFAULT_MODEL_KEY;
-  const group = chatData.group || false;
-  const language = normalizeLanguage(chatData.language || DEFAULT_LANGUAGE);
+  const group = Boolean(chatData.concuerdo || chatData.group);
 
   const modelLabel = MODELS[modelKey]?.label || modelKey;
   onEvent({ type: 'model_info', model: modelKey, label: modelLabel, group });
@@ -688,7 +682,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const systemPrompt = buildSystemPrompt(repoOwner, repoName, fileTree, {
     group,
     activeModel: modelKey,
-    language,
+    language: chatData.language || 'en',
   });
 
   const modelMessages = [
@@ -888,9 +882,11 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       modelMessages.push({ role: 'assistant', content: answer });
       modelMessages.push({
         role: 'user',
-        content: language === 'es'
-          ? 'No pidas permiso ni delegues el siguiente paso. Usa las herramientas disponibles, aplica el cambio y responde solo con el resultado final.'
-          : 'Do not ask for permission or delegate the next step. Use the available tools, apply the change, and reply only with the final result.',
+        content: [
+          'No pidas permiso ni delegues el siguiente paso.',
+          'Busca los archivos necesarios con las herramientas disponibles, aplica el cambio y solo despues responde con el resultado final.',
+          'Continua ahora.',
+        ].join(' '),
       });
       continue;
     }
@@ -1007,7 +1003,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     // ── Final response ──
     if (parsed.type === 'final') {
       if (group) {
-        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted, language);
+        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted);
         if (synthResult) {
           chatData.messages.push({ role: 'assistant', content: synthResult, ts: Date.now() });
           store.saveChat(chatData);

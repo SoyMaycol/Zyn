@@ -221,8 +221,8 @@ app.put('/api/chats/:id/settings', requireAuth, (req, res) => {
   }
   const { activeModel, concuerdo, language } = req.body;
   if (activeModel !== undefined) chat.activeModel = activeModel;
-  if (concuerdo !== undefined) chat.concuerdo = concuerdo;
-  if (language !== undefined) chat.language = language || DEFAULT_LANGUAGE;
+  if (concuerdo !== undefined) chat.concuerdo = Boolean(concuerdo);
+  if (language !== undefined) chat.language = String(language || DEFAULT_LANGUAGE).toLowerCase().startsWith('es') ? 'es' : 'en';
   store.saveChat(chat);
   res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo, language: chat.language || DEFAULT_LANGUAGE });
 });

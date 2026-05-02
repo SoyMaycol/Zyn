@@ -21,14 +21,6 @@ const {
 const { appendTranscriptEntry } = require('../utils/transcriptStorage');
 const { estimateHistoryChars, saveState } = require('../utils/sessionStorage');
 const { normalizeText, shortText } = require('../utils/text');
-const { looksLikeExecutionDeferral, userWantsAction } = require('./prompts');
-
-
-const ACTION_REQUEST_RE = /(?:agrega|añade|anade|instala|install|setup|corrige|arregla|edita|cambia|quita|elimina|reemplaza|modifica|actualiza|sube|aplica|termina|soluciona|hazlo|fix|add|change|edit|replace|remove|execute|run|install)/i;
-
-function shouldTreatAsActionRequest(input) {
-  return ACTION_REQUEST_RE.test(String(input || ''));
-}
 
 async function requestModel(messages, state, ui, options = {}) {
   const {
@@ -222,10 +214,8 @@ async function runAgentTurn(input, state, ui, options = {}) {
   const turnMessages = [{ role: 'user', content: input }];
   await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
 
-  const actionRequested = shouldTreatAsActionRequest(input);
   let lastFingerprint = '';
   let repeatCount = 0;
-  let planDeferralCount = 0;
   let step = 0;
 
   while (true) {
@@ -353,22 +343,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
     if (parsed.type === 'final') {
       const content = parsed.content.trim();
-      const executionDeferral = actionRequested && looksLikeExecutionDeferral(content);
-      if (executionDeferral) {
-        planDeferralCount += 1;
-        if (planDeferralCount <= 2) {
-          turnMessages.push({ role: 'assistant', content: content || raw.trim() });
-          turnMessages.push({
-            role: 'user',
-            content: state.language === 'es'
-              ? 'No des planes ni alternativas. Ejecuta una herramienta concreta ahora y responde solo con el resultado.'
-              : 'Do not give plans or options. Execute one concrete tool now and reply only with the result.',
-          });
-          step += 1;
-          continue;
-        }
-      }
-
       turnMessages.push({ role: 'assistant', content: content || raw.trim() });
       state.history.push(...turnMessages);
       await appendTranscriptEntry(state.sessionId, {
