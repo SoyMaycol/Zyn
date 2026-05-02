@@ -5,10 +5,11 @@ const { normalizeLanguage } = require('./i18n');
 
 const APP_NAME = 'Zyn';
 const APP_ROOT = path.resolve(__dirname, '..');
-const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
+const DATA_ROOT = path.join(HOME_DIR, '.zyn');
 
 const MODELS_FILE = path.join(DATA_ROOT, 'models.json');
+const PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
 
 const BUILTIN_MODELS = {
   'qwen': {
@@ -89,7 +90,7 @@ const MODELS = {
 };
 
 const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
-const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || 'en');
+const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_LANGUAGE || process.env.ZYN_DEFAULT_LANG || 'en');
 
 const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL || process.env.QWEN_EMAIL || 'danielalejandrobasado@gmail.com';
 const QWEN_PASSWORD = process.env.ZYN_QWEN_PASSWORD || process.env.QWEN_PASSWORD || 'zyzz1234';
@@ -146,6 +147,7 @@ module.exports = {
   MAX_TOOL_STEPS,
   MODELS,
   MODELS_FILE,
+  PROVIDERS_FILE,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,

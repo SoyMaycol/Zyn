@@ -7,7 +7,8 @@ const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
   'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url', 'web_search', 'web_read',
+  'fetch_url', 'fetch_links', 'fetch_meta', 'fetch_text', 'create_canvas_media',
+  'web_search', 'web_read',
 ]);
 
 
@@ -36,6 +37,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
         'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
         'Si la tarea requiere comprobar algo, primero intenta una herramienta real y espera el resultado antes de concluir.',
+        'Cuando uses run_command, incluye timeoutMs si el comando puede colgarse o tardar mucho.',
         'No cierres con una conclusion si todavia no has probado nada.',
       ]
     : [
@@ -46,6 +48,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
         'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
         'If the task requires verification, try a real tool first and wait for its result before concluding.',
+        'When using run_command, include timeoutMs if the command may hang or take a long time.',
         'Do not end with a conclusion if you have not tested anything yet.',
       ];
 
@@ -173,6 +176,10 @@ const TOOL_ARG_KEYS = {
   append_file: ['path', 'content'],
   replace_in_file: ['path', 'search', 'replace', 'all'],
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
+  fetch_links: ['url', 'selector', 'limit'],
+  fetch_meta: ['url'],
+  fetch_text: ['url', 'selector', 'limit'],
+  create_canvas_media: ['outputPath', 'width', 'height', 'background', 'elements', 'format'],
   web_search: ['query'],
   web_read: ['url'],
 };

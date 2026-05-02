@@ -76,13 +76,13 @@ async function ensureAuth() {
   return signin();
 }
 
-async function createChat(jar, signal) {
+async function createChat(jar, signal, modelId = MODEL) {
   const res = await fetch(`${BASE}/api/v2/chats/new`, {
     method: 'POST',
     headers: { ...HEADERS, cookie: cookieString(jar) },
     body: JSON.stringify({
       title: 'New Chat',
-      models: [MODEL],
+      models: [modelId],
       chat_mode: 'normal',
       chat_type: 't2t',
       timestamp: Date.now(),
@@ -125,7 +125,7 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
       user_action: 'chat',
       files: [],
       timestamp: Math.floor(Date.now() / 1000),
-      models: [MODEL],
+      models: [modelId],
       chat_type: 't2t',
       feature_config: {
         thinking_enabled: true,
@@ -213,7 +213,8 @@ async function qwen(prompt, onChunk = null, options = {}) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const jar = await ensureAuth();
-      const chatId = await createChat(jar, options.signal);
+      const modelId = options.modelId || MODEL;
+      const chatId = await createChat(jar, options.signal, modelId);
       const result = await streamCompletion(chatId, prompt, jar, onChunk, options.signal);
       return {
         status: true,

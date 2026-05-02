@@ -37,6 +37,7 @@ NUNCA adivines la estructura de un proyecto. Investiga primero, actua despues.
 - Para instalar paquetes: npm install --save, pip install, apt-get install -y.
 - Encadena comandos con && cuando tenga sentido: cd project && npm install && npm test.
 - Si un comando puede producir salida infinita, limitala: head, tail, | grep, --max-count.
+- Si el comando puede colgarse o tardar demasiado, haz que el agente use timeoutMs en run_command.
 - Variables de entorno: DEBIAN_FRONTEND=noninteractive para apt.
 
 ## Descomposicion de tareas complejas

@@ -191,12 +191,15 @@ async function answerFromToolResult(input, call, result, state, ui) {
 
 async function runAgentTurn(input, state, ui, options = {}) {
   const signal = options.signal;
+  const turnLanguage = detectLanguage(input, state.language);
+  state.language = turnLanguage;
   state.turnCount += 1;
   if (state.turnCount === 1 && state.title === 'New session') {
     state.title = shortText(input, 60) || state.title;
   }
   ui.logEvent(state, 'info', `${state.language === 'es' ? 'Turno' : 'Turn'} ${state.turnCount}`);
 
+  let toolUsedThisTurn = false;
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
@@ -226,8 +229,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
   let lastFingerprint = '';
   let repeatCount = 0;
   let step = 0;
-  const turnLanguage = detectLanguage(input, state.language);
-  let toolUsedThisTurn = false;
   let finalWithoutToolRetries = 0;
 
   while (true) {
@@ -355,26 +356,41 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
     if (parsed.type === 'final') {
       const content = parsed.content.trim();
-      if (looksLikeActionRequest(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
-        finalWithoutToolRetries += 1;
-        ui.logEvent(state, 'warn', turnLanguage === 'es' ? 'Sin prueba real todavía' : 'No real attempt yet', turnLanguage === 'es' ? 'Primero intenta una herramienta antes de concluir.' : 'Try a real tool before concluding.');
-        turnMessages.push({ role: 'assistant', content: content || raw.trim() });
-        turnMessages.push({
-          role: 'user',
-          content: [
-            turnLanguage === 'es'
-              ? 'Aun no has probado nada. No des una conclusion ni pasos teoricos.'
-              : 'You have not actually tried anything yet. Do not give a conclusion or theory steps.',
-            turnLanguage === 'es'
-              ? 'Primero intenta una herramienta real adecuada para la tarea.'
-              : 'First try a real tool that fits the task.',
-            turnLanguage === 'es'
-              ? 'Si ninguna herramienta aplica, dilo explicitamente con una sola frase corta y honesta.'
-              : 'If no tool applies, say so explicitly in one short honest sentence.',
-          ].join(' '),
+      if (looksLikeActionRequest(input) && !toolUsedThisTurn) {
+        if (finalWithoutToolRetries < 2) {
+          finalWithoutToolRetries += 1;
+          ui.logEvent(state, 'warn', turnLanguage === 'es' ? 'Sin prueba real todavía' : 'No real attempt yet', turnLanguage === 'es' ? 'Primero intenta una herramienta antes de concluir.' : 'Try a real tool before concluding.');
+          turnMessages.push({ role: 'assistant', content: content || raw.trim() });
+          turnMessages.push({
+            role: 'user',
+            content: [
+              turnLanguage === 'es'
+                ? 'Aun no has probado nada. No des una conclusion ni pasos teoricos.'
+                : 'You have not actually tried anything yet. Do not give a conclusion or theory steps.',
+              turnLanguage === 'es'
+                ? 'Primero intenta una herramienta real adecuada para la tarea.'
+                : 'First try a real tool that fits the task.',
+              turnLanguage === 'es'
+                ? 'Si ninguna herramienta aplica, usa la respuesta más honesta y breve posible.'
+                : 'If no tool applies, use the shortest honest answer possible.',
+            ].join(' '),
+          });
+          step += 1;
+          continue;
+        }
+
+        const honest = turnLanguage === 'es'
+          ? 'Todavía no hice una prueba real. Necesito una herramienta adecuada antes de cerrar la tarea.'
+          : 'I have not tried a real step yet. I need a suitable tool before I can close the task.';
+        turnMessages.push({ role: 'assistant', content: honest });
+        state.history.push(...turnMessages);
+        await appendTranscriptEntry(state.sessionId, {
+          type: 'assistant',
+          content: honest,
         });
-        step += 1;
-        continue;
+        ui.logEvent(state, 'warn', turnLanguage === 'es' ? 'Sin verificación real' : 'No real verification', turnLanguage === 'es' ? 'No cerré la tarea porque aún no probé nada.' : 'Did not close the task because nothing real was tried yet.');
+        await persistSessionState(state, ui);
+        return { content: honest, rendered: false };
       }
       turnMessages.push({ role: 'assistant', content: content || raw.trim() });
       state.history.push(...turnMessages);

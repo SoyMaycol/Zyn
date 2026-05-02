@@ -32,11 +32,11 @@ async function runProvider(provider, messages, model, onChunk, options = {}) {
     case 'ollama':
       return ollama(messages, model.ollamaModel || model.model || model.label, onChunk, options);
     case 'openai-compatible':
-      return openaiCompatible(messages, model.openaiModel || model.model || model.label, onChunk, options);
+      return openaiCompatible(messages, model.openaiModel || model.model || model.label, onChunk, { ...options, model });
     case 'qwen':
     default: {
       const prompt = buildPromptFromMessages(messages);
-      return qwen(prompt, onChunk, options);
+      return qwen(prompt, onChunk, { ...options, modelId: model.qwenModel || model.modelId || model.model || model.label });
     }
   }
 }
