@@ -17,8 +17,15 @@ const {
   DEFAULT_MODEL_KEY,
   MODELS,
 } = require('../config');
+const { normalizeLanguage } = require('../i18n');
 
 const h = React.createElement;
+function getTuiLang() {
+  return normalizeLanguage(global.__zynCurrentLanguage || 'en');
+}
+function uiText(en, es) {
+  return getTuiLang() === 'es' ? es : en;
+}
 const MAX_THINKING_LINES = 20;
 const SPIN_MS = 80;
 
@@ -135,10 +142,9 @@ class UIStore extends EventEmitter {
     this._emit();
   }
 
-  enqueueMessage(payload) {
-    const item = typeof payload === 'object' && payload ? payload : { text: String(payload || '') };
-    this.messageQueue.push(item);
-    this.addItem({ type: 'queued', text: item.displayText || item.text || '' });
+  enqueueMessage(text) {
+    this.messageQueue.push(text);
+    this.addItem({ type: 'queued', text });
     this._emit();
   }
 
@@ -373,7 +379,7 @@ function Banner({ model, resumed, width, cwd }) {
     return s + ' '.repeat(Math.max(0, inner - s.length));
   };
 
-  const sessionLabel = resumed ? 'sesion reanudada' : 'sesion nueva';
+  const sessionLabel = resumed ? uiText('session resumed', 'sesion reanudada') : uiText('new session', 'sesion nueva');
   const cwdShort = cwd && cwd.length > inner - 6 ? '...' + cwd.slice(-(inner - 9)) : (cwd || '.');
 
   return h(Box, { flexDirection: 'column', paddingTop: 1, paddingBottom: 0 },
@@ -573,7 +579,7 @@ function StatusBar({ model, processing, width, turnCount }) {
       h(Box, { gap: 1 },
         h(Text, { color: T.textInvis }, '/help'),
         h(Text, { color: T.textInvis }, '\u00b7'),
-        h(Text, { color: T.textInvis }, 'esc salir'),
+        h(Text, { color: T.textInvis }, uiText('esc exit', 'esc salir')),
       ),
     ),
   );
@@ -600,7 +606,6 @@ function InputBar({ onSubmit, processing }) {
   const [suggestIdx, setSuggestIdx] = useState(0);
   const historyRef = useRef([]);
   const savedRef = useRef('');
-  const pasteRef = useRef(null);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
   const suggestions = showSuggestions
@@ -608,16 +613,6 @@ function InputBar({ onSubmit, processing }) {
     : [];
 
   useInput((input, key) => {
-    const isPasteChunk = typeof input === 'string' && input.length > 1 && !key.return && !key.ctrl && !key.meta && !key.backspace && !key.delete;
-
-    if (isPasteChunk) {
-      pasteRef.current = { text: value.slice(0, cursor) + input + value.slice(cursor), chars: input.length };
-      setValue(v => v.slice(0, cursor) + input + v.slice(cursor));
-      setCursor(c => c + input.length);
-      setSuggestIdx(0);
-      return;
-    }
-
     if (key.return) {
       let text = value.trim();
       if (!text) return;
@@ -626,18 +621,13 @@ function InputBar({ onSubmit, processing }) {
         const cmd = suggestions[suggestIdx] || suggestions[0];
         if (cmd) text = `/${cmd.name}`;
       }
-      const isPaste = !!pasteRef.current;
-      const displayText = isPaste
-        ? `[ Pasted Text of ${pasteRef.current.chars} Characters ]`
-        : text;
       historyRef.current.unshift(text);
       if (historyRef.current.length > 100) historyRef.current.pop();
       setValue('');
       setCursor(0);
       setHistIdx(-1);
       setSuggestIdx(0);
-      pasteRef.current = null;
-      onSubmit({ text, displayText, isPaste });
+      onSubmit(text);
       return;
     }
 
@@ -738,7 +728,7 @@ function InputBar({ onSubmit, processing }) {
   const after = value.slice(cursor + 1);
 
   const promptColor = processing ? T.amber : T.accent;
-  const placeholder = processing ? ' En cola — escribe y se procesará después...' : ' Escribe un mensaje...';
+  const placeholder = processing ? uiText(' Queued — type and it will run later...', ' En cola — escribe y se procesará después...') : uiText(' Type a message...', ' Escribe un mensaje...');
 
   const inputLine = h(Box, { paddingLeft: 3, paddingRight: 3, paddingTop: 0, paddingBottom: 0, marginTop: 1 },
     h(Text, { color: promptColor }, processing ? '\u{1F4E9} ' : '\u276f '),
@@ -794,28 +784,26 @@ function InputBar({ onSubmit, processing }) {
 
 function App({ store, state, onSubmit }) {
   useStore(store);
+  global.__zynCurrentLanguage = state?.language || 'en';
   const { exit } = useApp();
   const { width } = useDimensions();
 
   const modelKey   = state?.activeModel || DEFAULT_MODEL_KEY;
   const modelLabel = state?.concuerdo
-    ? 'Concuerdo · ' + Object.values(MODELS).map(m => m.label).join(', ')
+    ? uiText('Concord · ', 'Concuerdo · ') + Object.values(MODELS).map(m => m.label).join(', ')
     : (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
-  const handleInput = useCallback((payload) => {
-    const text = typeof payload === 'string' ? payload : payload?.text || '';
-    const displayText = typeof payload === 'object' && payload?.displayText ? payload.displayText : text;
-
+  const handleInput = useCallback((text) => {
     if (text === '/exit' || text === '/quit') {
       if (store.processing) {
         store.pendingExit = true;
-        store.addEvent('info', 'saliendo al terminar el turno actual');
+        store.addEvent('info', uiText('exiting after current turn', 'saliendo al terminar el turno actual'));
         return;
       }
       exit();
       return;
     }
-    onSubmit({ text, displayText });
+    onSubmit(text);
   }, [onSubmit, exit, store]);
 
   useInput((input, key) => {
@@ -829,10 +817,10 @@ function App({ store, state, onSubmit }) {
             state.abortCurrentTurn();
           }
           store.pendingExit = false;
-          store.addEvent('warn', 'agente detenido', 'Interrumpido con ESC x2');
+          store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC x2', 'Interrumpido con ESC x2'));
         } else {
           store.lastEscapeAt = now;
-          store.addEvent('info', 'pulsa ESC otra vez', 'para detener el agente');
+          store.addEvent('info', uiText('press ESC again', 'pulsa ESC otra vez'), uiText('to stop the agent', 'para detener el agente'));
         }
         return;
       }
@@ -931,12 +919,10 @@ export async function startTUI(options = {}) {
 
   store.addItem({ type: 'banner', model: modelLabel, resumed, cwd });
 
-  const processInput = async (payload) => {
-    const input = typeof payload === 'string' ? payload : payload?.text || '';
-    const displayText = typeof payload === 'object' && payload?.displayText ? payload.displayText : input;
+  const processInput = async (input) => {
     if (input === '/exit' || input === '/quit') {
       store.pendingExit = true;
-      store.addEvent('info', 'hasta luego');
+      store.addEvent('info', uiText('bye', 'hasta luego'));
       return;
     }
 
@@ -966,7 +952,7 @@ export async function startTUI(options = {}) {
         }
         if (!handled) store.addEvent('warn', 'comando no reconocido', input);
       } catch (err) {
-        store.addEvent('error', 'error', err.message);
+        store.addEvent('error', uiText('error', 'error'), err.message);
       } finally {
         console.log = origLog;
         console.error = origError;
@@ -975,7 +961,7 @@ export async function startTUI(options = {}) {
     }
 
     store.addItem({ type: 'divider' });
-    store.addItem({ type: 'user', text: displayText, rawText: input });
+    store.addItem({ type: 'user', text: input });
 
     const origError = console.error;
     console.error = () => {};
@@ -1004,19 +990,14 @@ export async function startTUI(options = {}) {
 
   let appInstance = null;
 
-  const handleSubmit = async (payload) => {
-    const text = typeof payload === 'string' ? payload : payload?.text || '';
-    const normalized = typeof payload === 'object' && payload
-      ? { text, displayText: payload.displayText || text }
-      : { text, displayText: text };
-
-    if (text.startsWith('/') && store.processing) {
-      await processInput(normalized);
+  const handleSubmit = async (input) => {
+    if (input.startsWith('/') && store.processing) {
+      await processInput(input);
       return;
     }
 
     if (store.processing) {
-      store.enqueueMessage(normalized);
+      store.enqueueMessage(input);
       return;
     }
 
@@ -1024,7 +1005,7 @@ export async function startTUI(options = {}) {
     store.turnCount += 1;
     store._emit();
 
-    await processInput(normalized);
+    await processInput(input);
 
     while (store.messageQueue.length > 0) {
       const next = store.messageQueue.shift();

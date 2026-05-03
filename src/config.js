@@ -7,11 +7,8 @@ const APP_NAME = 'Zyn';
 const APP_ROOT = path.resolve(__dirname, '..');
 const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
-const USER_DATA_ROOT = path.join(HOME_DIR, '.zyn');
 
-const MODELS_FILE = path.join(USER_DATA_ROOT, 'models.json');
-const PROVIDERS_FILE = path.join(USER_DATA_ROOT, 'providers.json');
-const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
+const MODELS_FILE = path.join(DATA_ROOT, 'models.json');
 
 const BUILTIN_MODELS = {
   'qwen': {
@@ -91,22 +88,10 @@ const MODELS = {
   ...loadExternalModels(),
 };
 
-function refreshModels() {
-  const next = {
-    ...BUILTIN_MODELS,
-    ...loadExternalModels(),
-  };
-  for (const key of Object.keys(MODELS)) {
-    delete MODELS[key];
-  }
-  Object.assign(MODELS, next);
-  return MODELS;
-}
-
 const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
-const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || 'en');
+const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || process.env.LANG || 'en');
 
-const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL ||  'danielalejandrobasado@gmail.com';
+const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL || 'danielalejandrobasado@gmail.com';
 const QWEN_PASSWORD = process.env.ZYN_QWEN_PASSWORD || 'zyzz1234';
 
 const MAX_TOOL_STEPS = Number.POSITIVE_INFINITY;
@@ -161,16 +146,12 @@ module.exports = {
   MAX_TOOL_STEPS,
   MODELS,
   MODELS_FILE,
-  PROVIDERS_FILE,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,
-  TASKS_FILE,
-  USER_DATA_ROOT,
   SESSION_ROOT,
   SESSIONS_DIR,
   THINK_FRAMES,
   TRANSCRIPTS_DIR,
   listProvidersFromModels,
-  refreshModels,
 };

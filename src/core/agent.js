@@ -30,25 +30,6 @@ function looksLikeActionRequest(text) {
   return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
 }
 
-
-function shouldRequireRealAttempt(text) {
-  const sample = normalizeText(String(text || '')).toLowerCase();
-  if (!sample) return false;
-  if (!looksLikeActionRequest(sample)) return false;
-
-  const informationalOnly = [
-    /^(?:what is|who is|why is|why are|how is|how are|what does|what means)/i,
-    /^(?:qué es|que es|quien es|quién es|por qué|porque|cómo se llama|como se llama|qué significa|que significa)/i,
-    /(?:translate|traduce|resume|summarize|explíc|explica|define|defin[e]?|describe|describ[e]?)/i,
-  ];
-
-  if (informationalOnly.some(re => re.test(sample))) {
-    return false;
-  }
-
-  return true;
-}
-
 async function requestModel(messages, state, ui, options = {}) {
   const {
     label = 'Pensando',
@@ -216,7 +197,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
   }
   ui.logEvent(state, 'info', `${state.language === 'es' ? 'Turno' : 'Turn'} ${state.turnCount}`);
 
-  let toolUsedThisTurn = false;
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
@@ -247,6 +227,8 @@ async function runAgentTurn(input, state, ui, options = {}) {
   let repeatCount = 0;
   let step = 0;
   const turnLanguage = detectLanguage(input, state.language);
+  state.language = turnLanguage;
+  let toolUsedThisTurn = false;
   let finalWithoutToolRetries = 0;
 
   while (true) {
@@ -374,7 +356,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
     if (parsed.type === 'final') {
       const content = parsed.content.trim();
-      if (shouldRequireRealAttempt(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
+      if (looksLikeActionRequest(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
         finalWithoutToolRetries += 1;
         ui.logEvent(state, 'warn', turnLanguage === 'es' ? 'Sin prueba real todavía' : 'No real attempt yet', turnLanguage === 'es' ? 'Primero intenta una herramienta antes de concluir.' : 'Try a real tool before concluding.');
         turnMessages.push({ role: 'assistant', content: content || raw.trim() });

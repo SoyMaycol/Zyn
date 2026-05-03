@@ -10,7 +10,7 @@ const MAX_STEPS = Number.POSITIVE_INFINITY;
 const CONCUERDO_TIMEOUT = 30000;
 const BUFFER_CHECK = 72;
 const WEB_SKILLS = ['core', 'tools', 'web-agent', 'code-style', 'reasoning', 'methodology'];
-const TOOL_HINT_RE = /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|task_create|task_list|task_update|task_complete|task_delete|task_clear|create_canvas_image|web_search|web_read)"/i;
+const TOOL_HINT_RE = /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read)"/i;
 const XML_TOOL_RE = /<invoke\s+name=|<\w+:tool_call>/i;
 const INTERNAL_PLAN_START_RE = /^(el usuario|the user|necesito|i need|primero|first|voy a|i will|debo|i should|tengo que|let me|para hacer esto|to do this|mi siguiente paso|my next step|entendido|okay|ok|perfecto|now|ahora)\b/i;
 const INTERNAL_PLAN_ACTION_RE = /(read_file|write_file|leer el archivo|read the file|leer primero|read it first|editar el archivo|edit the file|modificar el archivo|hacer el cambio|quitar el comentario|analizar|analyze|inspeccionar|inspect|usar la herramienta|use the tool|ver el archivo|continuar|continue|resolver|fix the issue|importar|getname|corregir)/i;

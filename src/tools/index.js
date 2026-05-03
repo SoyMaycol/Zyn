@@ -1,29 +1,28 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const os = require('os');
 
 const fsp = fs.promises;
 
 const {
   MAX_FILE_LINES,
 } = require('../config');
+const {
+  buildApiHeaders,
+  buildCloneUrl,
+  getApiBaseUrl,
+  listGitSecrets,
+  normalizeProfileName,
+  removeGitSecret,
+  resolveGitProfile,
+  upsertGitSecret,
+} = require('../utils/secretStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
 const {
   formatLineRange,
   shortText,
   truncateText,
 } = require('../utils/text');
-const {
-  clearTasks,
-  completeTask,
-  createTask,
-  deleteTask,
-  formatTask,
-  listTasks,
-  summarizeTasks,
-  updateTask,
-} = require('../utils/taskStorage');
 
 const TOOL_DEFINITIONS = [
   { name: 'list_dir', usage: '{ path? }' },
@@ -31,19 +30,12 @@ const TOOL_DEFINITIONS = [
   { name: 'search_text', usage: '{ pattern, path?, glob? }' },
   { name: 'glob_files', usage: '{ pattern, path? }' },
   { name: 'file_info', usage: '{ path }' },
-  { name: 'run_command', usage: '{ command, timeoutMs? }' },
+  { name: 'run_command', usage: '{ command }' },
   { name: 'make_dir', usage: '{ path }' },
   { name: 'write_file', usage: '{ path, content }' },
   { name: 'append_file', usage: '{ path, content }' },
   { name: 'replace_in_file', usage: '{ path, search, replace, all? }' },
-  { name: 'fetch_url', usage: '{ url, method?, headers?, body?, selector?, attribute?, limit?, timeoutMs? }' },
-  { name: 'task_create', usage: '{ title, description?, priority?, dueAt?, tags? }' },
-  { name: 'task_list', usage: '{ status?, includeDone? }' },
-  { name: 'task_update', usage: '{ id, title?, description?, status?, priority?, dueAt?, tags?, notes? }' },
-  { name: 'task_complete', usage: '{ id, notes? }' },
-  { name: 'task_delete', usage: '{ id }' },
-  { name: 'task_clear', usage: '{ }' },
-  { name: 'create_canvas_image', usage: '{ width, height, format?, outputPath?, background?, elements? }' },
+  { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
   { name: 'web_search', usage: '{ query }' },
   { name: 'web_read', usage: '{ url }' },
 ];
@@ -89,50 +81,19 @@ function getToolPromptText() {
     '',
     '## Ejecucion',
     '',
-    'run_command { command, timeoutMs? }',
-    '  Ejecuta comando en bash. Siempre usa timeoutMs. Si la tarea es corta, usa un tiempo corto; si es install/test/build, usa uno mayor.',
-    '  timeoutMs se expresa en milisegundos. Nunca concluyas sin intentar una herramienta real cuando haga falta verificar.',
+    'run_command { command }',
+    '  Ejecuta comando en bash. Timeout: 2 minutos.',
     '  Retorna exit code, stdout y stderr.',
     '  Ejecuta la accion directamente. No expliques pasos al usuario salvo que sea estrictamente necesario.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
     '',
-    'fetch_url { url, method?, headers?, body?, selector?, attribute?, limit?, timeoutMs? }',
-    '  Sin selector: retorna HTML o texto de la pagina.',
-    '  method puede ser GET, POST u otro verbo soportado por la URL.',
-    '  headers permite pasar cabeceras avanzadas como Authorization, Accept-Language o User-Agent.',
-    '  body acepta string u objeto JSON para solicitudes avanzadas.',
-    '  timeoutMs define el tiempo maximo de la peticion.',
-    '',
     '## Web',
     '',
-    'fetch_url { url, method?, headers?, body?, selector?, attribute?, limit?, timeoutMs? }',
-    '  Sin selector: retorna HTML o texto completo de la pagina.',
+    'fetch_url { url, selector?, attribute?, limit? }',
+    '  Sin selector: retorna HTML completo de la pagina.',
     '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
-    '  headers permite cabeceras avanzadas y body permite solicitudes mas complejas.',
-    '',
-    'task_create { title, description?, priority?, dueAt?, tags? }',
-    '  Crea una tarea persistente para que el agente no la olvide.',
-    '',
-    'task_list { status?, includeDone? }',
-    '  Muestra tareas pendientes o completas.',
-    '',
-    'task_update { id, title?, description?, status?, priority?, dueAt?, tags?, notes? }',
-    '  Actualiza una tarea existente.',
-    '',
-    'task_complete { id, notes? }',
-    '  Marca una tarea como terminada.',
-    '',
-    'task_delete { id }',
-    '  Elimina una tarea.',
-    '',
-    'task_clear { }',
-    '  Elimina todas las tareas.',
-    '',
-    'create_canvas_image { width, height, format?, outputPath?, background?, elements? }',
-    '  Crea una imagen real de produccion con node-canvas. Soporta PNG, JPG, WEBP, SVG y PDF segun el formato.',
-    '  elements acepta formas, texto, imagenes, gradientes y lineas.',
     '',
     'web_search { query }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
@@ -169,20 +130,6 @@ function describeToolCall(call) {
       return `Comando ${shortText(call.args.command, 70)}`;
     case 'make_dir':
       return `Creando carpeta ${call.args.path}`;
-    case 'task_create':
-      return `Creando tarea ${shortText(call.args.title || call.args.description || '', 60)}`;
-    case 'task_list':
-      return 'Listando tareas';
-    case 'task_update':
-      return `Actualizando tarea ${call.args.id}`;
-    case 'task_complete':
-      return `Completando tarea ${call.args.id}`;
-    case 'task_delete':
-      return `Eliminando tarea ${call.args.id}`;
-    case 'task_clear':
-      return 'Limpiando tareas';
-    case 'create_canvas_image':
-      return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     case 'write_file':
       return `Escribiendo ${call.args.path}`;
     case 'append_file':
@@ -315,66 +262,6 @@ async function askConfirmation(rl, title, detail, paint, state) {
   return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
 }
 
-
-function hasBackgroundOperator(command) {
-  return /(^|[^&])&([^&]|$)/.test(command) && !/&&/.test(command);
-}
-
-function suggestTimeoutMs(command) {
-  const sample = String(command || '').toLowerCase();
-  if (!sample) return 30000;
-  if (hasBackgroundOperator(sample)) return 5000;
-  if (/\b(npm|pnpm|yarn|bun|pip|pip3|cargo|pytest|vitest|jest|mocha|install|build|compile|test|go test)\b/i.test(sample)) {
-    return 10 * 60 * 1000;
-  }
-  if (/\b(serve|watch|run|start|dev|docker|compose)\b/i.test(sample)) {
-    return 5 * 60 * 1000;
-  }
-  return 45000;
-}
-
-async function runBackgroundCommand(command, cwd, timeoutMs) {
-  const child = spawn('bash', ['-lc', command], {
-    cwd,
-    detached: true,
-    stdio: 'ignore',
-  });
-
-  const pid = child.pid || 0;
-  child.unref();
-
-  const shortWait = Math.min(Number(timeoutMs) || 0, 1500);
-  const deadline = Date.now() + shortWait;
-
-  while (Date.now() < deadline) {
-    try {
-      process.kill(pid, 0);
-      await new Promise(r => setTimeout(r, 100));
-      continue;
-    } catch {
-      return {
-        code: 0,
-        stdout: `Proceso terminado en background: ${pid}`,
-        stderr: '',
-        timedOut: false,
-        background: true,
-        finished: true,
-        pid,
-      };
-    }
-  }
-
-  return {
-    code: 0,
-    stdout: `Proceso iniciado en background: ${pid}`,
-    stderr: '',
-    timedOut: false,
-    background: true,
-    finished: false,
-    pid,
-  };
-}
-
 async function listDirTool(args, state) {
   const targetPath = resolveInputPath(args.path ?? '.', state.cwd);
   const entries = await fsp.readdir(targetPath, { withFileTypes: true });
@@ -480,18 +367,11 @@ async function runCommandTool(args, state, paint) {
   }
 
   const command = cleanCommand(args.command);
-  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : suggestTimeoutMs(command));
-  const detail = [
-    command,
-    `Directorio: ${state.cwd}`,
-    `Timeout: ${timeoutMs}ms`,
-    hasBackgroundOperator(command) ? 'Modo: background detectado' : null,
-  ].filter(Boolean).join('\n');
 
   const allowed = await askConfirmation(
     state.rl,
     'Ejecutar comando',
-    detail,
+    `${command}\n\nDirectorio: ${state.cwd}`,
     paint,
     state,
   );
@@ -500,22 +380,12 @@ async function runCommandTool(args, state, paint) {
     return 'Comando cancelado por el usuario.';
   }
 
-  let result;
-  if (hasBackgroundOperator(command)) {
-    result = await runBackgroundCommand(command, state.cwd, timeoutMs);
-  } else {
-    result = await runProcess('bash', ['-lc', command], {
-      cwd: state.cwd,
-      timeoutMs,
-    });
-  }
+  const result = await runProcess('bash', ['-lc', command], {
+    cwd: state.cwd,
+    timeoutMs: 120000,
+  });
 
   const parts = [`Exit code: ${result.code ?? 'desconocido'}`];
-
-  if (result.background) {
-    parts.push(`Background: ${result.finished ? 'terminado' : 'iniciado'}`);
-    if (result.pid) parts.push(`PID: ${result.pid}`);
-  }
 
   if (result.timedOut) {
     parts.push('Timeout: el comando fue detenido por tiempo.');
@@ -722,14 +592,9 @@ async function fetchUrlTool(args, state, paint) {
     throw new Error('Solo se permite http y https');
   }
 
-  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 15000);
-  const detail = [
-    `${String(args.method || 'GET').toUpperCase()} ${url}`,
-    args.selector ? `Selector: ${args.selector}` : null,
-    args.headers ? 'Headers: configurados' : null,
-    args.body ? 'Body: configurado' : null,
-    `Timeout: ${timeoutMs}ms`,
-  ].filter(Boolean).join('\n');
+  const detail = args.selector
+    ? `GET ${url}\nSelector: ${args.selector}`
+    : `GET ${url}`;
 
   const allowed = await askConfirmation(
     state.rl,
@@ -746,15 +611,14 @@ async function fetchUrlTool(args, state, paint) {
   const axios = require('axios');
   const response = await axios({
     url,
-    method: String(args.method || 'GET').toUpperCase(),
+    method: 'GET',
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
       ...(args.headers || {}),
     },
-    data: args.body && typeof args.body === 'object' ? args.body : args.body,
-    timeout: timeoutMs,
+    timeout: 15000,
     maxContentLength: 512000,
     maxRedirects: 5,
     responseType: 'text',
@@ -804,299 +668,6 @@ async function fetchUrlTool(args, state, paint) {
   }
 
   return truncateText(parts.join('\n'));
-}
-
-
-function parseTagList(value) {
-  if (Array.isArray(value)) {
-    return value.map(item => String(item).trim()).filter(Boolean);
-  }
-  if (typeof value === 'string') {
-    return value.split(/[;,]/).map(item => item.trim()).filter(Boolean);
-  }
-  return [];
-}
-
-function normalizePriority(value) {
-  const sample = String(value || '').trim().toLowerCase();
-  if (['high', 'alta', 'urgente', '1'].includes(sample)) return 'high';
-  if (['low', 'baja', '2'].includes(sample)) return 'low';
-  return 'medium';
-}
-
-async function taskListTool(args, state) {
-  const tasks = listTasks({
-    status: args.status ? String(args.status).trim().toLowerCase() : '',
-    includeDone: args.includeDone !== false,
-  });
-
-  const lang = state.language === 'es' ? 'es' : 'en';
-  if (tasks.length === 0) {
-    return lang === 'es' ? 'No hay tareas registradas.' : 'No tasks recorded.';
-  }
-
-  return [
-    lang === 'es' ? `Tareas: ${tasks.length}` : `Tasks: ${tasks.length}`,
-    ...tasks.map(formatTask),
-  ].join('\n');
-}
-
-async function taskCreateTool(args, state) {
-  const task = createTask({
-    title: args.title || args.description || '',
-    description: args.description || '',
-    priority: normalizePriority(args.priority),
-    dueAt: args.dueAt || null,
-    tags: parseTagList(args.tags),
-    source: 'agent',
-    sessionId: state.sessionId || null,
-    notes: args.notes || '',
-  });
-  return `Tarea creada: ${formatTask(task)}`;
-}
-
-async function taskUpdateTool(args) {
-  if (!args.id) {
-    throw new Error('task_update requiere id');
-  }
-  const task = updateTask(args.id, {
-    title: args.title,
-    description: args.description,
-    status: args.status,
-    priority: args.priority ? normalizePriority(args.priority) : undefined,
-    dueAt: args.dueAt,
-    tags: args.tags !== undefined ? parseTagList(args.tags) : undefined,
-    notes: args.notes,
-  });
-  return `Tarea actualizada: ${formatTask(task)}`;
-}
-
-async function taskCompleteTool(args) {
-  if (!args.id) {
-    throw new Error('task_complete requiere id');
-  }
-  const task = completeTask(args.id, args.notes || '');
-  return `Tarea completada: ${formatTask(task)}`;
-}
-
-async function taskDeleteTool(args) {
-  if (!args.id) {
-    throw new Error('task_delete requiere id');
-  }
-  const task = deleteTask(args.id);
-  return `Tarea eliminada: ${task.id} :: ${task.title}`;
-}
-
-async function taskClearTool() {
-  clearTasks();
-  return 'Todas las tareas fueron eliminadas.';
-}
-
-function pickCanvasColor(value, fallback = '#000000') {
-  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
-}
-
-function drawRoundedRect(ctx, x, y, w, h, r = 0) {
-  const radius = Math.max(0, Number(r) || 0);
-  if (radius <= 0) {
-    ctx.rect(x, y, w, h);
-    return;
-  }
-  const rr = Math.min(radius, Math.abs(w) / 2, Math.abs(h) / 2);
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-}
-
-async function createCanvasImageTool(args, state, paint) {
-  const width = Math.max(1, Number(args.width || 0));
-  const height = Math.max(1, Number(args.height || 0));
-  if (!width || !height) {
-    throw new Error('create_canvas_image requiere width y height');
-  }
-
-  const format = String(args.format || 'png').toLowerCase();
-  const safeFormat = ['png', 'jpg', 'jpeg', 'webp', 'svg', 'pdf'].includes(format) ? format : 'png';
-  const fileExt = safeFormat === 'jpeg' ? 'jpg' : safeFormat;
-  const outputPath = resolveInputPath(
-    args.outputPath || path.join('generated', `canvas-${Date.now()}.${fileExt}`),
-    state.cwd,
-  );
-
-  const allowed = await askConfirmation(
-    state.rl,
-    'Crear imagen',
-    `${width}x${height}
-Formato: ${safeFormat}
-Salida: ${outputPath}`,
-    paint,
-    state,
-  );
-
-  if (!allowed) {
-    return 'Creacion de imagen cancelada por el usuario.';
-  }
-
-  const { createCanvas, loadImage } = require('canvas');
-  const canvasType = safeFormat === 'svg' || safeFormat === 'pdf' ? safeFormat : undefined;
-  const canvas = canvasType ? createCanvas(width, height, canvasType) : createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  const elements = Array.isArray(args.elements) ? args.elements : [];
-
-  if (args.background) {
-    if (typeof args.background === 'string') {
-      ctx.fillStyle = args.background;
-      ctx.fillRect(0, 0, width, height);
-    } else if (args.background && typeof args.background === 'object') {
-      if (args.background.type === 'linear-gradient' && Array.isArray(args.background.stops)) {
-        const grad = ctx.createLinearGradient(
-          Number(args.background.x0 || 0),
-          Number(args.background.y0 || 0),
-          Number(args.background.x1 || width),
-          Number(args.background.y1 || height),
-        );
-        for (const stop of args.background.stops) {
-          if (stop && typeof stop === 'object' && stop.color) {
-            grad.addColorStop(Number(stop.offset ?? 0), String(stop.color));
-          }
-        }
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, width, height);
-      } else if (args.background.color) {
-        ctx.fillStyle = args.background.color;
-        ctx.fillRect(0, 0, width, height);
-      }
-    }
-  }
-
-  for (const element of elements) {
-    if (!element || typeof element !== 'object') continue;
-    const type = String(element.type || 'text').toLowerCase();
-    ctx.save();
-    if (element.opacity !== undefined) {
-      ctx.globalAlpha = Math.max(0, Math.min(1, Number(element.opacity)));
-    }
-    if (element.shadowColor) ctx.shadowColor = element.shadowColor;
-    if (element.shadowBlur) ctx.shadowBlur = Number(element.shadowBlur) || 0;
-    if (element.shadowOffsetX) ctx.shadowOffsetX = Number(element.shadowOffsetX) || 0;
-    if (element.shadowOffsetY) ctx.shadowOffsetY = Number(element.shadowOffsetY) || 0;
-
-    if (element.clip && element.clip.radius) {
-      ctx.beginPath();
-      drawRoundedRect(ctx, Number(element.x || 0), Number(element.y || 0), Number(element.w || element.width || 0), Number(element.h || element.height || 0), Number(element.clip.radius || 0));
-      ctx.clip();
-    }
-
-    switch (type) {
-      case 'rect': {
-        const x = Number(element.x || 0);
-        const y = Number(element.y || 0);
-        const w = Number(element.w || element.width || 0);
-        const h = Number(element.h || element.height || 0);
-        if (element.fill) {
-          ctx.fillStyle = element.fill;
-          ctx.fillRect(x, y, w, h);
-        }
-        if (element.stroke) {
-          ctx.lineWidth = Number(element.lineWidth || 1);
-          ctx.strokeStyle = element.stroke;
-          if (element.radius) {
-            ctx.beginPath();
-            drawRoundedRect(ctx, x, y, w, h, element.radius);
-            ctx.stroke();
-          } else {
-            ctx.strokeRect(x, y, w, h);
-          }
-        }
-        break;
-      }
-      case 'circle':
-      case 'ellipse': {
-        const x = Number(element.x || 0);
-        const y = Number(element.y || 0);
-        const rx = Number(element.rx || element.r || element.radius || element.width || 0);
-        const ry = Number(element.ry || element.r || element.radius || element.height || rx);
-        ctx.beginPath();
-        ctx.ellipse(x, y, rx, ry, Number(element.rotation || 0), 0, Math.PI * 2);
-        if (element.fill) {
-          ctx.fillStyle = element.fill;
-          ctx.fill();
-        }
-        if (element.stroke) {
-          ctx.lineWidth = Number(element.lineWidth || 1);
-          ctx.strokeStyle = element.stroke;
-          ctx.stroke();
-        }
-        break;
-      }
-      case 'line': {
-        ctx.beginPath();
-        ctx.moveTo(Number(element.x1 || 0), Number(element.y1 || 0));
-        ctx.lineTo(Number(element.x2 || 0), Number(element.y2 || 0));
-        ctx.lineWidth = Number(element.lineWidth || 1);
-        ctx.strokeStyle = element.stroke || '#000000';
-        if (Array.isArray(element.dash)) {
-          ctx.setLineDash(element.dash.map(Number));
-        }
-        ctx.stroke();
-        break;
-      }
-      case 'image': {
-        const src = element.src || element.url || element.path;
-        if (!src) break;
-        const img = await loadImage(src.startsWith('http') || src.startsWith('data:') ? src : resolveInputPath(src, state.cwd));
-        const x = Number(element.x || 0);
-        const y = Number(element.y || 0);
-        const w = Number(element.w || element.width || img.width);
-        const h = Number(element.h || element.height || img.height);
-        if (element.fit === 'cover') {
-          ctx.drawImage(img, x, y, w, h);
-        } else {
-          ctx.drawImage(img, x, y, w, h);
-        }
-        break;
-      }
-      case 'text':
-      default: {
-        const x = Number(element.x || 0);
-        const y = Number(element.y || 0);
-        ctx.font = `${element.fontStyle || ''} ${element.fontWeight || element.weight || 'normal'} ${Number(element.fontSize || 24)}px ${element.fontFamily || 'Arial'}`.replace(/\s+/g, ' ').trim();
-        ctx.fillStyle = pickCanvasColor(element.fill || element.color, '#000000');
-        ctx.textAlign = element.align || 'left';
-        ctx.textBaseline = element.baseline || 'alphabetic';
-        const text = String(element.text || '');
-        if (element.stroke) {
-          ctx.lineWidth = Number(element.lineWidth || 1);
-          ctx.strokeStyle = element.stroke;
-          ctx.strokeText(text, x, y, element.maxWidth ? Number(element.maxWidth) : undefined);
-        }
-        ctx.fillText(text, x, y, element.maxWidth ? Number(element.maxWidth) : undefined);
-        break;
-      }
-    }
-
-    ctx.restore();
-  }
-
-  await fsp.mkdir(path.dirname(outputPath), { recursive: true });
-  let buffer;
-  if (safeFormat === 'jpg' || safeFormat === 'jpeg') {
-    buffer = canvas.toBuffer('image/jpeg', { quality: Number(args.quality || 0.92) });
-  } else if (safeFormat === 'webp') {
-    buffer = canvas.toBuffer('image/webp', { quality: Number(args.quality || 0.92) });
-  } else {
-    buffer = canvas.toBuffer();
-  }
-  await fsp.writeFile(outputPath, buffer);
-
-  return [
-    `Imagen creada: ${outputPath}`,
-    `Formato: ${safeFormat}`,
-    `Tamano: ${width}x${height}`,
-    `Elementos: ${elements.length}`,
-  ].join('\n');
 }
 
 async function webSearchTool(args, state, paint) {
@@ -1228,27 +799,6 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'fetch_url':
       result = await fetchUrlTool(call.args, state, ui.paint);
-      break;
-    case 'task_create':
-      result = await taskCreateTool(call.args, state, ui.paint);
-      break;
-    case 'task_list':
-      result = await taskListTool(call.args, state, ui.paint);
-      break;
-    case 'task_update':
-      result = await taskUpdateTool(call.args, state, ui.paint);
-      break;
-    case 'task_complete':
-      result = await taskCompleteTool(call.args, state, ui.paint);
-      break;
-    case 'task_delete':
-      result = await taskDeleteTool(call.args, state, ui.paint);
-      break;
-    case 'task_clear':
-      result = await taskClearTool(call.args, state, ui.paint);
-      break;
-    case 'create_canvas_image':
-      result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
     case 'web_search':
       result = await webSearchTool(call.args, state, ui.paint);
@@ -1462,3 +1012,241 @@ module.exports = {
   parseDirectAction,
   printTools,
 };
+
+
+function getGitSecretLabel(provider, name = '') {
+  const key = normalizeProfileName(provider);
+  if (key === 'custom') return name ? `custom:${name}` : 'custom';
+  return key;
+}
+
+function parseColor(value, fallback = 0x000000ff) {
+  if (typeof value !== 'string' || !value.trim()) return fallback;
+  const raw = value.trim().replace('#', '');
+  if (/^[0-9a-f]{6}$/i.test(raw)) return Number.parseInt(`${raw}ff`, 16) >>> 0;
+  if (/^[0-9a-f]{8}$/i.test(raw)) return Number.parseInt(raw, 16) >>> 0;
+  return fallback;
+}
+
+function drawRect(image, x, y, w, h, color) {
+  const left = Math.max(0, Math.floor(Number(x) || 0));
+  const top = Math.max(0, Math.floor(Number(y) || 0));
+  const width = Math.max(1, Math.floor(Number(w) || 0));
+  const height = Math.max(1, Math.floor(Number(h) || 0));
+  image.scan(left, top, width, height, function (px, py, idx) {
+    this.bitmap.data.writeUInt32BE(color >>> 0, idx);
+  });
+}
+
+function drawRoundRect(image, x, y, w, h, radius, color) {
+  const left = Math.max(0, Math.floor(Number(x) || 0));
+  const top = Math.max(0, Math.floor(Number(y) || 0));
+  const width = Math.max(1, Math.floor(Number(w) || 0));
+  const height = Math.max(1, Math.floor(Number(h) || 0));
+  const r = Math.max(0, Math.min(Number(radius) || 0, Math.floor(width / 2), Math.floor(height / 2)));
+  if (r <= 0) return drawRect(image, left, top, width, height, color);
+
+  image.scan(left, top, width, height, function (px, py, idx) {
+    const cx = px < left + r ? left + r : px >= left + width - r ? left + width - r - 1 : px;
+    const cy = py < top + r ? top + r : py >= top + height - r ? top + height - r - 1 : py;
+    const dx = px - cx;
+    const dy = py - cy;
+    if ((dx * dx) + (dy * dy) <= r * r) {
+      this.bitmap.data.writeUInt32BE(color >>> 0, idx);
+    }
+  });
+}
+
+function drawLine(image, x1, y1, x2, y2, color) {
+  const sx = Number(x1 || 0);
+  const sy = Number(y1 || 0);
+  const tx = Number(x2 || 0);
+  const ty = Number(y2 || 0);
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(tx - sx), Math.abs(ty - sy))));
+  for (let i = 0; i <= steps; i++) {
+    const x = Math.round(sx + ((tx - sx) * i / steps));
+    const y = Math.round(sy + ((ty - sy) * i / steps));
+    if (x >= 0 && y >= 0 && x < image.bitmap.width && y < image.bitmap.height) {
+      image.setPixelColor(color, x, y);
+    }
+  }
+}
+
+async function createCanvasImageTool(args, state, paint) {
+  const { Jimp } = require('jimp');
+  const width = Math.max(1, Number(args.width || 0));
+  const height = Math.max(1, Number(args.height || 0));
+  if (!width || !height) {
+    throw new Error('create_canvas_image requiere width y height');
+  }
+
+  const format = String(args.format || 'png').toLowerCase();
+  const safeFormat = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff'].includes(format) ? format : 'png';
+  const fileExt = safeFormat === 'jpeg' ? 'jpg' : safeFormat;
+  const outputPath = resolveInputPath(args.outputPath || path.join('generated', `image-${Date.now()}.${fileExt}`), state.cwd);
+
+  const allowed = await askConfirmation(state.rl, 'Crear imagen', `${width}x${height}\nFormato: ${safeFormat}\nSalida: ${outputPath}`, paint, state);
+  if (!allowed) return 'Creacion de imagen cancelada por el usuario.';
+
+  const bg = args.background && typeof args.background === 'object'
+    ? args.background.color || args.background.fill || '#ffffff'
+    : args.background || '#ffffff';
+  const image = new Jimp({ width, height, color: parseColor(bg, 0xffffffff) });
+  const elements = Array.isArray(args.elements) ? args.elements.filter(Boolean) : [];
+
+  for (const element of elements) {
+    if (!element || typeof element !== 'object') continue;
+    const type = String(element.type || 'text').toLowerCase();
+    if (type === 'rect') {
+      const color = parseColor(element.fill || element.color || '#000000', 0x000000ff);
+      if (element.radius) drawRoundRect(image, element.x || 0, element.y || 0, element.w || element.width || 0, element.h || element.height || 0, element.radius || 0, color);
+      else drawRect(image, element.x || 0, element.y || 0, element.w || element.width || 0, element.h || element.height || 0, color);
+      continue;
+    }
+    if (type === 'line') {
+      drawLine(image, element.x1 || 0, element.y1 || 0, element.x2 || 0, element.y2 || 0, parseColor(element.stroke || '#000000', 0x000000ff));
+      continue;
+    }
+    if (type === 'circle' || type === 'ellipse') {
+      const color = parseColor(element.fill || element.color || '#000000', 0x000000ff);
+      const cx = Number(element.x || 0);
+      const cy = Number(element.y || 0);
+      const rx = Math.max(1, Number(element.rx || element.r || element.radius || element.width || 0));
+      const ry = Math.max(1, Number(element.ry || element.r || element.radius || element.height || rx));
+      image.scan(0, 0, image.bitmap.width, image.bitmap.height, function (px, py, idx) {
+        const dx = (px - cx) / rx;
+        const dy = (py - cy) / ry;
+        if ((dx * dx) + (dy * dy) <= 1) {
+          this.bitmap.data.writeUInt32BE(color >>> 0, idx);
+        }
+      });
+      continue;
+    }
+    if (type === 'image') {
+      const src = element.src || element.url || element.path;
+      if (!src) continue;
+      const loaded = await Jimp.read(src.startsWith('http') || src.startsWith('data:') ? src : resolveInputPath(src, state.cwd));
+      const x = Number(element.x || 0);
+      const y = Number(element.y || 0);
+      const w = Math.max(1, Number(element.w || element.width || loaded.bitmap.width));
+      const h = Math.max(1, Number(element.h || element.height || loaded.bitmap.height));
+      const clone = loaded.clone().resize({ w, h });
+      image.composite(clone, x, y);
+      continue;
+    }
+
+    const text = String(element.text || '');
+    if (!text) continue;
+    const size = Math.max(8, Math.min(64, Number(element.fontSize || 32)));
+    const font = await Jimp.loadFont(
+      size <= 8 ? Jimp.FONT_SANS_8_BLACK :
+      size <= 16 ? Jimp.FONT_SANS_16_BLACK :
+      size <= 32 ? Jimp.FONT_SANS_32_BLACK :
+      Jimp.FONT_SANS_64_BLACK,
+    );
+    image.print({ font, x: Number(element.x || 0), y: Number(element.y || 0), maxWidth: element.maxWidth ? Number(element.maxWidth) : undefined }, text);
+  }
+
+  await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+  await image.write(outputPath);
+  return [`Imagen creada: ${outputPath}`, `Formato: ${safeFormat}`, `Tamano: ${width}x${height}`, `Elementos: ${elements.length}`].join('\\n');
+}
+
+async function gitSecretSetTool(args) {
+  const provider = normalizeProfileName(args.provider || '');
+  if (!provider) throw new Error('git_secret_set requiere provider');
+  if (!args.token || typeof args.token !== 'string') throw new Error('git_secret_set requiere token');
+  const saved = upsertGitSecret(provider, args);
+  return `Credencial guardada: ${getGitSecretLabel(provider, saved?.name || args.name || '')}`;
+}
+
+async function gitSecretListTool(args) {
+  const provider = normalizeProfileName(args.provider || '');
+  const name = String(args.name || '').trim();
+  const secrets = listGitSecrets();
+  const filtered = secrets.filter(secret => {
+    if (!provider) return true;
+    if (provider === 'custom') return !name || secret.key === `custom:${name}`;
+    return secret.key === provider;
+  });
+  if (!filtered.length) return 'No hay credenciales Git guardadas.';
+  return filtered.map(secret => [
+    `${secret.key}`,
+    `  username: ${secret.username || '-'}`,
+    `  apiBaseUrl: ${secret.apiBaseUrl || '-'}`,
+    `  cloneBaseUrl: ${secret.cloneBaseUrl || '-'}`,
+    `  authHeader: ${secret.authHeader || '-'}`,
+    `  token: ${secret.token}`,
+  ].join('\n')).join('\n\n');
+}
+
+async function gitSecretRemoveTool(args) {
+  const provider = normalizeProfileName(args.provider || '');
+  if (!provider) throw new Error('git_secret_remove requiere provider');
+  const name = String(args.name || '').trim();
+  const removed = removeGitSecret(provider, name);
+  return removed ? `Credencial eliminada: ${getGitSecretLabel(provider, name)}` : 'No encontre esa credencial.';
+}
+
+async function gitCloneRepoTool(args, state, paint) {
+  const repoUrl = String(args.repoUrl || '').trim();
+  if (!repoUrl) throw new Error('git_clone_repo requiere repoUrl');
+  const provider = normalizeProfileName(args.provider || '');
+  const name = String(args.name || '').trim();
+  const profile = provider ? resolveGitProfile(provider, name) : null;
+  const finalUrl = buildCloneUrl(repoUrl, profile || {});
+  const destination = args.destination ? resolveInputPath(args.destination, state.cwd) : '';
+  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 10 * 60 * 1000);
+
+  const allowed = await askConfirmation(state.rl, 'Clonar repositorio', [
+    repoUrl,
+    profile ? `Provider: ${provider}${name ? ` (${name})` : ''}` : 'Provider: direct',
+    destination ? `Destino: ${destination}` : null,
+    `Timeout: ${timeoutMs}ms`,
+  ].filter(Boolean).join('\n'), paint, state);
+  if (!allowed) return 'Clonado cancelado por el usuario.';
+
+  const result = await runProcess('git', ['clone', ...(args.branch ? ['--branch', String(args.branch)] : []), finalUrl, ...(destination ? [destination] : [])], { cwd: state.cwd, timeoutMs });
+  const lines = [`Exit code: ${result.code}`];
+  if (result.timedOut) lines.push('Timeout: el clon fue detenido por tiempo.');
+  if (result.stdout.trim()) lines.push(`STDOUT:\n${result.stdout.trim()}`);
+  if (result.stderr.trim()) lines.push(`STDERR:\n${result.stderr.trim()}`);
+  return lines.join('\n\n');
+}
+
+async function gitApiRequestTool(args, state, paint) {
+  const provider = normalizeProfileName(args.provider || '');
+  if (!provider) throw new Error('git_api_request requiere provider');
+  const pathValue = String(args.path || '').trim();
+  if (!pathValue) throw new Error('git_api_request requiere path');
+  const name = String(args.name || '').trim();
+  const profile = resolveGitProfile(provider, name);
+  if (!profile) throw new Error(`No hay credenciales para ${provider}${provider === 'custom' && name ? `:${name}` : ''}`);
+  const baseUrl = getApiBaseUrl(provider, profile);
+  if (!baseUrl) throw new Error(`No hay apiBaseUrl para ${provider}`);
+  const url = `${baseUrl.replace(/\/+$/, '')}/${pathValue.replace(/^\/+/, '')}`;
+  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 15000);
+  const method = String(args.method || 'GET').toUpperCase();
+  const headers = buildApiHeaders(provider, profile, args.headers && typeof args.headers === 'object' ? args.headers : {});
+
+  const allowed = await askConfirmation(state.rl, 'Git API request', `${method} ${url}\nTimeout: ${timeoutMs}ms`, paint, state);
+  if (!allowed) return 'Request cancelado por el usuario.';
+
+  const axios = require('axios');
+  const response = await axios({
+    url,
+    method,
+    headers: {
+      'User-Agent': 'Zyn/1.0',
+      Accept: 'application/json, text/plain, */*',
+      ...headers,
+    },
+    data: args.body && typeof args.body === 'object' ? args.body : args.body,
+    timeout: timeoutMs,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+
+  const text = typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2);
+  return `Status: ${response.status}\n\n${text}`;
+}
