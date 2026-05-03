@@ -179,6 +179,7 @@ const TOOL_ARG_KEYS = {
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
   web_search: ['query'],
   web_read: ['url'],
+  create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
 };
 
 const LONG_VALUE_ARG = {
