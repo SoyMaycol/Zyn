@@ -1,4 +1,4 @@
-# Zyn
+# Zyn Agent
 
 <p align="center">
   <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
