@@ -19,6 +19,7 @@
   ],
   "bin": {
     "zyn": "./zyn.js"
+    "Zyn": "./zyn.js"
   },
   "type": "commonjs",
   "scripts": {
