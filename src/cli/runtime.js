@@ -28,6 +28,7 @@ const {
   loadOrCreateSessionState,
 } = require('../utils/sessionStorage');
 const { appendTranscriptEntry } = require('../utils/transcriptStorage');
+const { t } = require('../i18n');
 
 async function readPromptFromStdin() {
   if (process.stdin.isTTY) {
@@ -175,7 +176,7 @@ async function runInteractiveChatClassic(options = {}) {
       if (!input) continue;
 
       if (input === '/exit' || input === '/quit') {
-        logEvent(state, 'info', 'Hasta luego');
+        logEvent(state, 'info', t(state.language, 'goodbye'));
         break;
       }
 
@@ -202,7 +203,7 @@ async function runInteractiveChatClassic(options = {}) {
       rl.removeListener('line', lineHandler);
 
       if (pendingExit) {
-        logEvent(state, 'info', 'Hasta luego');
+        logEvent(state, 'info', t(state.language, 'goodbye'));
         break;
       }
     }

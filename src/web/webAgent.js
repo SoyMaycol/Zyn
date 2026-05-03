@@ -599,7 +599,7 @@ async function executeTool(tool, args, ctx) {
   }
 }
 
-async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted) {
+async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, isAborted, language = 'en') {
   const otherKeys = Object.keys(MODELS).filter(k => k !== primaryKey);
   if (!otherKeys.length) return null;
 
@@ -1029,7 +1029,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     // ── Final response ──
     if (parsed.type === 'final') {
       if (group) {
-        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted);
+        const synthResult = await runConcuerdo(parsed.content, modelKey, modelMessages, onEvent, isAborted, language);
         if (synthResult) {
           chatData.messages.push({ role: 'assistant', content: synthResult, ts: Date.now() });
           store.saveChat(chatData);

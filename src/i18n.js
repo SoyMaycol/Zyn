@@ -47,6 +47,9 @@ const STRINGS = {
     transcriptLabel: 'transcript',
     fromLabel: 'created',
     updatedLabel: 'updated',
+    queuedLabel: 'queued',
+    processingQueuedMessage: 'processing queued message',
+    goodbye: 'Goodbye',
   },
   es: {
     helpTitle: 'Ayuda',
@@ -89,6 +92,9 @@ const STRINGS = {
     transcriptLabel: 'transcript',
     fromLabel: 'desde',
     updatedLabel: 'actualizado',
+    queuedLabel: 'en cola',
+    processingQueuedMessage: 'procesando mensaje en cola',
+    goodbye: 'Hasta luego',
   },
 };
 

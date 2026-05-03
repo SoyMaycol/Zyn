@@ -91,8 +91,8 @@ const MODELS = {
 const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
 const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || process.env.LANG || 'en');
 
-const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL || 'danielalejandrobasado@gmail.com';
-const QWEN_PASSWORD = process.env.ZYN_QWEN_PASSWORD || 'zyzz1234';
+const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL || process.env.QWEN_EMAIL || 'danielalejandrobasado@gmail.com';
+const QWEN_PASSWORD = process.env.ZYN_QWEN_PASSWORD || process.env.QWEN_PASSWORD || 'zyzz1234';
 
 const MAX_TOOL_STEPS = Number.POSITIVE_INFINITY;
 const MAX_OUTPUT_CHARS = 12000;
