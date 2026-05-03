@@ -2,7 +2,7 @@
   "name": "zyn-ai",
   "version": "1.2.2",
   "description": "Production-ready AI agent for CLI and web with real tool execution and automation",
-  "author": "Maycol y Ado",
+  "author": "Maycol",
   "keywords": [
     "ai-agent",
     "cli-ai",
@@ -18,7 +18,7 @@
     "zyn"
   ],
   "bin": {
-    "zyn": "./zyn.js"
+    "zyn": "./zyn.js",
     "Zyn": "./zyn.js"
   },
   "type": "commonjs",
