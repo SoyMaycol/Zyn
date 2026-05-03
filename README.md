@@ -182,4 +182,5 @@ This project includes an attribution-friendly license. Keep the credits, the rep
 ## Credits
 
 - Project: [SoyMaycol/Zyn](https://github.com/SoyMaycol/Zyn)
-- Base authorship: Maycol and Ado
+- Individual Creator: Maycol
+- Original Project Author (Adonix): [Ado](https://github.com/ThisAdo)
