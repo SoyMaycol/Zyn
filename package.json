@@ -1,8 +1,8 @@
 {
   "name": "zyn-ai",
-  "version": "1.2.2",
+  "version": "1.2.1",
   "description": "Production-ready AI agent for CLI and web with real tool execution and automation",
-  "author": "SoyMaycol",
+  "author": "Maycol y Ado",
   "keywords": [
     "ai-agent",
     "cli-ai",
@@ -18,8 +18,7 @@
     "zyn"
   ],
   "bin": {
-    "zyn": "./zyn.js",
-    "Zyn": "./zyn.js"
+    "zyn": "./zyn.js"
   },
   "type": "commonjs",
   "scripts": {
@@ -32,6 +31,7 @@
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
+    "canvas": "^2.11.2",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "ink": "^6.8.0",

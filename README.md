@@ -1,4 +1,4 @@
-# Zyn Agent
+# Zyn
 
 <p align="center">
   <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
@@ -182,5 +182,4 @@ This project includes an attribution-friendly license. Keep the credits, the rep
 ## Credits
 
 - Project: [SoyMaycol/Zyn](https://github.com/SoyMaycol/Zyn)
-- Individual Creator: Maycol
-- Original Project Author (Adonix): [Ado](https://github.com/ThisAdo)
+- Base authorship: Maycol and Ado

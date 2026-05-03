@@ -7,8 +7,8 @@ const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
   'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url', 'extract_links', 'scrape_meta', 'web_search', 'web_read',
-  'create_canvas_media',
+  'fetch_url', 'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear',
+  'create_canvas_image', 'web_search', 'web_read',
 ]);
 
 
@@ -38,6 +38,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
         'Si la tarea requiere comprobar algo, primero intenta una herramienta real y espera el resultado antes de concluir.',
         'No cierres con una conclusion si todavia no has probado nada.',
+        'Usa timeoutMs en run_command siempre. Para installs, tests y builds usa un timeout mayor; para comandos cortos usa uno breve.',
+        'Usa task_create, task_update y task_complete para no olvidar trabajo de varios pasos.',
+        'Para crear imagenes usa create_canvas_image con formato, tamanio y salida concretos.',
       ]
     : [
         'Always respond in English.',
@@ -48,6 +51,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
         'If the task requires verification, try a real tool first and wait for its result before concluding.',
         'Do not end with a conclusion if you have not tested anything yet.',
+        'Always include timeoutMs when using run_command. Use a larger timeout for installs, tests, and builds; use a shorter one for small commands.',
+        'Use task_create, task_update, and task_complete so multi-step work is not forgotten.',
+        'Use create_canvas_image with explicit format, size, and output path for image generation.',
       ];
 
   const parts = [
@@ -168,21 +174,30 @@ const TOOL_ARG_KEYS = {
   search_text: ['pattern', 'path', 'glob'],
   glob_files: ['pattern', 'path'],
   file_info: ['path'],
-  run_command: ['command'],
+  run_command: ['command', 'timeoutMs'],
   make_dir: ['path'],
   write_file: ['path', 'content'],
   append_file: ['path', 'content'],
   replace_in_file: ['path', 'search', 'replace', 'all'],
-  fetch_url: ['url', 'selector', 'attribute', 'limit'],
+  fetch_url: ['url', 'method', 'headers', 'body', 'selector', 'attribute', 'limit', 'timeoutMs'],
+  task_create: ['title', 'description', 'priority', 'dueAt', 'tags'],
+  task_list: ['status', 'includeDone'],
+  task_update: ['id', 'title', 'description', 'status', 'priority', 'dueAt', 'tags', 'notes'],
+  task_complete: ['id', 'notes'],
+  task_delete: ['id'],
+  task_clear: [],
+  create_canvas_image: ['width', 'height', 'format', 'outputPath', 'background', 'elements'],
   web_search: ['query'],
   web_read: ['url'],
 };
 
 const LONG_VALUE_ARG = {
   run_command: 'command',
+  fetch_url: 'body',
   write_file: 'content',
   append_file: 'content',
   replace_in_file: 'replace',
+  create_canvas_image: 'elements',
 };
 
 function fuzzyExtractTool(text) {

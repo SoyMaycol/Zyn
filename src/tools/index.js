@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const os = require('os');
 
 const fsp = fs.promises;
 
@@ -13,6 +14,16 @@ const {
   shortText,
   truncateText,
 } = require('../utils/text');
+const {
+  clearTasks,
+  completeTask,
+  createTask,
+  deleteTask,
+  formatTask,
+  listTasks,
+  summarizeTasks,
+  updateTask,
+} = require('../utils/taskStorage');
 
 const TOOL_DEFINITIONS = [
   { name: 'list_dir', usage: '{ path? }' },
@@ -25,12 +36,16 @@ const TOOL_DEFINITIONS = [
   { name: 'write_file', usage: '{ path, content }' },
   { name: 'append_file', usage: '{ path, content }' },
   { name: 'replace_in_file', usage: '{ path, search, replace, all? }' },
-  { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
-  { name: 'extract_links', usage: '{ url, selector?, limit? }' },
-  { name: 'scrape_meta', usage: '{ url }' },
+  { name: 'fetch_url', usage: '{ url, method?, headers?, body?, selector?, attribute?, limit?, timeoutMs? }' },
+  { name: 'task_create', usage: '{ title, description?, priority?, dueAt?, tags? }' },
+  { name: 'task_list', usage: '{ status?, includeDone? }' },
+  { name: 'task_update', usage: '{ id, title?, description?, status?, priority?, dueAt?, tags?, notes? }' },
+  { name: 'task_complete', usage: '{ id, notes? }' },
+  { name: 'task_delete', usage: '{ id }' },
+  { name: 'task_clear', usage: '{ }' },
+  { name: 'create_canvas_image', usage: '{ width, height, format?, outputPath?, background?, elements? }' },
   { name: 'web_search', usage: '{ query }' },
   { name: 'web_read', usage: '{ url }' },
-  { name: 'create_canvas_media', usage: '{ outputPath, width, height, background?, shapes? }' },
 ];
 
 function getToolPromptText() {
@@ -75,25 +90,49 @@ function getToolPromptText() {
     '## Ejecucion',
     '',
     'run_command { command, timeoutMs? }',
-    '  Ejecuta comando en bash. Timeout predeterminado: 2 minutos.',
-    '  timeoutMs es opcional y permite ajustar el limite en milisegundos.',
+    '  Ejecuta comando en bash. Siempre usa timeoutMs. Si la tarea es corta, usa un tiempo corto; si es install/test/build, usa uno mayor.',
+    '  timeoutMs se expresa en milisegundos. Nunca concluyas sin intentar una herramienta real cuando haga falta verificar.',
     '  Retorna exit code, stdout y stderr.',
     '  Ejecuta la accion directamente. No expliques pasos al usuario salvo que sea estrictamente necesario.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
     '',
+    'fetch_url { url, method?, headers?, body?, selector?, attribute?, limit?, timeoutMs? }',
+    '  Sin selector: retorna HTML o texto de la pagina.',
+    '  method puede ser GET, POST u otro verbo soportado por la URL.',
+    '  headers permite pasar cabeceras avanzadas como Authorization, Accept-Language o User-Agent.',
+    '  body acepta string u objeto JSON para solicitudes avanzadas.',
+    '  timeoutMs define el tiempo maximo de la peticion.',
+    '',
     '## Web',
     '',
-    'fetch_url { url, selector?, attribute?, limit? }',
-    '  Sin selector: retorna HTML completo de la pagina.',
+    'fetch_url { url, method?, headers?, body?, selector?, attribute?, limit?, timeoutMs? }',
+    '  Sin selector: retorna HTML o texto completo de la pagina.',
     '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
+    '  headers permite cabeceras avanzadas y body permite solicitudes mas complejas.',
     '',
-    'extract_links { url, selector?, limit? }',
-    '  Extrae enlaces de una pagina y devuelve texto y href.',
+    'task_create { title, description?, priority?, dueAt?, tags? }',
+    '  Crea una tarea persistente para que el agente no la olvide.',
     '',
-    'scrape_meta { url }',
-    '  Extrae title, description y metadatos basicos de una pagina.',
+    'task_list { status?, includeDone? }',
+    '  Muestra tareas pendientes o completas.',
+    '',
+    'task_update { id, title?, description?, status?, priority?, dueAt?, tags?, notes? }',
+    '  Actualiza una tarea existente.',
+    '',
+    'task_complete { id, notes? }',
+    '  Marca una tarea como terminada.',
+    '',
+    'task_delete { id }',
+    '  Elimina una tarea.',
+    '',
+    'task_clear { }',
+    '  Elimina todas las tareas.',
+    '',
+    'create_canvas_image { width, height, format?, outputPath?, background?, elements? }',
+    '  Crea una imagen real de produccion con node-canvas. Soporta PNG, JPG, WEBP, SVG y PDF segun el formato.',
+    '  elements acepta formas, texto, imagenes, gradientes y lineas.',
     '',
     'web_search { query }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
@@ -104,11 +143,6 @@ function getToolPromptText() {
     '  Descarga una pagina web y la convierte a texto legible (sin HTML).',
     '  Ideal para leer articulos, documentacion o contenido de paginas.',
     '  Ejemplo: {"type":"tool","tool":"web_read","args":{"url":"https://docs.example.com/guide"}}',
-    '',
-    'create_canvas_media { outputPath, width, height, background?, shapes? }',
-    '  Crea un SVG a partir de shapes tipo canvas.',
-    '  shapes puede incluir rect, circle, line y text.',
-    '  Ejemplo: {"type":"tool","tool":"create_canvas_media","args":{"outputPath":"art.svg","width":1200,"height":630,"background":"#111827","shapes":[{"type":"text","x":80,"y":140,"text":"Hola","size":72,"fill":"#ffffff"}]}}',
   ].join('\n');
 }
 
@@ -135,6 +169,20 @@ function describeToolCall(call) {
       return `Comando ${shortText(call.args.command, 70)}`;
     case 'make_dir':
       return `Creando carpeta ${call.args.path}`;
+    case 'task_create':
+      return `Creando tarea ${shortText(call.args.title || call.args.description || '', 60)}`;
+    case 'task_list':
+      return 'Listando tareas';
+    case 'task_update':
+      return `Actualizando tarea ${call.args.id}`;
+    case 'task_complete':
+      return `Completando tarea ${call.args.id}`;
+    case 'task_delete':
+      return `Eliminando tarea ${call.args.id}`;
+    case 'task_clear':
+      return 'Limpiando tareas';
+    case 'create_canvas_image':
+      return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     case 'write_file':
       return `Escribiendo ${call.args.path}`;
     case 'append_file':
@@ -267,6 +315,66 @@ async function askConfirmation(rl, title, detail, paint, state) {
   return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
 }
 
+
+function hasBackgroundOperator(command) {
+  return /(^|[^&])&([^&]|$)/.test(command) && !/&&/.test(command);
+}
+
+function suggestTimeoutMs(command) {
+  const sample = String(command || '').toLowerCase();
+  if (!sample) return 30000;
+  if (hasBackgroundOperator(sample)) return 5000;
+  if (/\b(npm|pnpm|yarn|bun|pip|pip3|cargo|pytest|vitest|jest|mocha|install|build|compile|test|go test)\b/i.test(sample)) {
+    return 10 * 60 * 1000;
+  }
+  if (/\b(serve|watch|run|start|dev|docker|compose)\b/i.test(sample)) {
+    return 5 * 60 * 1000;
+  }
+  return 45000;
+}
+
+async function runBackgroundCommand(command, cwd, timeoutMs) {
+  const child = spawn('bash', ['-lc', command], {
+    cwd,
+    detached: true,
+    stdio: 'ignore',
+  });
+
+  const pid = child.pid || 0;
+  child.unref();
+
+  const shortWait = Math.min(Number(timeoutMs) || 0, 1500);
+  const deadline = Date.now() + shortWait;
+
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+      await new Promise(r => setTimeout(r, 100));
+      continue;
+    } catch {
+      return {
+        code: 0,
+        stdout: `Proceso terminado en background: ${pid}`,
+        stderr: '',
+        timedOut: false,
+        background: true,
+        finished: true,
+        pid,
+      };
+    }
+  }
+
+  return {
+    code: 0,
+    stdout: `Proceso iniciado en background: ${pid}`,
+    stderr: '',
+    timedOut: false,
+    background: true,
+    finished: false,
+    pid,
+  };
+}
+
 async function listDirTool(args, state) {
   const targetPath = resolveInputPath(args.path ?? '.', state.cwd);
   const entries = await fsp.readdir(targetPath, { withFileTypes: true });
@@ -372,17 +480,18 @@ async function runCommandTool(args, state, paint) {
   }
 
   const command = cleanCommand(args.command);
-  const timeoutMs = Number.isFinite(Number(args.timeoutMs)) && Number(args.timeoutMs) > 0
-    ? Math.max(1000, Math.min(600000, Math.round(Number(args.timeoutMs))))
-    : 120000;
+  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : suggestTimeoutMs(command));
+  const detail = [
+    command,
+    `Directorio: ${state.cwd}`,
+    `Timeout: ${timeoutMs}ms`,
+    hasBackgroundOperator(command) ? 'Modo: background detectado' : null,
+  ].filter(Boolean).join('\n');
 
   const allowed = await askConfirmation(
     state.rl,
     'Ejecutar comando',
-    `${command}
-
-Directorio: ${state.cwd}
-Timeout: ${timeoutMs}ms`,
+    detail,
     paint,
     state,
   );
@@ -391,25 +500,33 @@ Timeout: ${timeoutMs}ms`,
     return 'Comando cancelado por el usuario.';
   }
 
-  const result = await runProcess('bash', ['-lc', command], {
-    cwd: state.cwd,
-    timeoutMs,
-  });
+  let result;
+  if (hasBackgroundOperator(command)) {
+    result = await runBackgroundCommand(command, state.cwd, timeoutMs);
+  } else {
+    result = await runProcess('bash', ['-lc', command], {
+      cwd: state.cwd,
+      timeoutMs,
+    });
+  }
 
   const parts = [`Exit code: ${result.code ?? 'desconocido'}`];
+
+  if (result.background) {
+    parts.push(`Background: ${result.finished ? 'terminado' : 'iniciado'}`);
+    if (result.pid) parts.push(`PID: ${result.pid}`);
+  }
 
   if (result.timedOut) {
     parts.push('Timeout: el comando fue detenido por tiempo.');
   }
 
   if (result.stdout.trim()) {
-    parts.push(`STDOUT:
-${result.stdout.trim()}`);
+    parts.push(`STDOUT:\n${result.stdout.trim()}`);
   }
 
   if (result.stderr.trim()) {
-    parts.push(`STDERR:
-${result.stderr.trim()}`);
+    parts.push(`STDERR:\n${result.stderr.trim()}`);
   }
 
   return truncateText(parts.join('\n\n'));
@@ -605,9 +722,14 @@ async function fetchUrlTool(args, state, paint) {
     throw new Error('Solo se permite http y https');
   }
 
-  const detail = args.selector
-    ? `GET ${url}\nSelector: ${args.selector}`
-    : `GET ${url}`;
+  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 15000);
+  const detail = [
+    `${String(args.method || 'GET').toUpperCase()} ${url}`,
+    args.selector ? `Selector: ${args.selector}` : null,
+    args.headers ? 'Headers: configurados' : null,
+    args.body ? 'Body: configurado' : null,
+    `Timeout: ${timeoutMs}ms`,
+  ].filter(Boolean).join('\n');
 
   const allowed = await askConfirmation(
     state.rl,
@@ -624,14 +746,15 @@ async function fetchUrlTool(args, state, paint) {
   const axios = require('axios');
   const response = await axios({
     url,
-    method: 'GET',
+    method: String(args.method || 'GET').toUpperCase(),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
       ...(args.headers || {}),
     },
-    timeout: 15000,
+    data: args.body && typeof args.body === 'object' ? args.body : args.body,
+    timeout: timeoutMs,
     maxContentLength: 512000,
     maxRedirects: 5,
     responseType: 'text',
@@ -681,6 +804,299 @@ async function fetchUrlTool(args, state, paint) {
   }
 
   return truncateText(parts.join('\n'));
+}
+
+
+function parseTagList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(/[;,]/).map(item => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function normalizePriority(value) {
+  const sample = String(value || '').trim().toLowerCase();
+  if (['high', 'alta', 'urgente', '1'].includes(sample)) return 'high';
+  if (['low', 'baja', '2'].includes(sample)) return 'low';
+  return 'medium';
+}
+
+async function taskListTool(args, state) {
+  const tasks = listTasks({
+    status: args.status ? String(args.status).trim().toLowerCase() : '',
+    includeDone: args.includeDone !== false,
+  });
+
+  const lang = state.language === 'es' ? 'es' : 'en';
+  if (tasks.length === 0) {
+    return lang === 'es' ? 'No hay tareas registradas.' : 'No tasks recorded.';
+  }
+
+  return [
+    lang === 'es' ? `Tareas: ${tasks.length}` : `Tasks: ${tasks.length}`,
+    ...tasks.map(formatTask),
+  ].join('\n');
+}
+
+async function taskCreateTool(args, state) {
+  const task = createTask({
+    title: args.title || args.description || '',
+    description: args.description || '',
+    priority: normalizePriority(args.priority),
+    dueAt: args.dueAt || null,
+    tags: parseTagList(args.tags),
+    source: 'agent',
+    sessionId: state.sessionId || null,
+    notes: args.notes || '',
+  });
+  return `Tarea creada: ${formatTask(task)}`;
+}
+
+async function taskUpdateTool(args) {
+  if (!args.id) {
+    throw new Error('task_update requiere id');
+  }
+  const task = updateTask(args.id, {
+    title: args.title,
+    description: args.description,
+    status: args.status,
+    priority: args.priority ? normalizePriority(args.priority) : undefined,
+    dueAt: args.dueAt,
+    tags: args.tags !== undefined ? parseTagList(args.tags) : undefined,
+    notes: args.notes,
+  });
+  return `Tarea actualizada: ${formatTask(task)}`;
+}
+
+async function taskCompleteTool(args) {
+  if (!args.id) {
+    throw new Error('task_complete requiere id');
+  }
+  const task = completeTask(args.id, args.notes || '');
+  return `Tarea completada: ${formatTask(task)}`;
+}
+
+async function taskDeleteTool(args) {
+  if (!args.id) {
+    throw new Error('task_delete requiere id');
+  }
+  const task = deleteTask(args.id);
+  return `Tarea eliminada: ${task.id} :: ${task.title}`;
+}
+
+async function taskClearTool() {
+  clearTasks();
+  return 'Todas las tareas fueron eliminadas.';
+}
+
+function pickCanvasColor(value, fallback = '#000000') {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function drawRoundedRect(ctx, x, y, w, h, r = 0) {
+  const radius = Math.max(0, Number(r) || 0);
+  if (radius <= 0) {
+    ctx.rect(x, y, w, h);
+    return;
+  }
+  const rr = Math.min(radius, Math.abs(w) / 2, Math.abs(h) / 2);
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+}
+
+async function createCanvasImageTool(args, state, paint) {
+  const width = Math.max(1, Number(args.width || 0));
+  const height = Math.max(1, Number(args.height || 0));
+  if (!width || !height) {
+    throw new Error('create_canvas_image requiere width y height');
+  }
+
+  const format = String(args.format || 'png').toLowerCase();
+  const safeFormat = ['png', 'jpg', 'jpeg', 'webp', 'svg', 'pdf'].includes(format) ? format : 'png';
+  const fileExt = safeFormat === 'jpeg' ? 'jpg' : safeFormat;
+  const outputPath = resolveInputPath(
+    args.outputPath || path.join('generated', `canvas-${Date.now()}.${fileExt}`),
+    state.cwd,
+  );
+
+  const allowed = await askConfirmation(
+    state.rl,
+    'Crear imagen',
+    `${width}x${height}
+Formato: ${safeFormat}
+Salida: ${outputPath}`,
+    paint,
+    state,
+  );
+
+  if (!allowed) {
+    return 'Creacion de imagen cancelada por el usuario.';
+  }
+
+  const { createCanvas, loadImage } = require('canvas');
+  const canvasType = safeFormat === 'svg' || safeFormat === 'pdf' ? safeFormat : undefined;
+  const canvas = canvasType ? createCanvas(width, height, canvasType) : createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  const elements = Array.isArray(args.elements) ? args.elements : [];
+
+  if (args.background) {
+    if (typeof args.background === 'string') {
+      ctx.fillStyle = args.background;
+      ctx.fillRect(0, 0, width, height);
+    } else if (args.background && typeof args.background === 'object') {
+      if (args.background.type === 'linear-gradient' && Array.isArray(args.background.stops)) {
+        const grad = ctx.createLinearGradient(
+          Number(args.background.x0 || 0),
+          Number(args.background.y0 || 0),
+          Number(args.background.x1 || width),
+          Number(args.background.y1 || height),
+        );
+        for (const stop of args.background.stops) {
+          if (stop && typeof stop === 'object' && stop.color) {
+            grad.addColorStop(Number(stop.offset ?? 0), String(stop.color));
+          }
+        }
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+      } else if (args.background.color) {
+        ctx.fillStyle = args.background.color;
+        ctx.fillRect(0, 0, width, height);
+      }
+    }
+  }
+
+  for (const element of elements) {
+    if (!element || typeof element !== 'object') continue;
+    const type = String(element.type || 'text').toLowerCase();
+    ctx.save();
+    if (element.opacity !== undefined) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, Number(element.opacity)));
+    }
+    if (element.shadowColor) ctx.shadowColor = element.shadowColor;
+    if (element.shadowBlur) ctx.shadowBlur = Number(element.shadowBlur) || 0;
+    if (element.shadowOffsetX) ctx.shadowOffsetX = Number(element.shadowOffsetX) || 0;
+    if (element.shadowOffsetY) ctx.shadowOffsetY = Number(element.shadowOffsetY) || 0;
+
+    if (element.clip && element.clip.radius) {
+      ctx.beginPath();
+      drawRoundedRect(ctx, Number(element.x || 0), Number(element.y || 0), Number(element.w || element.width || 0), Number(element.h || element.height || 0), Number(element.clip.radius || 0));
+      ctx.clip();
+    }
+
+    switch (type) {
+      case 'rect': {
+        const x = Number(element.x || 0);
+        const y = Number(element.y || 0);
+        const w = Number(element.w || element.width || 0);
+        const h = Number(element.h || element.height || 0);
+        if (element.fill) {
+          ctx.fillStyle = element.fill;
+          ctx.fillRect(x, y, w, h);
+        }
+        if (element.stroke) {
+          ctx.lineWidth = Number(element.lineWidth || 1);
+          ctx.strokeStyle = element.stroke;
+          if (element.radius) {
+            ctx.beginPath();
+            drawRoundedRect(ctx, x, y, w, h, element.radius);
+            ctx.stroke();
+          } else {
+            ctx.strokeRect(x, y, w, h);
+          }
+        }
+        break;
+      }
+      case 'circle':
+      case 'ellipse': {
+        const x = Number(element.x || 0);
+        const y = Number(element.y || 0);
+        const rx = Number(element.rx || element.r || element.radius || element.width || 0);
+        const ry = Number(element.ry || element.r || element.radius || element.height || rx);
+        ctx.beginPath();
+        ctx.ellipse(x, y, rx, ry, Number(element.rotation || 0), 0, Math.PI * 2);
+        if (element.fill) {
+          ctx.fillStyle = element.fill;
+          ctx.fill();
+        }
+        if (element.stroke) {
+          ctx.lineWidth = Number(element.lineWidth || 1);
+          ctx.strokeStyle = element.stroke;
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'line': {
+        ctx.beginPath();
+        ctx.moveTo(Number(element.x1 || 0), Number(element.y1 || 0));
+        ctx.lineTo(Number(element.x2 || 0), Number(element.y2 || 0));
+        ctx.lineWidth = Number(element.lineWidth || 1);
+        ctx.strokeStyle = element.stroke || '#000000';
+        if (Array.isArray(element.dash)) {
+          ctx.setLineDash(element.dash.map(Number));
+        }
+        ctx.stroke();
+        break;
+      }
+      case 'image': {
+        const src = element.src || element.url || element.path;
+        if (!src) break;
+        const img = await loadImage(src.startsWith('http') || src.startsWith('data:') ? src : resolveInputPath(src, state.cwd));
+        const x = Number(element.x || 0);
+        const y = Number(element.y || 0);
+        const w = Number(element.w || element.width || img.width);
+        const h = Number(element.h || element.height || img.height);
+        if (element.fit === 'cover') {
+          ctx.drawImage(img, x, y, w, h);
+        } else {
+          ctx.drawImage(img, x, y, w, h);
+        }
+        break;
+      }
+      case 'text':
+      default: {
+        const x = Number(element.x || 0);
+        const y = Number(element.y || 0);
+        ctx.font = `${element.fontStyle || ''} ${element.fontWeight || element.weight || 'normal'} ${Number(element.fontSize || 24)}px ${element.fontFamily || 'Arial'}`.replace(/\s+/g, ' ').trim();
+        ctx.fillStyle = pickCanvasColor(element.fill || element.color, '#000000');
+        ctx.textAlign = element.align || 'left';
+        ctx.textBaseline = element.baseline || 'alphabetic';
+        const text = String(element.text || '');
+        if (element.stroke) {
+          ctx.lineWidth = Number(element.lineWidth || 1);
+          ctx.strokeStyle = element.stroke;
+          ctx.strokeText(text, x, y, element.maxWidth ? Number(element.maxWidth) : undefined);
+        }
+        ctx.fillText(text, x, y, element.maxWidth ? Number(element.maxWidth) : undefined);
+        break;
+      }
+    }
+
+    ctx.restore();
+  }
+
+  await fsp.mkdir(path.dirname(outputPath), { recursive: true });
+  let buffer;
+  if (safeFormat === 'jpg' || safeFormat === 'jpeg') {
+    buffer = canvas.toBuffer('image/jpeg', { quality: Number(args.quality || 0.92) });
+  } else if (safeFormat === 'webp') {
+    buffer = canvas.toBuffer('image/webp', { quality: Number(args.quality || 0.92) });
+  } else {
+    buffer = canvas.toBuffer();
+  }
+  await fsp.writeFile(outputPath, buffer);
+
+  return [
+    `Imagen creada: ${outputPath}`,
+    `Formato: ${safeFormat}`,
+    `Tamano: ${width}x${height}`,
+    `Elementos: ${elements.length}`,
+  ].join('\n');
 }
 
 async function webSearchTool(args, state, paint) {
@@ -773,223 +1189,6 @@ async function webReadTool(args, state, paint) {
   return truncateText(`URL: ${url}\nStatus: ${res.status}\n\n${text}`);
 }
 
-
-function escapeXml(text) {
-  return String(text ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function normalizeNumber(value, fallback, min, max) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(min, Math.min(max, parsed));
-}
-
-function getCanvasShape(shape = {}) {
-  const type = String(shape.type || '').toLowerCase();
-  if (!type) return '';
-
-  if (type === 'rect') {
-    const x = normalizeNumber(shape.x, 0, -10000, 10000);
-    const y = normalizeNumber(shape.y, 0, -10000, 10000);
-    const width = normalizeNumber(shape.width, 100, 0, 10000);
-    const height = normalizeNumber(shape.height, 100, 0, 10000);
-    const rx = normalizeNumber(shape.rx, 0, 0, 1000);
-    const fill = shape.fill || 'none';
-    const stroke = shape.stroke || 'none';
-    const strokeWidth = normalizeNumber(shape.strokeWidth, 0, 0, 500);
-    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${rx}" fill="${escapeXml(fill)}" stroke="${escapeXml(stroke)}" stroke-width="${strokeWidth}" />`;
-  }
-
-  if (type === 'circle') {
-    const cx = normalizeNumber(shape.cx ?? shape.x, 0, -10000, 10000);
-    const cy = normalizeNumber(shape.cy ?? shape.y, 0, -10000, 10000);
-    const r = normalizeNumber(shape.r ?? shape.radius, 24, 0, 10000);
-    const fill = shape.fill || 'none';
-    const stroke = shape.stroke || 'none';
-    const strokeWidth = normalizeNumber(shape.strokeWidth, 0, 0, 500);
-    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${escapeXml(fill)}" stroke="${escapeXml(stroke)}" stroke-width="${strokeWidth}" />`;
-  }
-
-  if (type === 'line') {
-    const x1 = normalizeNumber(shape.x1 ?? shape.x, 0, -10000, 10000);
-    const y1 = normalizeNumber(shape.y1 ?? shape.y, 0, -10000, 10000);
-    const x2 = normalizeNumber(shape.x2 ?? (shape.x ?? 0) + (shape.dx ?? 100), 100, -10000, 10000);
-    const y2 = normalizeNumber(shape.y2 ?? (shape.y ?? 0) + (shape.dy ?? 0), 0, -10000, 10000);
-    const stroke = shape.stroke || '#111827';
-    const strokeWidth = normalizeNumber(shape.strokeWidth, 2, 0, 500);
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${escapeXml(stroke)}" stroke-width="${strokeWidth}" />`;
-  }
-
-  if (type === 'text') {
-    const x = normalizeNumber(shape.x, 0, -10000, 10000);
-    const y = normalizeNumber(shape.y, 0, -10000, 10000);
-    const size = normalizeNumber(shape.size ?? shape.fontSize, 32, 4, 1000);
-    const fill = shape.fill || '#111827';
-    const weight = shape.weight || shape.fontWeight || '600';
-    const family = shape.family || shape.fontFamily || 'sans-serif';
-    const anchor = shape.anchor || 'start';
-    const text = escapeXml(shape.text || '');
-    return `<text x="${x}" y="${y}" fill="${escapeXml(fill)}" font-size="${size}" font-weight="${escapeXml(weight)}" font-family="${escapeXml(family)}" text-anchor="${escapeXml(anchor)}">${text}</text>`;
-  }
-
-  return '';
-}
-
-async function extractLinksTool(args, state, paint) {
-  if (!args.url || typeof args.url !== 'string') {
-    throw new Error('extract_links requiere url');
-  }
-
-  const url = cleanUrl(args.url);
-  const selector = typeof args.selector === 'string' && args.selector.trim() ? args.selector.trim() : 'a';
-  const limit = Math.min(Number(args.limit) || 30, 100);
-
-  const allowed = await askConfirmation(
-    state.rl,
-    'Extraer enlaces',
-    `${url}\nSelector: ${selector}\nLimite: ${limit}`,
-    paint,
-    state,
-  );
-  if (!allowed) return 'Extraccion cancelada por el usuario.';
-
-  const axios = require('axios');
-  const cheerio = require('cheerio');
-  const response = await axios({
-    url,
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-    },
-    timeout: 15000,
-    maxContentLength: 1024000,
-    maxRedirects: 5,
-    responseType: 'text',
-    validateStatus: () => true,
-  });
-
-  const $ = cheerio.load(response.data);
-  const items = [];
-  $(selector).each((idx, el) => {
-    if (idx >= limit) return false;
-    const href = $(el).attr('href');
-    const text = $(el).text().trim().replace(/\s+/g, ' ');
-    if (!href && !text) return;
-    items.push(`${items.length + 1}. ${text || '[sin texto]'}\n   ${href || '[sin href]'}`);
-  });
-
-  return truncateText(`URL: ${url}\nStatus: ${response.status}\nSelector: ${selector}\n\n${items.length ? items.join('\n\n') : 'Sin enlaces.'}`);
-}
-
-async function scrapeMetaTool(args, state, paint) {
-  if (!args.url || typeof args.url !== 'string') {
-    throw new Error('scrape_meta requiere url');
-  }
-
-  const url = cleanUrl(args.url);
-  const allowed = await askConfirmation(
-    state.rl,
-    'Extraer metadatos',
-    url,
-    paint,
-    state,
-  );
-  if (!allowed) return 'Extraccion cancelada por el usuario.';
-
-  const axios = require('axios');
-  const cheerio = require('cheerio');
-  const response = await axios({
-    url,
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-    },
-    timeout: 15000,
-    maxContentLength: 1024000,
-    maxRedirects: 5,
-    responseType: 'text',
-    validateStatus: () => true,
-  });
-
-  const $ = cheerio.load(response.data);
-  const title = $('title').first().text().trim();
-  const description = $('meta[name="description"]').attr('content') || $('meta[property="og:description"]').attr('content') || '';
-  const ogTitle = $('meta[property="og:title"]').attr('content') || '';
-  const canonical = $('link[rel="canonical"]').attr('href') || '';
-  const headings = $('h1, h2').slice(0, 8).map((_, el) => $(el).text().trim().replace(/\s+/g, ' ')).get().filter(Boolean);
-
-  return truncateText([
-    `URL: ${url}`,
-    `Status: ${response.status}`,
-    `Title: ${title || '[sin title]'}`,
-    `Description: ${description || '[sin description]'}`,
-    `OG Title: ${ogTitle || '[sin og:title]'}`,
-    `Canonical: ${canonical || '[sin canonical]'}`,
-    headings.length ? `Headings:\n${headings.map((line, i) => `${i + 1}. ${line}`).join('\n')}` : 'Headings: [sin headings]',
-  ].join('\n'));
-}
-
-async function createCanvasMediaTool(args, state, paint) {
-  const outputPathRaw = typeof args.outputPath === 'string' && args.outputPath.trim() ? args.outputPath.trim() : `canvas-${Date.now()}.svg`;
-  const outputPath = resolveInputPath(outputPathRaw, state.cwd);
-  const width = normalizeNumber(args.width, 1200, 1, 4000);
-  const height = normalizeNumber(args.height, 630, 1, 4000);
-  const background = typeof args.background === 'string' && args.background.trim() ? args.background.trim() : '#ffffff';
-  const shapes = Array.isArray(args.shapes) ? args.shapes : [];
-  const title = typeof args.title === 'string' ? args.title.trim() : '';
-
-  const preview = [
-    `Salida: ${outputPath}`,
-    `Canvas: ${width}x${height}`,
-    `Shapes: ${shapes.length}`,
-    title ? `Title: ${title}` : '',
-  ].filter(Boolean).join('\n');
-
-  const allowed = await askConfirmation(
-    state.rl,
-    'Crear media canvas',
-    preview,
-    paint,
-    state,
-  );
-
-  if (!allowed) {
-    return 'Creacion cancelada por el usuario.';
-  }
-
-  const svgParts = [
-    `<?xml version="1.0" encoding="UTF-8"?>`,
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title || 'canvas media')}">`,
-    `<rect width="100%" height="100%" fill="${escapeXml(background)}" />`,
-  ];
-
-  if (title) {
-    svgParts.push(`<title>${escapeXml(title)}</title>`);
-  }
-
-  for (const shape of shapes) {
-    const svg = getCanvasShape(shape);
-    if (svg) svgParts.push(svg);
-  }
-
-  svgParts.push('</svg>');
-  const svg = svgParts.join('\n');
-
-  await fsp.mkdir(path.dirname(outputPath), { recursive: true });
-  await fsp.writeFile(outputPath, svg, 'utf8');
-
-  return truncateText(`Canvas media creada: ${outputPath}\nFormato: svg\n\n${svg}`);
-}
-
 async function executeToolCall(call, state, ui) {
   ui.logEvent(state, 'tool', describeToolCall(call));
 
@@ -1030,20 +1229,32 @@ async function executeToolCall(call, state, ui) {
     case 'fetch_url':
       result = await fetchUrlTool(call.args, state, ui.paint);
       break;
-    case 'extract_links':
-      result = await extractLinksTool(call.args, state, ui.paint);
+    case 'task_create':
+      result = await taskCreateTool(call.args, state, ui.paint);
       break;
-    case 'scrape_meta':
-      result = await scrapeMetaTool(call.args, state, ui.paint);
+    case 'task_list':
+      result = await taskListTool(call.args, state, ui.paint);
+      break;
+    case 'task_update':
+      result = await taskUpdateTool(call.args, state, ui.paint);
+      break;
+    case 'task_complete':
+      result = await taskCompleteTool(call.args, state, ui.paint);
+      break;
+    case 'task_delete':
+      result = await taskDeleteTool(call.args, state, ui.paint);
+      break;
+    case 'task_clear':
+      result = await taskClearTool(call.args, state, ui.paint);
+      break;
+    case 'create_canvas_image':
+      result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
     case 'web_search':
       result = await webSearchTool(call.args, state, ui.paint);
       break;
     case 'web_read':
       result = await webReadTool(call.args, state, ui.paint);
-      break;
-    case 'create_canvas_media':
-      result = await createCanvasMediaTool(call.args, state, ui.paint);
       break;
     default:
       throw new Error(`Herramienta no soportada: ${call.tool}`);

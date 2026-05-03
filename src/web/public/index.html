@@ -312,7 +312,7 @@
         || /<invoke\s+name=|<\w+:tool_call>/i.test(sample)
         || /^```(?:json)?/i.test(sample)
         || /"type"\s*:\s*"tool"/i.test(sample)
-        || /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read)"/i.test(sample);
+        || /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|task_create|task_list|task_update|task_complete|task_delete|task_clear|create_canvas_image|web_search|web_read)"/i.test(sample);
     }
 
     function toggleThinkingBlock(id) {

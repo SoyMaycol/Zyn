@@ -135,9 +135,10 @@ class UIStore extends EventEmitter {
     this._emit();
   }
 
-  enqueueMessage(text) {
-    this.messageQueue.push(text);
-    this.addItem({ type: 'queued', text });
+  enqueueMessage(payload) {
+    const item = typeof payload === 'object' && payload ? payload : { text: String(payload || '') };
+    this.messageQueue.push(item);
+    this.addItem({ type: 'queued', text: item.displayText || item.text || '' });
     this._emit();
   }
 
@@ -599,6 +600,7 @@ function InputBar({ onSubmit, processing }) {
   const [suggestIdx, setSuggestIdx] = useState(0);
   const historyRef = useRef([]);
   const savedRef = useRef('');
+  const pasteRef = useRef(null);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
   const suggestions = showSuggestions
@@ -606,6 +608,16 @@ function InputBar({ onSubmit, processing }) {
     : [];
 
   useInput((input, key) => {
+    const isPasteChunk = typeof input === 'string' && input.length > 1 && !key.return && !key.ctrl && !key.meta && !key.backspace && !key.delete;
+
+    if (isPasteChunk) {
+      pasteRef.current = { text: value.slice(0, cursor) + input + value.slice(cursor), chars: input.length };
+      setValue(v => v.slice(0, cursor) + input + v.slice(cursor));
+      setCursor(c => c + input.length);
+      setSuggestIdx(0);
+      return;
+    }
+
     if (key.return) {
       let text = value.trim();
       if (!text) return;
@@ -614,13 +626,18 @@ function InputBar({ onSubmit, processing }) {
         const cmd = suggestions[suggestIdx] || suggestions[0];
         if (cmd) text = `/${cmd.name}`;
       }
+      const isPaste = !!pasteRef.current;
+      const displayText = isPaste
+        ? `[ Pasted Text of ${pasteRef.current.chars} Characters ]`
+        : text;
       historyRef.current.unshift(text);
       if (historyRef.current.length > 100) historyRef.current.pop();
       setValue('');
       setCursor(0);
       setHistIdx(-1);
       setSuggestIdx(0);
-      onSubmit(text);
+      pasteRef.current = null;
+      onSubmit({ text, displayText, isPaste });
       return;
     }
 
@@ -785,7 +802,10 @@ function App({ store, state, onSubmit }) {
     ? 'Concuerdo · ' + Object.values(MODELS).map(m => m.label).join(', ')
     : (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
-  const handleInput = useCallback((text) => {
+  const handleInput = useCallback((payload) => {
+    const text = typeof payload === 'string' ? payload : payload?.text || '';
+    const displayText = typeof payload === 'object' && payload?.displayText ? payload.displayText : text;
+
     if (text === '/exit' || text === '/quit') {
       if (store.processing) {
         store.pendingExit = true;
@@ -795,7 +815,7 @@ function App({ store, state, onSubmit }) {
       exit();
       return;
     }
-    onSubmit(text);
+    onSubmit({ text, displayText });
   }, [onSubmit, exit, store]);
 
   useInput((input, key) => {
@@ -911,7 +931,9 @@ export async function startTUI(options = {}) {
 
   store.addItem({ type: 'banner', model: modelLabel, resumed, cwd });
 
-  const processInput = async (input) => {
+  const processInput = async (payload) => {
+    const input = typeof payload === 'string' ? payload : payload?.text || '';
+    const displayText = typeof payload === 'object' && payload?.displayText ? payload.displayText : input;
     if (input === '/exit' || input === '/quit') {
       store.pendingExit = true;
       store.addEvent('info', 'hasta luego');
@@ -953,7 +975,7 @@ export async function startTUI(options = {}) {
     }
 
     store.addItem({ type: 'divider' });
-    store.addItem({ type: 'user', text: input });
+    store.addItem({ type: 'user', text: displayText, rawText: input });
 
     const origError = console.error;
     console.error = () => {};
@@ -982,14 +1004,19 @@ export async function startTUI(options = {}) {
 
   let appInstance = null;
 
-  const handleSubmit = async (input) => {
-    if (input.startsWith('/') && store.processing) {
-      await processInput(input);
+  const handleSubmit = async (payload) => {
+    const text = typeof payload === 'string' ? payload : payload?.text || '';
+    const normalized = typeof payload === 'object' && payload
+      ? { text, displayText: payload.displayText || text }
+      : { text, displayText: text };
+
+    if (text.startsWith('/') && store.processing) {
+      await processInput(normalized);
       return;
     }
 
     if (store.processing) {
-      store.enqueueMessage(input);
+      store.enqueueMessage(normalized);
       return;
     }
 
@@ -997,7 +1024,7 @@ export async function startTUI(options = {}) {
     store.turnCount += 1;
     store._emit();
 
-    await processInput(input);
+    await processInput(normalized);
 
     while (store.messageQueue.length > 0) {
       const next = store.messageQueue.shift();

@@ -1,7 +1,6 @@
 const readline = require('readline/promises');
 
 const { handleLocalCommand, printHelp } = require('./commands');
-const { t } = require('../i18n');
 const {
   beginAssistantStream,
   beginThinkingStream,
@@ -112,7 +111,7 @@ async function runInteractiveChatClassic(options = {}) {
   const { state, resumed } = await loadOrCreateSessionState(rl, options);
   await printWelcome();
   printBanner(state);
-  logEvent(state, 'info', resumed ? t(state.language || 'en', 'sessionResumed') : t(state.language || 'en', 'chatActive'));
+  logEvent(state, 'info', resumed ? 'session resumed' : 'chat active — /help for commands');
   console.log('');
 
   const messageQueue = [];
@@ -132,7 +131,7 @@ async function runInteractiveChatClassic(options = {}) {
     try {
       const handled = await handleLocalCommand(input, state, getCommandDeps());
       if (!handled) {
-        console.log(t(state.language || 'en', 'commandNotRecognized'));
+        console.log('Comando no reconocido. Usa /help.');
       }
     } catch (err) {
       console.error(`Error: ${err.message}`);
@@ -176,7 +175,7 @@ async function runInteractiveChatClassic(options = {}) {
       if (!input) continue;
 
       if (input === '/exit' || input === '/quit') {
-        logEvent(state, 'info', state.language === 'es' ? 'Hasta luego' : 'Goodbye');
+        logEvent(state, 'info', 'Hasta luego');
         break;
       }
 
@@ -203,7 +202,7 @@ async function runInteractiveChatClassic(options = {}) {
       rl.removeListener('line', lineHandler);
 
       if (pendingExit) {
-        logEvent(state, 'info', state.language === 'es' ? 'Hasta luego' : 'Goodbye');
+        logEvent(state, 'info', 'Hasta luego');
         break;
       }
     }

@@ -4,9 +4,11 @@ const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
-const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels, reloadModels } = require('../config');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels, refreshModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
+const { createTask, listTasks, updateTask, completeTask, deleteTask, clearTasks, formatTask } = require('../utils/taskStorage');
+const { describeProviderConfig, fetchProviderModels, listConfiguredProviders, removeProviderConfig, syncProvider, upsertProviderConfig } = require('../providers/catalog');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
 const { printTools } = require('../tools');
@@ -25,6 +27,8 @@ const SLASH_COMMANDS = [
   { name: 'models', desc: 'list models' },
   { name: 'providers', desc: 'list providers' },
   { name: 'provider', desc: 'configure provider' },
+  { name: 'tasks', desc: 'list tasks' },
+  { name: 'task', desc: 'manage tasks' },
   { name: 'lang', desc: 'change language' },
   { name: 'language', desc: 'change language' },
   { name: 'auto', desc: 'auto-approval' },
@@ -122,10 +126,49 @@ function printConfig(state) {
 }
 
 
-function formatProviderSummary(provider) {
-  const entries = Object.entries(provider || {}).filter(([key]) => !['provider', 'updatedAt', 'modelCount'].includes(key));
-  if (entries.length === 0) return '  (empty)';
-  return entries.map(([key, value]) => `  ${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`).join('\n');
+function printTaskList(lang, tasks) {
+  console.log('');
+  if (!tasks || tasks.length === 0) {
+    console.log(`  ${lang === 'es' ? 'No hay tareas registradas.' : 'No tasks recorded.'}`);
+    console.log('');
+    return;
+  }
+
+  console.log(`  ${lang === 'es' ? 'Tareas' : 'Tasks'} (${tasks.length})`);
+  for (const task of tasks) {
+    console.log(`    ${formatTask(task)}`);
+  }
+  console.log('');
+}
+
+function printProviderConfig(providerKey) {
+  const config = describeProviderConfig(providerKey);
+  if (!config) {
+    console.log(`Proveedor no configurado: ${providerKey}`);
+    return;
+  }
+
+  console.log('');
+  console.log(`  ${providerKey}`);
+  for (const [key, value] of Object.entries(config)) {
+    if (key === 'provider') continue;
+    if (value === undefined || value === null || value === '') continue;
+    console.log(`    ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`);
+  }
+  console.log('');
+}
+
+function parseKeyValueArgs(raw) {
+  const entries = {};
+  const parts = String(raw || '').split(/\s+/).filter(Boolean);
+  for (const part of parts) {
+    const match = part.match(/^([a-zA-Z0-9_-]+)=(.*)$/);
+    if (!match) continue;
+    const key = match[1];
+    const value = match[2].replace(/^['"`]|['"`]$/g, '');
+    entries[key] = value;
+  }
+  return entries;
 }
 
 async function startWebVersion() {
@@ -350,100 +393,6 @@ async function handleLocalCommand(input, state, deps) {
     return true;
   }
 
-  if (commandName === 'provider') {
-    const [sub, ...rest] = args.split(/\s+/);
-    const value = rest.join(' ').trim();
-
-    if (!sub || sub === 'list') {
-      const configs = require('../providers/catalog').listConfiguredProviders();
-      console.log('');
-      if (configs.length === 0) {
-        console.log('  No provider configs saved.');
-      } else {
-        for (const config of configs) {
-          console.log(`  ${config.key}`);
-          console.log(formatProviderSummary(config));
-        }
-      }
-      console.log('');
-      return true;
-    }
-
-    const { upsertProviderConfig, syncProvider, removeProviderConfig, describeProviderConfig, fetchProviderModels, normalizeBaseUrl } = require('../providers/catalog');
-
-    if (sub === 'show') {
-      const providerKey = value.trim();
-      if (!providerKey) throw new Error('Use /provider show <key>');
-      const config = describeProviderConfig(providerKey);
-      if (!config) {
-        console.log(`  ${providerKey}: not configured`);
-        return true;
-      }
-      console.log('');
-      console.log(`  ${providerKey}`);
-      console.log(formatProviderSummary(config));
-      console.log('');
-      return true;
-    }
-
-    if (sub === 'remove' || sub === 'delete') {
-      const providerKey = value.trim();
-      if (!providerKey) throw new Error('Use /provider remove <key>');
-      removeProviderConfig(providerKey);
-      reloadModels();
-      console.log(t(state.language, 'providerRemoved') + `: ${providerKey}`);
-      return true;
-    }
-
-    if (sub === 'set' || sub === 'add' || sub === 'sync') {
-      const tokens = value.split(/\s+/).filter(Boolean);
-      const providerKey = tokens.shift();
-      if (!providerKey) throw new Error('Use /provider set <key> <baseUrl> [apiKey]');
-
-      const config = { provider: providerKey };
-      let baseUrl = '';
-      let apiKey = '';
-      for (const token of tokens) {
-        const eq = token.indexOf('=');
-        if (eq !== -1) {
-          const key = token.slice(0, eq).trim();
-          const val = token.slice(eq + 1).trim();
-          if (!val) continue;
-          if (key === 'baseUrl') baseUrl = val;
-          if (key === 'apiKey') apiKey = val;
-          continue;
-        }
-        if (!baseUrl) { baseUrl = token; continue; }
-        if (!apiKey) { apiKey = token; continue; }
-      }
-
-      if (baseUrl) config.baseUrl = normalizeBaseUrl(baseUrl);
-      if (apiKey) config.apiKey = apiKey;
-
-      upsertProviderConfig(providerKey, config);
-
-      if (sub !== 'sync') {
-        console.log(`${t(state.language, 'providerConfigured')}: ${providerKey}`);
-      }
-
-      try {
-        const models = await syncProvider(providerKey);
-        reloadModels();
-        console.log(`${t(state.language, 'providerSynced')}: ${providerKey} (${models.length})`);
-        for (const model of models.slice(0, 12)) {
-          console.log(`    ${model.key.padEnd(18)} ${model.label}`);
-        }
-        return true;
-      } catch (err) {
-        reloadModels();
-        console.log(`${providerKey}: ${err.message}`);
-        return true;
-      }
-    }
-
-    throw new Error('Use /provider list|show|set|add|sync|remove');
-  }
-
   if (commandName === 'providers') {
     const providers = listProvidersFromModels(MODELS);
     console.log('');
@@ -455,6 +404,119 @@ async function handleLocalCommand(input, state, deps) {
     }
     console.log('');
     return true;
+  }
+
+  if (commandName === 'provider') {
+    const [sub, providerKeyRaw, ...rest] = args.split(/\s+/);
+    const providerKey = String(providerKeyRaw || '').trim().toLowerCase();
+    if (!sub || sub === 'list') {
+      const providers = listConfiguredProviders();
+      console.log('');
+      for (const provider of providers) {
+        console.log(`  ${provider.provider}`);
+        console.log(`    modelCount: ${provider.modelCount ?? 0}`);
+        if (provider.baseUrl) console.log(`    baseUrl: ${provider.baseUrl}`);
+        if (provider.apiKey) console.log('    apiKey: [set]');
+        if (provider.email) console.log(`    email: ${provider.email}`);
+      }
+      console.log('');
+      return true;
+    }
+
+    if (!providerKey) {
+      throw new Error('Missing provider key');
+    }
+
+    if (sub === 'show' || sub === 'info') {
+      printProviderConfig(providerKey);
+      return true;
+    }
+
+    if (sub === 'remove' || sub === 'delete') {
+      removeProviderConfig(providerKey);
+      refreshModels();
+      console.log(`Provider removed: ${providerKey}`);
+      return true;
+    }
+
+    if (sub === 'sync') {
+      const models = await syncProvider(providerKey);
+      refreshModels();
+      console.log(`Provider synced: ${providerKey} (${models.length} models)`);
+      return true;
+    }
+
+    if (sub === 'set' || sub === 'configure' || sub === 'config') {
+      const settings = parseKeyValueArgs(rest.join(' '));
+      const base = describeProviderConfig(providerKey) || {};
+      const nextConfig = { ...base, ...settings };
+      if (providerKey === 'qwen') {
+        if (!nextConfig.email) nextConfig.email = base.email || process.env.ZYN_QWEN_EMAIL || process.env.QWEN_EMAIL || '';
+        if (!nextConfig.password) nextConfig.password = base.password || process.env.ZYN_QWEN_PASSWORD || process.env.QWEN_PASSWORD || '';
+      }
+      upsertProviderConfig(providerKey, nextConfig);
+      const models = await syncProvider(providerKey).catch(async (err) => {
+        console.log(`Provider saved: ${providerKey}`);
+        console.log(`Sync skipped: ${err.message}`);
+        return [];
+      });
+      refreshModels();
+      console.log(`Provider configured: ${providerKey}`);
+      if (models.length > 0) {
+        console.log(`Models synced: ${models.length}`);
+      }
+      return true;
+    }
+
+    throw new Error('Use /provider list|show|set|configure|sync|remove <provider>');
+  }
+
+  if (commandName === 'tasks' || commandName === 'task') {
+    const [sub = 'list', ...rest] = args.split(/\s+/);
+    const joined = rest.join(' ').trim();
+
+    if (commandName === 'tasks' || sub === 'list') {
+      printTaskList(state.language, listTasks());
+      return true;
+    }
+
+    if (sub === 'clear') {
+      clearTasks();
+      console.log(state.language === 'es' ? 'Todas las tareas fueron eliminadas.' : 'All tasks cleared.');
+      return true;
+    }
+
+    if (sub === 'done' || sub === 'complete') {
+      if (!joined) throw new Error('Missing task id');
+      const task = completeTask(joined);
+      console.log(formatTask(task));
+      return true;
+    }
+
+    if (sub === 'remove' || sub === 'delete') {
+      if (!joined) throw new Error('Missing task id');
+      const task = deleteTask(joined);
+      console.log(`Removed: ${task.id}`);
+      return true;
+    }
+
+    if (sub === 'add' || sub === 'create') {
+      const [titlePart, ...descParts] = joined.split('|');
+      const task = createTask({ title: titlePart || joined, description: descParts.join('|').trim(), source: 'command' });
+      console.log(formatTask(task));
+      return true;
+    }
+
+    if (sub === 'update') {
+      const [id, ...restUpdate] = joined.split(/\s+/);
+      if (!id) throw new Error('Missing task id');
+      const text = restUpdate.join(' ').trim();
+      const task = updateTask(id, { notes: text });
+      console.log(formatTask(task));
+      return true;
+    }
+
+    throw new Error('Use /task add|update|done|remove|clear or /tasks');
   }
 
   if (commandName === 'auto') {

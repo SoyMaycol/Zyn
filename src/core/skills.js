@@ -1,41 +1,33 @@
 const fs = require('fs');
 const path = require('path');
-const { DATA_ROOT, USER_SKILLS_DIR } = require('../config');
+const { DATA_ROOT } = require('../config');
 
-const ASSET_SKILLS_DIR = path.join(DATA_ROOT, 'skills');
-const SKILL_DIRS = [USER_SKILLS_DIR, ASSET_SKILLS_DIR];
+const SKILLS_DIR = path.join(DATA_ROOT, 'skills');
 const CORE_SKILLS = ['core', 'tools', 'reasoning', 'methodology', 'code-style', 'domains'];
 
 function loadSkill(name) {
-  for (const dir of SKILL_DIRS) {
-    const filePath = path.join(dir, `${name}.md`);
-    try {
-      return fs.readFileSync(filePath, 'utf8').trim();
-    } catch {}
+  const filePath = path.join(SKILLS_DIR, `${name}.md`);
+  try {
+    return fs.readFileSync(filePath, 'utf8').trim();
+  } catch {
+    return null;
   }
-  return null;
 }
 
 function loadAllSkills() {
-  const names = new Set();
+  if (!fs.existsSync(SKILLS_DIR)) return [];
 
-  for (const dir of SKILL_DIRS) {
-    if (!fs.existsSync(dir)) continue;
-    for (const file of fs.readdirSync(dir)) {
-      if (file.endsWith('.md')) {
-        names.add(file.replace('.md', ''));
-      }
-    }
-  }
-
-  return [...names].sort((a, b) => {
-    const ai = CORE_SKILLS.indexOf(a);
-    const bi = CORE_SKILLS.indexOf(b);
-    if (ai !== -1 && bi !== -1) return ai - bi;
-    if (ai !== -1) return -1;
-    if (bi !== -1) return 1;
-    return a.localeCompare(b);
-  });
+  return fs.readdirSync(SKILLS_DIR)
+    .filter(f => f.endsWith('.md'))
+    .map(f => f.replace('.md', ''))
+    .sort((a, b) => {
+      const ai = CORE_SKILLS.indexOf(a);
+      const bi = CORE_SKILLS.indexOf(b);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.localeCompare(b);
+    });
 }
 
 function buildSkillsPrompt({ include, extraSkills = [] } = {}) {
@@ -68,8 +60,7 @@ function listSkills() {
 }
 
 module.exports = {
-  ASSET_SKILLS_DIR,
-  SKILL_DIRS,
+  SKILLS_DIR,
   buildSkillsPrompt,
   listSkills,
   loadAllSkills,
