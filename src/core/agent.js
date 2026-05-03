@@ -197,6 +197,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
   }
   ui.logEvent(state, 'info', `${state.language === 'es' ? 'Turno' : 'Turn'} ${state.turnCount}`);
 
+  let toolUsedThisTurn = false;
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
@@ -227,7 +228,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
   let repeatCount = 0;
   let step = 0;
   const turnLanguage = detectLanguage(input, state.language);
-  let toolUsedThisTurn = false;
   let finalWithoutToolRetries = 0;
 
   while (true) {

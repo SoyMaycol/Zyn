@@ -6,7 +6,7 @@ const {
   THINK_FRAMES,
 } = require('../config');
 const { shortText } = require('../utils/text');
-const { t } = require('../i18n');
+const { t, normalizeLanguage } = require('../i18n');
 
 const C = {
   reset: '\x1b[0m',
@@ -139,8 +139,9 @@ function printBanner(state) {
 
   console.log('');
   console.log(`  ${c('●', C.accent)} ${c(APP_NAME, C.bold, C.white)}  ${c('·', C.darkGray)}  ${c(model, C.gray)}`);
+  const lang = normalizeLanguage(state.language || 'en');
   console.log(`  ${c('cwd:', C.darkGray)} ${c(cwd, C.gray)}`);
-  console.log(`  ${c('/help for commands', C.darkGray)}`);
+  console.log(`  ${c(t(lang, 'helpCommand'), C.darkGray)}`);
   console.log('');
 }
 

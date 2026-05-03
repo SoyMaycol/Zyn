@@ -7,8 +7,16 @@ const APP_NAME = 'Zyn';
 const APP_ROOT = path.resolve(__dirname, '..');
 const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
+const USER_DATA_ROOT = path.join(HOME_DIR, '.zyn', 'zyn-ai');
 
-const MODELS_FILE = path.join(DATA_ROOT, 'models.json');
+const MODELS_FILE = path.join(USER_DATA_ROOT, 'models.json');
+const PROVIDERS_FILE = path.join(USER_DATA_ROOT, 'providers.json');
+const SESSION_ROOT = path.join(USER_DATA_ROOT, 'chat');
+const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
+const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
+const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
+const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
+const USER_SKILLS_DIR = path.join(USER_DATA_ROOT, 'skills');
 
 const BUILTIN_MODELS = {
   'qwen': {
@@ -88,6 +96,17 @@ const MODELS = {
   ...loadExternalModels(),
 };
 
+function reloadModels() {
+  const external = loadExternalModels();
+  for (const key of Object.keys(MODELS)) {
+    if (!Object.prototype.hasOwnProperty.call(BUILTIN_MODELS, key)) {
+      delete MODELS[key];
+    }
+  }
+  Object.assign(MODELS, BUILTIN_MODELS, external);
+  return MODELS;
+}
+
 const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
 const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || 'en');
 
@@ -101,11 +120,6 @@ const ACTION_LOG_LIMIT = 40;
 const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 180000);
 const MAX_HISTORY_CHARS = 24000;
 const KEEP_RECENT_MESSAGES = 12;
-const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
-const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
-const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
-const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
-const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 function listProvidersFromModels(models = MODELS) {
@@ -146,12 +160,16 @@ module.exports = {
   MAX_TOOL_STEPS,
   MODELS,
   MODELS_FILE,
+  PROVIDERS_FILE,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,
+  reloadModels,
   SESSION_ROOT,
   SESSIONS_DIR,
   THINK_FRAMES,
   TRANSCRIPTS_DIR,
+  USER_DATA_ROOT,
+  USER_SKILLS_DIR,
   listProvidersFromModels,
 };

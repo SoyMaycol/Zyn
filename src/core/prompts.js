@@ -7,7 +7,8 @@ const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const KNOWN_TOOLS = new Set([
   'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
   'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url', 'web_search', 'web_read',
+  'fetch_url', 'extract_links', 'scrape_meta', 'web_search', 'web_read',
+  'create_canvas_media',
 ]);
 
 

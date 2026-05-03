@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
-const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels } = require('../config');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels, reloadModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
@@ -24,6 +24,7 @@ const SLASH_COMMANDS = [
   { name: 'model', desc: 'view/change model' },
   { name: 'models', desc: 'list models' },
   { name: 'providers', desc: 'list providers' },
+  { name: 'provider', desc: 'configure provider' },
   { name: 'lang', desc: 'change language' },
   { name: 'language', desc: 'change language' },
   { name: 'auto', desc: 'auto-approval' },
@@ -118,6 +119,13 @@ function printConfig(state) {
   console.log('    /config group on|off');
   console.log('    /config cwd <path>');
   console.log('');
+}
+
+
+function formatProviderSummary(provider) {
+  const entries = Object.entries(provider || {}).filter(([key]) => !['provider', 'updatedAt', 'modelCount'].includes(key));
+  if (entries.length === 0) return '  (empty)';
+  return entries.map(([key, value]) => `  ${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`).join('\n');
 }
 
 async function startWebVersion() {
@@ -340,6 +348,100 @@ async function handleLocalCommand(input, state, deps) {
   if (commandName === 'models') {
     printModels();
     return true;
+  }
+
+  if (commandName === 'provider') {
+    const [sub, ...rest] = args.split(/\s+/);
+    const value = rest.join(' ').trim();
+
+    if (!sub || sub === 'list') {
+      const configs = require('../providers/catalog').listConfiguredProviders();
+      console.log('');
+      if (configs.length === 0) {
+        console.log('  No provider configs saved.');
+      } else {
+        for (const config of configs) {
+          console.log(`  ${config.key}`);
+          console.log(formatProviderSummary(config));
+        }
+      }
+      console.log('');
+      return true;
+    }
+
+    const { upsertProviderConfig, syncProvider, removeProviderConfig, describeProviderConfig, fetchProviderModels, normalizeBaseUrl } = require('../providers/catalog');
+
+    if (sub === 'show') {
+      const providerKey = value.trim();
+      if (!providerKey) throw new Error('Use /provider show <key>');
+      const config = describeProviderConfig(providerKey);
+      if (!config) {
+        console.log(`  ${providerKey}: not configured`);
+        return true;
+      }
+      console.log('');
+      console.log(`  ${providerKey}`);
+      console.log(formatProviderSummary(config));
+      console.log('');
+      return true;
+    }
+
+    if (sub === 'remove' || sub === 'delete') {
+      const providerKey = value.trim();
+      if (!providerKey) throw new Error('Use /provider remove <key>');
+      removeProviderConfig(providerKey);
+      reloadModels();
+      console.log(t(state.language, 'providerRemoved') + `: ${providerKey}`);
+      return true;
+    }
+
+    if (sub === 'set' || sub === 'add' || sub === 'sync') {
+      const tokens = value.split(/\s+/).filter(Boolean);
+      const providerKey = tokens.shift();
+      if (!providerKey) throw new Error('Use /provider set <key> <baseUrl> [apiKey]');
+
+      const config = { provider: providerKey };
+      let baseUrl = '';
+      let apiKey = '';
+      for (const token of tokens) {
+        const eq = token.indexOf('=');
+        if (eq !== -1) {
+          const key = token.slice(0, eq).trim();
+          const val = token.slice(eq + 1).trim();
+          if (!val) continue;
+          if (key === 'baseUrl') baseUrl = val;
+          if (key === 'apiKey') apiKey = val;
+          continue;
+        }
+        if (!baseUrl) { baseUrl = token; continue; }
+        if (!apiKey) { apiKey = token; continue; }
+      }
+
+      if (baseUrl) config.baseUrl = normalizeBaseUrl(baseUrl);
+      if (apiKey) config.apiKey = apiKey;
+
+      upsertProviderConfig(providerKey, config);
+
+      if (sub !== 'sync') {
+        console.log(`${t(state.language, 'providerConfigured')}: ${providerKey}`);
+      }
+
+      try {
+        const models = await syncProvider(providerKey);
+        reloadModels();
+        console.log(`${t(state.language, 'providerSynced')}: ${providerKey} (${models.length})`);
+        for (const model of models.slice(0, 12)) {
+          console.log(`    ${model.key.padEnd(18)} ${model.label}`);
+        }
+        return true;
+      } catch (err) {
+        reloadModels();
+        console.log(`${providerKey}: ${err.message}`);
+        return true;
+      }
+    }
+
+    throw new Error('Use /provider list|show|set|add|sync|remove');
   }
 
   if (commandName === 'providers') {
