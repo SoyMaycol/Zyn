@@ -38,6 +38,7 @@ const TOOL_DEFINITIONS = [
   { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
   { name: 'web_search', usage: '{ query }' },
   { name: 'web_read', usage: '{ url }' },
+  { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
 ];
 
 function getToolPromptText() {
@@ -104,6 +105,16 @@ function getToolPromptText() {
     '  Descarga una pagina web y la convierte a texto legible (sin HTML).',
     '  Ideal para leer articulos, documentacion o contenido de paginas.',
     '  Ejemplo: {"type":"tool","tool":"web_read","args":{"url":"https://docs.example.com/guide"}}',
+    '',
+    '## Imagen profesional con Jimp',
+    '',
+    'create_canvas_image { width, height, background?, elements?, format?, outputPath? }',
+    '  Crea imagenes desde cero usando Jimp con composicion por elementos.',
+    '  width/height son obligatorios. background puede ser color HEX (#RRGGBB o #RRGGBBAA).',
+    '  elements permite combinar rect, circle/ellipse, line, text e image.',
+    '  Usa este flujo profesional: definir lienzo -> capas base -> tipografia -> detalles -> exportacion.',
+    '  Ejemplo:',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":628,"background":"#0f172a","format":"png","outputPath":"generated/cover.png","elements":[{"type":"rect","x":48,"y":48,"w":1104,"h":532,"radius":24,"fill":"#111827"},{"type":"text","x":96,"y":120,"fontSize":32,"text":"Quarterly Business Report"}]}}',
   ].join('\n');
 }
 
@@ -147,6 +158,8 @@ function describeToolCall(call) {
       const readUrl = cleanUrl(call.args.url || '');
       return `Leyendo ${shortText(readUrl, 60)}`;
     }
+    case 'create_canvas_image':
+      return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     default:
       return call.tool;
   }
@@ -805,6 +818,9 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'web_read':
       result = await webReadTool(call.args, state, ui.paint);
+      break;
+    case 'create_canvas_image':
+      result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
     default:
       throw new Error(`Herramienta no soportada: ${call.tool}`);

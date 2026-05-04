@@ -27,6 +27,7 @@ function uiText(en, es) {
   return getTuiLang() === 'es' ? es : en;
 }
 const MAX_THINKING_LINES = 20;
+const MAX_PASTE_PREVIEW = 200;
 const SPIN_MS = 80;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
@@ -436,10 +437,15 @@ function EventLine({ kind, title, detail }) {
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
-  return h(Box, { paddingLeft: 5, gap: 1 },
-    h(Text, { color }, sym),
-    h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted }, title),
-    detail ? h(Text, { color: T.textGhost }, detail) : null,
+  const compactTitle = String(title || '').replace(/\s{2,}/g, ' ').trim();
+  const compactDetail = String(detail || '').replace(/\s{2,}/g, ' ').trim();
+
+  return h(Box, { paddingLeft: 3, flexDirection: 'column' },
+    h(Box, { gap: 1 },
+      h(Text, { color }, sym),
+      h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, compactTitle),
+    ),
+    compactDetail ? h(Box, { paddingLeft: 2 }, h(Text, { color: T.textGhost, wrap: 'wrap' }, compactDetail)) : null,
   );
 }
 
@@ -448,7 +454,7 @@ function UserMessage({ text }) {
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
         h(Text, { color: T.accent, bold: true }, '\u29bf'),
-        h(Text, { color: T.textDim, bold: true }, 'You'),
+        h(Text, { color: T.textDim, bold: true }, uiText('You', 'Tú')),
       ),
       h(Box, { paddingLeft: 2 },
         h(Text, { color: T.text, wrap: 'wrap' }, text),
@@ -472,17 +478,17 @@ function ThinkingBlock({ text, elapsed, live, width }) {
   const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '\u25d0';
 
   const label = live
-    ? pulseChar + '  Pensando...'
-    : '\u25d0  Penso ' + elapsed + 's';
+    ? pulseChar + '  ' + uiText('Thinking...', 'Pensando...')
+    : '\u25d0  ' + uiText('Thought for ', 'Pensó durante ') + elapsed + 's';
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 1 },
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
     h(Text, { color: T.textGhost }, label),
     lines.length > 0
-      ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
+      ? h(Box, { flexDirection: 'column', paddingLeft: 1 },
           ...lines.map((line, i) =>
             h(Text, { key: String(i), color: T.textInvis, wrap: 'wrap' }, line),
           ),
-          more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' lineas mas') : null,
+          more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' ' + uiText('more lines', 'líneas más')) : null,
         )
       : null,
   );
@@ -541,10 +547,10 @@ function ConfirmBar({ title, detail }) {
       : null,
     h(Box, { marginTop: 0, paddingLeft: 2, gap: 2 },
       h(Text, { color: T.green, bold: true }, '[y]'),
-      h(Text, { color: T.textMuted }, 'permitir'),
+      h(Text, { color: T.textMuted }, uiText('allow', 'permitir')),
       h(Text, { color: T.textInvis }, '\u00b7'),
       h(Text, { color: T.red, bold: true }, '[n]'),
-      h(Text, { color: T.textMuted }, 'denegar'),
+      h(Text, { color: T.textMuted }, uiText('deny', 'denegar')),
     ),
   );
 }
@@ -573,7 +579,7 @@ function StatusBar({ model, processing, width, turnCount }) {
           ? h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame])
           : null,
         turnCount > 0
-          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + (turnCount === 1 ? ' turno' : ' turnos'))
+          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + ' ' + uiText(turnCount === 1 ? 'turn' : 'turns', turnCount === 1 ? 'turno' : 'turnos'))
           : null,
       ),
       h(Box, { gap: 1 },
@@ -716,8 +722,10 @@ function InputBar({ onSubmit, processing }) {
     }
 
     if (input && !key.ctrl && !key.meta) {
-      setValue(v => v.slice(0, cursor) + input + v.slice(cursor));
-      setCursor(c => c + input.length);
+      const normalizedInput = input.replace(/\r\n/g, '\n');
+      const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
+      setValue(v => v.slice(0, cursor) + safeInput + v.slice(cursor));
+      setCursor(c => c + safeInput.length);
       setSuggestIdx(0);
     }
   });
@@ -756,7 +764,7 @@ function InputBar({ onSubmit, processing }) {
     inputLine,
     h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 0 },
       hasMore && windowStart > 0
-        ? h(Text, { color: T.textInvis }, '  \u2191 mas')
+        ? h(Text, { color: T.textInvis }, '  \u2191 ' + uiText('more', 'más'))
         : null,
       ...visible.map((cmd, i) => {
         const realIdx = windowStart + i;
@@ -773,10 +781,10 @@ function InputBar({ onSubmit, processing }) {
         );
       }),
       hasMore && windowStart + maxVisible < suggestions.length
-        ? h(Text, { color: T.textInvis }, '  \u2193 mas')
+        ? h(Text, { color: T.textInvis }, '  \u2193 ' + uiText('more', 'más'))
         : null,
       h(Box, { paddingTop: 0 },
-        h(Text, { color: T.textInvis }, 'Tab completar \u00b7 \u2191\u2193 navegar'),
+        h(Text, { color: T.textInvis }, uiText('Tab complete · ↑↓ navigate', 'Tab completar · ↑↓ navegar')),
       ),
     ),
   );
@@ -950,7 +958,7 @@ export async function startTUI(options = {}) {
           const clean = lines.filter(l => l.trim()).join('\n');
           if (clean) store.addItem({ type: 'system', text: clean });
         }
-        if (!handled) store.addEvent('warn', 'comando no reconocido', input);
+        if (!handled) store.addEvent('warn', uiText('command not recognized', 'comando no reconocido'), input);
       } catch (err) {
         store.addEvent('error', uiText('error', 'error'), err.message);
       } finally {
@@ -991,6 +999,13 @@ export async function startTUI(options = {}) {
   let appInstance = null;
 
   const handleSubmit = async (input) => {
+    if (typeof input === 'string' && input.length > MAX_PASTE_PREVIEW) {
+      store.addEvent(
+        'info',
+        `[ ${uiText('Pasted Text', 'Texto pegado')} of ${input.length} ${uiText('Characters', 'Caracteres')} ]`,
+        input.slice(0, MAX_PASTE_PREVIEW) + '...'
+      );
+    }
     if (input.startsWith('/') && store.processing) {
       await processInput(input);
       return;
