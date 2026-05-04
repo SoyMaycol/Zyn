@@ -11,8 +11,6 @@
 
   <img src="https://img.shields.io/npm/dt/zyn-ai" alt="Downloads"/>
 
-  <img src="https://badge.socket.dev/npm/package/zyn-ai/latest" alt="Security"/>
-
   <img src="https://img.shields.io/github/forks/SoyMaycol/Zyn" alt="Forks"/>
 </p>
 
