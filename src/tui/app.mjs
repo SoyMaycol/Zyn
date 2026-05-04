@@ -27,6 +27,7 @@ function uiText(en, es) {
   return getTuiLang() === 'es' ? es : en;
 }
 const MAX_THINKING_LINES = 20;
+const MAX_PASTE_PREVIEW = 200;
 const SPIN_MS = 80;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
@@ -615,6 +616,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
   const [suggestIdx, setSuggestIdx] = useState(0);
   const historyRef = useRef([]);
   const savedRef = useRef('');
+  const lastPasteMetaRef = useRef(null);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
   const suggestions = showSuggestions
@@ -636,7 +638,8 @@ function InputBar({ onSubmit, processing, width = 100 }) {
       setCursor(0);
       setHistIdx(-1);
       setSuggestIdx(0);
-      onSubmit(text);
+      onSubmit(text, lastPasteMetaRef.current);
+      lastPasteMetaRef.current = null;
       return;
     }
 
@@ -811,7 +814,7 @@ function App({ store, state, onSubmit }) {
     ? uiText('Concord · ', 'Concuerdo · ') + Object.values(MODELS).map(m => m.label).join(', ')
     : (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
-  const handleInput = useCallback((text) => {
+  const handleInput = useCallback((text, meta) => {
     if (text === '/exit' || text === '/quit') {
       if (store.processing) {
         store.pendingExit = true;
@@ -821,7 +824,7 @@ function App({ store, state, onSubmit }) {
       exit();
       return;
     }
-    onSubmit(text);
+    onSubmit(text, meta);
   }, [onSubmit, exit, store]);
 
   useInput((input, key) => {
@@ -1014,7 +1017,16 @@ export async function startTUI(options = {}) {
 
   let appInstance = null;
 
-  const handleSubmit = async (input) => {
+  const handleSubmit = async (input, meta = null) => {
+    const pasteLen = Number(meta?.length || 0);
+    if (pasteLen > 0 || (typeof input === 'string' && input.length > MAX_PASTE_PREVIEW)) {
+      const shown = input.length;
+      store.addEvent(
+        'warn',
+        `[ Pasted Text of ${shown} Characters ]`,
+        input.slice(0, MAX_PASTE_PREVIEW) + '...'
+      );
+    }
     if (input.startsWith('/') && store.processing) {
       await processInput(input);
       return;
