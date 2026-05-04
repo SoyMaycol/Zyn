@@ -450,14 +450,18 @@ function EventLine({ kind, title, detail }) {
 }
 
 function UserMessage({ text }) {
+  const rawLines = String(text || '').split('\n');
+  const lines = rawLines.slice(0, 40);
+  const more = rawLines.length - lines.length;
   return h(Box, { paddingLeft: 3, paddingRight: 3, marginTop: 1, marginBottom: 0, flexDirection: 'row' },
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
         h(Text, { color: T.accent, bold: true }, '\u29bf'),
         h(Text, { color: T.textDim, bold: true }, uiText('You', 'Tú')),
       ),
-      h(Box, { paddingLeft: 2 },
-        h(Text, { color: T.text, wrap: 'wrap' }, text),
+      h(Box, { paddingLeft: 2, flexDirection: 'column' },
+        ...lines.map((line, i) => h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line)),
+        more > 0 ? h(Text, { color: T.textGhost }, `... ${more} ${uiText('more lines', 'líneas más')}`) : null,
       ),
     ),
   );
@@ -605,13 +609,14 @@ function StaticItem({ item, width }) {
   }
 }
 
-function InputBar({ onSubmit, processing }) {
+function InputBar({ onSubmit, processing, width = 100 }) {
   const [value, setValue] = useState('');
   const [cursor, setCursor] = useState(0);
   const [histIdx, setHistIdx] = useState(-1);
   const [suggestIdx, setSuggestIdx] = useState(0);
   const historyRef = useRef([]);
   const savedRef = useRef('');
+  const lastPasteMetaRef = useRef(null);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
   const suggestions = showSuggestions
@@ -633,7 +638,8 @@ function InputBar({ onSubmit, processing }) {
       setCursor(0);
       setHistIdx(-1);
       setSuggestIdx(0);
-      onSubmit(text);
+      onSubmit(text, lastPasteMetaRef.current);
+      lastPasteMetaRef.current = null;
       return;
     }
 
@@ -724,6 +730,9 @@ function InputBar({ onSubmit, processing }) {
     if (input && !key.ctrl && !key.meta) {
       const normalizedInput = input.replace(/\r\n/g, '\n');
       const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
+      if (normalizedInput.length >= 40 || normalizedInput.includes('\n')) {
+        lastPasteMetaRef.current = { length: normalizedInput.length };
+      }
       setValue(v => v.slice(0, cursor) + safeInput + v.slice(cursor));
       setCursor(c => c + safeInput.length);
       setSuggestIdx(0);
@@ -731,9 +740,16 @@ function InputBar({ onSubmit, processing }) {
   });
 
   const hasText = value.length > 0;
-  const before = value.slice(0, cursor);
-  const cursorChar = value[cursor] || ' ';
-  const after = value.slice(cursor + 1);
+  const maxInputCols = Math.max(20, (width || 100) - 12);
+  let start = Math.max(0, cursor - Math.floor(maxInputCols * 0.7));
+  if (value.length - start < maxInputCols) {
+    start = Math.max(0, value.length - maxInputCols);
+  }
+  const visibleText = value.slice(start, start + maxInputCols);
+  const cursorInVisible = Math.max(0, Math.min(cursor - start, visibleText.length));
+  const before = visibleText.slice(0, cursorInVisible);
+  const cursorChar = visibleText[cursorInVisible] || ' ';
+  const after = visibleText.slice(cursorInVisible + 1);
 
   const promptColor = processing ? T.amber : T.accent;
   const placeholder = processing ? uiText(' Queued — type and it will run later...', ' En cola — escribe y se procesará después...') : uiText(' Type a message...', ' Escribe un mensaje...');
@@ -801,7 +817,7 @@ function App({ store, state, onSubmit }) {
     ? uiText('Concord · ', 'Concuerdo · ') + Object.values(MODELS).map(m => m.label).join(', ')
     : (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
-  const handleInput = useCallback((text) => {
+  const handleInput = useCallback((text, meta) => {
     if (text === '/exit' || text === '/quit') {
       if (store.processing) {
         store.pendingExit = true;
@@ -811,7 +827,7 @@ function App({ store, state, onSubmit }) {
       exit();
       return;
     }
-    onSubmit(text);
+    onSubmit(text, meta);
   }, [onSubmit, exit, store]);
 
   useInput((input, key) => {
@@ -870,7 +886,7 @@ function App({ store, state, onSubmit }) {
 
   if (showInput) {
     dynamicArea.push(
-      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing })
+      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing, width })
     );
   }
 
@@ -919,6 +935,12 @@ export async function startTUI(options = {}) {
     const msgs = store.messageQueue.splice(0);
     if (msgs.length) store._emit();
     return msgs;
+  };
+  state.clearQueuedMessages = () => {
+    if (store.messageQueue.length) {
+      store.messageQueue = [];
+      store._emit();
+    }
   };
 
   const modelKey   = state.activeModel || DEFAULT_MODEL_KEY;
@@ -998,11 +1020,13 @@ export async function startTUI(options = {}) {
 
   let appInstance = null;
 
-  const handleSubmit = async (input) => {
-    if (typeof input === 'string' && input.length > MAX_PASTE_PREVIEW) {
+  const handleSubmit = async (input, meta = null) => {
+    const pasteLen = Number(meta?.length || 0);
+    if (pasteLen > 0 || (typeof input === 'string' && input.length > MAX_PASTE_PREVIEW)) {
+      const shown = pasteLen || input.length;
       store.addEvent(
-        'info',
-        `[ ${uiText('Pasted Text', 'Texto pegado')} of ${input.length} ${uiText('Characters', 'Caracteres')} ]`,
+        'warn',
+        `[ Pasted Text of ${shown} Characters ]`,
         input.slice(0, MAX_PASTE_PREVIEW) + '...'
       );
     }

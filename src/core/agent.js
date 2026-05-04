@@ -37,68 +37,88 @@ async function requestModel(messages, state, ui, options = {}) {
     signal,
   } = options;
 
-  const stopThinking = ui.startThinkingIndicator(state, label);
-  let answerStarted = false;
-  let thinkingStarted = false;
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal?.aborted) {
+      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
+    }
+    const stopThinking = ui.startThinkingIndicator(state, attempt === 0 ? label : `${label} (${state.language === 'es' ? 'reintento' : 'retry'})`);
+    let answerStarted = false;
+    let thinkingStarted = false;
+    let timedOut = false;
+    let timeout = null;
+    const controller = new AbortController();
+    const onExternalAbort = () => controller.abort();
 
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort, { once: true });
-  }
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+    const refreshTimeout = () => {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, REQUEST_TIMEOUT_MS);
+    };
+    refreshTimeout();
 
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    const result = await chat({
-      messages,
-      modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
-      signal: controller.signal,
-      onChunk: (delta, phase) => {
-        if (phase === 'thinking') {
-          if (!thinkingStarted) {
-            stopThinking();
-            ui.beginThinkingStream(state);
-            thinkingStarted = true;
+    try {
+      const result = await chat({
+        messages,
+        modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
+        signal: controller.signal,
+        onChunk: (delta, phase) => {
+          refreshTimeout();
+          if (phase === 'thinking') {
+            if (!thinkingStarted) {
+              stopThinking();
+              ui.beginThinkingStream(state);
+              thinkingStarted = true;
+            }
+            ui.writeThinkingDelta(state, delta);
+            return;
           }
-          ui.writeThinkingDelta(state, delta);
-          return;
+          if (thinkingStarted) {
+            ui.endThinkingStream(state);
+            thinkingStarted = false;
+          }
+          if (streamOutput && !answerStarted) {
+            stopThinking();
+            ui.beginAssistantStream(state);
+            answerStarted = true;
+          }
+          if (streamOutput) ui.writeAssistantDelta(state, delta);
+        },
+      });
+      ui.pushAction(state, 'ok', 'Respuesta del modelo recibida');
+      return result.answer ?? '';
+    } catch (err) {
+      const externalAbort = Boolean(signal?.aborted);
+      const aborted = controller.signal.aborted || err?.name === 'AbortError';
+      if (aborted && timedOut && !externalAbort && attempt === 0) {
+        ui.logEvent(state, 'warn', state.language === 'es' ? 'Proveedor lento, reenviando mensaje' : 'Provider stalled, resending message');
+        continue;
+      }
+      if (aborted) {
+        if (externalAbort) {
+          throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
         }
-
-        if (thinkingStarted) {
-          ui.endThinkingStream(state);
-          thinkingStarted = false;
-        }
-
-        if (streamOutput && !answerStarted) {
-          stopThinking();
-          ui.beginAssistantStream(state);
-          answerStarted = true;
-        }
-
-        if (streamOutput) {
-          ui.writeAssistantDelta(state, delta);
-        }
-      },
-    });
-
-    ui.pushAction(state, 'ok', 'Respuesta del modelo recibida');
-    return result.answer ?? '';
-  } catch (err) {
-    if (controller.signal.aborted || err?.name === 'AbortError') {
-      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario o por tiempo agotado' : 'Agent stopped by the user or timed out');
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeout);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
-    stopThinking();
-    if (thinkingStarted) ui.endThinkingStream(state);
-    if (streamOutput && answerStarted) {
-      ui.endAssistantStream(state);
+        throw new Error(state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout exceeded');
+      }
+      if (!externalAbort && attempt === 0) {
+        ui.logEvent(state, 'warn', state.language === 'es' ? 'Error transitorio, reenviando contexto y skills' : 'Transient error, resending context and skills');
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+      stopThinking();
+      if (thinkingStarted) ui.endThinkingStream(state);
+      if (streamOutput && answerStarted) ui.endAssistantStream(state);
     }
   }
+  throw new Error(state.language === 'es' ? 'No se pudo obtener respuesta del proveedor' : 'Could not get provider response');
 }
 
 async function summarizeMessages(state, ui, messages) {
@@ -228,6 +248,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
   let lastFingerprint = '';
   let repeatCount = 0;
+  const toolPathUsage = new Map();
   let step = 0;
   const turnLanguage = detectLanguage(input, state.language);
   state.language = turnLanguage;
@@ -389,7 +410,27 @@ async function runAgentTurn(input, state, ui, options = {}) {
       return { content, rendered: false };
     }
 
-    const fingerprint = `${parsed.tool}:${parsed.args?.path || ''}:${(parsed.args?.content || parsed.args?.search || '').length}`;
+    const targetPath = parsed.args?.path || '';
+    const contentSample = typeof parsed.args?.content === 'string'
+      ? parsed.args.content.slice(0, 120)
+      : '';
+    const fingerprint = `${parsed.tool}:${targetPath}:${contentSample}`;
+    if (targetPath) {
+      const key = `${parsed.tool}:${targetPath}`;
+      const nextCount = (toolPathUsage.get(key) || 0) + 1;
+      toolPathUsage.set(key, nextCount);
+      if (nextCount >= 3 && ['write_file', 'append_file', 'replace_in_file'].includes(parsed.tool)) {
+        ui.logEvent(state, 'warn', state.language === 'es' ? 'Posible loop detectado' : 'Possible loop detected', `${parsed.tool} → ${targetPath} x${nextCount}`);
+        turnMessages.push({
+          role: 'user',
+          content: state.language === 'es'
+            ? `ALTO: ya editaste ${targetPath} varias veces en este turno. No repitas ediciones; valida y responde con type=final.`
+            : `STOP: you already edited ${targetPath} multiple times in this turn. Do not repeat edits; verify and answer with type=final.`,
+        });
+        step += 1;
+        continue;
+      }
+    }
     if (fingerprint === lastFingerprint) {
       repeatCount += 1;
       if (repeatCount >= 2) {

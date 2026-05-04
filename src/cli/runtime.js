@@ -120,6 +120,7 @@ async function runInteractiveChatClassic(options = {}) {
   let currentAbort = null;
 
   state.getQueuedMessages = () => messageQueue.splice(0);
+  state.clearQueuedMessages = () => { messageQueue.length = 0; };
   state.abortCurrentTurn = () => {
     if (currentAbort && !currentAbort.signal.aborted) {
       currentAbort.abort();

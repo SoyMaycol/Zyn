@@ -92,6 +92,14 @@ fetch_url { url, selector?, attribute?, limit? }
   2. Luego fetch con selector especifico para extraer lo que necesitas.
   Ejemplo: {"type":"tool","tool":"fetch_url","args":{"url":"https://example.com","selector":"h1"}}
 
+fetch { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }
+  Cliente HTTP avanzado profesional. Permite headers personalizados, metodos, body JSON y adjuntos.
+  Ejemplo: {"type":"tool","tool":"fetch","args":{"url":"https://api.example.com/items","method":"POST","headers":{"Authorization":"Bearer TOKEN"},"json":{"name":"demo"}}}
+
+webfetch { url, headers?, timeoutMs? }
+  Descarga una pagina y la devuelve en Markdown estructurado (titulos, texto, links, botones e imagenes).
+  Ejemplo: {"type":"tool","tool":"webfetch","args":{"url":"https://example.com"}}
+
 ## Imagen profesional con Jimp (control total)
 
 create_canvas_image { width, height, background?, elements?, format?, outputPath? }

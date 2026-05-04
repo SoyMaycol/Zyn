@@ -41,6 +41,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
         'Para GitHub, GitLab o un Git personalizado usa git_secret_set para guardar credenciales y git_clone_repo o git_api_request para operar sin exponer secretos.',
         'Usa exclusivamente tools registradas en "Tool use". No inventes nombres de tools ni aliases.',
+        'Para tareas empresariales, mantente acotado y determinista: entradas claras, salidas claras, sin razonamiento creativo salvo que el usuario lo pida.',
+        'Cuando aplique, entrega resumen ejecutivo corto + riesgos/banderas rojas + siguiente accion concreta.',
       ]
     : [
         'Always respond in English.',
@@ -54,6 +56,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
         'For GitHub, GitLab, or a custom Git host, use git_secret_set to store credentials and git_clone_repo or git_api_request to operate without exposing secrets.',
         'Use only tools listed under "Tool use". Never invent tool names or aliases.',
+        'For business tasks, stay bounded and deterministic: clear inputs, clear outputs, no creative reasoning unless explicitly requested.',
+        'When relevant, provide a short executive summary + obvious red flags + next concrete action.',
       ];
 
   const parts = [
@@ -180,6 +184,10 @@ const TOOL_ARG_KEYS = {
   append_file: ['path', 'content'],
   replace_in_file: ['path', 'search', 'replace', 'all'],
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
+  fetch: ['url', 'method', 'headers', 'query', 'json', 'data', 'form', 'files', 'timeoutMs'],
+  fetch_http: ['url', 'method', 'headers', 'query', 'json', 'data', 'form', 'files', 'timeoutMs'],
+  webfetch: ['url', 'headers', 'timeoutMs'],
+  scrape_site: ['url', 'selectors', 'limit', 'headers'],
   web_search: ['query'],
   web_read: ['url'],
   create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
