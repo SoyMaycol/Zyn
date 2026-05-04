@@ -1,13 +1,14 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsPrompt } = require('./skills');
-const { getToolPromptText } = require('../tools');
+const { getToolPromptText, TOOL_DEFINITIONS } = require('../tools');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 
 const KNOWN_TOOLS = new Set([
-  'list_dir', 'read_file', 'search_text', 'glob_files', 'file_info',
-  'run_command', 'make_dir', 'write_file', 'append_file', 'replace_in_file',
-  'fetch_url', 'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear', 'create_canvas_image', 'git_secret_set', 'git_secret_list', 'git_secret_remove', 'git_clone_repo', 'git_api_request', 'web_search', 'web_read',
+  ...TOOL_DEFINITIONS.map(tool => tool.name),
+  'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear',
+  'git_secret_set', 'git_secret_list', 'git_secret_remove',
+  'git_clone_repo', 'git_api_request',
 ]);
 
 
@@ -39,6 +40,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'No cierres con una conclusion si todavia no has probado nada.',
         'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
         'Para GitHub, GitLab o un Git personalizado usa git_secret_set para guardar credenciales y git_clone_repo o git_api_request para operar sin exponer secretos.',
+        'Usa exclusivamente tools registradas en "Tool use". No inventes nombres de tools ni aliases.',
       ]
     : [
         'Always respond in English.',
@@ -51,6 +53,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Do not end with a conclusion if you have not tested anything yet.',
         'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
         'For GitHub, GitLab, or a custom Git host, use git_secret_set to store credentials and git_clone_repo or git_api_request to operate without exposing secrets.',
+        'Use only tools listed under "Tool use". Never invent tool names or aliases.',
       ];
 
   const parts = [

@@ -40,6 +40,7 @@ const TOOL_DEFINITIONS = [
   { name: 'web_read', usage: '{ url }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
 ];
+const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
 
 function getToolPromptText() {
   return [
@@ -115,6 +116,7 @@ function getToolPromptText() {
     '  Usa este flujo profesional: definir lienzo -> capas base -> tipografia -> detalles -> exportacion.',
     '  Ejemplo:',
     '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":628,"background":"#0f172a","format":"png","outputPath":"generated/cover.png","elements":[{"type":"rect","x":48,"y":48,"w":1104,"h":532,"radius":24,"fill":"#111827"},{"type":"text","x":96,"y":120,"fontSize":32,"text":"Quarterly Business Report"}]}}',
+    '',
   ].join('\n');
 }
 
@@ -774,6 +776,9 @@ async function webReadTool(args, state, paint) {
 }
 
 async function executeToolCall(call, state, ui) {
+  if (!call || typeof call.tool !== 'string' || !REGISTERED_TOOLS.has(call.tool)) {
+    throw new Error(`Herramienta no registrada: ${call?.tool || 'desconocida'}`);
+  }
   ui.logEvent(state, 'tool', describeToolCall(call));
 
   const startTime = Date.now();
@@ -845,6 +850,9 @@ function buildOllamaInstallCommand() {
 
 function parseDirectAction(input) {
   const text = input.trim();
+  if (/^(git|npm|node|pnpm|yarn)\s+/.test(text)) {
+    return { tool: 'run_command', args: { command: text } };
+  }
 
   const runMatch = text.match(/^(?:ejecuta|corre)\s+(?:el\s+)?comando\s+([\s\S]+)$/i);
   if (runMatch) {
@@ -1089,7 +1097,10 @@ function drawLine(image, x1, y1, x2, y2, color) {
 }
 
 async function createCanvasImageTool(args, state, paint) {
-  const { Jimp } = require('jimp');
+  const { Jimp, loadFont } = require('jimp');
+  const pluginPrintMain = require.resolve('@jimp/plugin-print');
+  const fontsPath = path.join(path.dirname(pluginPrintMain), 'fonts.js');
+  const fonts = require(fontsPath);
   const width = Math.max(1, Number(args.width || 0));
   const height = Math.max(1, Number(args.height || 0));
   if (!width || !height) {
@@ -1154,11 +1165,11 @@ async function createCanvasImageTool(args, state, paint) {
     const text = String(element.text || '');
     if (!text) continue;
     const size = Math.max(8, Math.min(64, Number(element.fontSize || 32)));
-    const font = await Jimp.loadFont(
-      size <= 8 ? Jimp.FONT_SANS_8_BLACK :
-      size <= 16 ? Jimp.FONT_SANS_16_BLACK :
-      size <= 32 ? Jimp.FONT_SANS_32_BLACK :
-      Jimp.FONT_SANS_64_BLACK,
+    const font = await loadFont(
+      size <= 8 ? fonts.SANS_8_BLACK :
+      size <= 16 ? fonts.SANS_16_BLACK :
+      size <= 32 ? fonts.SANS_32_BLACK :
+      fonts.SANS_64_BLACK,
     );
     image.print({ font, x: Number(element.x || 0), y: Number(element.y || 0), maxWidth: element.maxWidth ? Number(element.maxWidth) : undefined }, text);
   }
@@ -1167,6 +1178,7 @@ async function createCanvasImageTool(args, state, paint) {
   await image.write(outputPath);
   return [`Imagen creada: ${outputPath}`, `Formato: ${safeFormat}`, `Tamano: ${width}x${height}`, `Elementos: ${elements.length}`].join('\\n');
 }
+
 
 async function gitSecretSetTool(args) {
   const provider = normalizeProfileName(args.provider || '');
