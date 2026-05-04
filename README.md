@@ -10,6 +10,9 @@
   <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
   
   <img src="https://img.shields.io/github/forks/SoyMaycol/Zyn" alt="Forks"/>
+
+  <img src="https://badge.socket.dev/npm/package/zyn-ai/latest" alt="Security"/>
+  
 </p>
 
 <p align="center">
