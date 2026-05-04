@@ -730,7 +730,8 @@ function InputBar({ onSubmit, processing, width = 100 }) {
     if (input && !key.ctrl && !key.meta) {
       const normalizedInput = input.replace(/\r\n/g, '\n');
       const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
-      if (normalizedInput.length >= 40 || normalizedInput.includes('\n')) {
+      const looksLikePaste = normalizedInput.length >= 120 || normalizedInput.includes('\n') || normalizedInput.includes('\t');
+      if (looksLikePaste) {
         lastPasteMetaRef.current = { length: normalizedInput.length };
       }
       setValue(v => v.slice(0, cursor) + safeInput + v.slice(cursor));
@@ -1023,7 +1024,7 @@ export async function startTUI(options = {}) {
   const handleSubmit = async (input, meta = null) => {
     const pasteLen = Number(meta?.length || 0);
     if (pasteLen > 0 || (typeof input === 'string' && input.length > MAX_PASTE_PREVIEW)) {
-      const shown = pasteLen || input.length;
+      const shown = input.length;
       store.addEvent(
         'warn',
         `[ Pasted Text of ${shown} Characters ]`,

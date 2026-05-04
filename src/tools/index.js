@@ -858,10 +858,39 @@ function htmlToMarkdown(html) {
 }
 
 async function webfetchTool(args, state, paint) {
-  const raw = await fetchUrlTool({ url: args.url, headers: args.headers }, state, paint);
-  const body = raw.split('\n\n').slice(1).join('\n\n');
-  const markdown = htmlToMarkdown(body);
-  return truncateText(markdown || '[sin contenido convertible a markdown]');
+  const rawUrl = String(args.url || '').trim();
+  if (!rawUrl) throw new Error('webfetch requiere url');
+  const url = cleanUrl(rawUrl);
+  const allowed = await askConfirmation(state.rl, 'WebFetch HTML → JSON/MD', `GET ${url}`, paint, state);
+  if (!allowed) return 'WebFetch cancelado por el usuario.';
+  if (!(await requireIpConsent(url, state, paint))) {
+    return 'WebFetch a IP cancelado por falta de consentimiento explícito.';
+  }
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept': 'text/html,application/xhtml+xml',
+      ...(args.headers || {}),
+    },
+    timeout: Math.max(1000, Number(args.timeoutMs || 20000)),
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+  const ct = String(res.headers['content-type'] || '').toLowerCase();
+  if (!ct.includes('text/html')) {
+    throw new Error(`webfetch solo permite HTML. Content-Type recibido: ${ct || 'desconocido'}`);
+  }
+  const html = typeof res.data === 'string' ? res.data : String(res.data || '');
+  const markdown = htmlToMarkdown(html);
+  const cheerio = require('cheerio');
+  const $ = cheerio.load(html);
+  const links = $('a').map((_, el) => ({ text: $(el).text().trim(), href: $(el).attr('href') || '' })).get().slice(0, 200);
+  const buttons = $('button,input[type=button],input[type=submit]').map((_, el) => ({ text: $(el).text().trim() || $(el).attr('value') || '', type: el.tagName })).get().slice(0, 200);
+  const images = $('img').map((_, el) => ({ alt: $(el).attr('alt') || '', src: $(el).attr('src') || '' })).get().slice(0, 200);
+  return truncateText(JSON.stringify({ format: 'json', source: url, markdown, links, buttons, images }, null, 2));
 }
 
 async function webSearchTool(args, state, paint) {
@@ -875,30 +904,50 @@ async function webSearchTool(args, state, paint) {
 
   const axios = require('axios');
   const cheerio = require('cheerio');
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-
-  const res = await axios({
-    url,
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-    },
-    timeout: 15000,
-    responseType: 'text',
-  });
-
-  const $ = cheerio.load(res.data);
+  const urls = [
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+  ];
   const results = [];
 
-  $('.result').each((i, el) => {
-    if (i >= 10) return false;
-    const title = $(el).find('.result__a').text().trim();
-    const snippet = $(el).find('.result__snippet').text().trim();
-    const href = $(el).find('.result__url').attr('href')
-      || $(el).find('.result__a').attr('href') || '';
-    if (title) results.push(`${i + 1}. ${title}\n   ${href}\n   ${snippet}`);
-  });
+  for (const url of urls) {
+    if (results.length >= 5) break;
+    let data = '';
+    try {
+      const res = await axios({
+        url,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        },
+        timeout: 15000,
+        responseType: 'text',
+      });
+      data = String(res.data || '');
+    } catch {
+      continue;
+    }
+    const $ = cheerio.load(data);
+    const rows = $('.result, .results_links, .web-result').toArray();
+    rows.forEach((el) => {
+      if (results.length >= 10) return;
+      const root = $(el);
+      const linkEl = root.find('.result__a, a.result-link, a').first();
+      const title = linkEl.text().trim();
+      const href = linkEl.attr('href') || '';
+      const snippet = root.find('.result__snippet, .result-snippet').first().text().trim();
+      if (title && href) results.push(`${results.length + 1}. ${title}\n   ${href}\n   ${snippet}`);
+    });
+    if (results.length === 0) {
+      $('a[href^="http"]').each((_, el) => {
+        if (results.length >= 10) return false;
+        const title = $(el).text().trim();
+        const href = $(el).attr('href') || '';
+        if (title && href) results.push(`${results.length + 1}. ${title}\n   ${href}`);
+      });
+    }
+  }
 
   return results.length > 0
     ? `Resultados para: ${query}\n\n${results.join('\n\n')}`
