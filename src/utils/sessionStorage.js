@@ -8,8 +8,10 @@ const {
   CURRENT_SESSION_FILE,
   DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
+  PERSISTENT_CONFIG_FILE,
   SESSIONS_DIR,
 } = require('../config');
+const { normalizeLanguage } = require('../i18n');
 const { getTranscriptPath } = require('./transcriptStorage');
 
 function createState(rl = null) {
@@ -28,9 +30,33 @@ function createState(rl = null) {
     liveResponse: null,
     transcriptPath: '',
     autoApprove: false,
+    concuerdo: false,
     activeModel: DEFAULT_MODEL_KEY,
     language: DEFAULT_LANGUAGE,
+    personaPrompt: '',
   };
+}
+
+async function loadPersistentConfig() {
+  const data = await readJson(PERSISTENT_CONFIG_FILE);
+  if (!data || typeof data !== 'object') return {};
+  return {
+    cwd: typeof data.cwd === 'string' && data.cwd.trim() ? data.cwd : undefined,
+    autoApprove: Boolean(data.autoApprove),
+    activeModel: typeof data.activeModel === 'string' && data.activeModel.trim() ? data.activeModel : undefined,
+    language: normalizeLanguage(data.language || DEFAULT_LANGUAGE),
+    concuerdo: Boolean(data.concuerdo),
+  };
+}
+
+async function savePersistentConfig(state) {
+  await writeJson(PERSISTENT_CONFIG_FILE, {
+    cwd: state.cwd || process.cwd(),
+    autoApprove: Boolean(state.autoApprove),
+    activeModel: state.activeModel || DEFAULT_MODEL_KEY,
+    language: state.language || DEFAULT_LANGUAGE,
+    concuerdo: Boolean(state.concuerdo),
+  });
 }
 
 function createSessionId() {
@@ -88,8 +114,10 @@ function applyLoadedState(state, loaded) {
   state.turnCount = Number(loaded.turnCount ?? 0);
   state.transcriptPath = loaded.transcriptPath || getTranscriptPath(loaded.sessionId);
   state.autoApprove = Boolean(loaded.autoApprove);
+  state.concuerdo = Boolean(loaded.concuerdo);
   state.activeModel = loaded.activeModel || DEFAULT_MODEL_KEY;
   state.language = loaded.language || DEFAULT_LANGUAGE;
+  state.personaPrompt = loaded.personaPrompt || '';
   if (state.actionLog.length > ACTION_LOG_LIMIT) {
     state.actionLog = state.actionLog.slice(-ACTION_LOG_LIMIT);
   }
@@ -114,10 +142,13 @@ async function saveState(state) {
     turnCount: state.turnCount,
     transcriptPath: state.transcriptPath,
     autoApprove: Boolean(state.autoApprove),
+    concuerdo: Boolean(state.concuerdo),
     activeModel: state.activeModel || DEFAULT_MODEL_KEY,
     language: state.language || DEFAULT_LANGUAGE,
+    personaPrompt: state.personaPrompt || '',
   });
   await setCurrentSessionId(state.sessionId);
+  await savePersistentConfig(state);
 }
 
 async function createNewSessionState(rl) {
@@ -169,10 +200,17 @@ async function loadOrCreateSessionState(rl, options = {}) {
     }
   }
 
-  return {
-    state: await createNewSessionState(rl),
-    resumed: false,
-  };
+  const created = await createNewSessionState(rl);
+  const persisted = await loadPersistentConfig();
+  if (persisted && Object.keys(persisted).length > 0) {
+    created.cwd = persisted.cwd || created.cwd;
+    created.autoApprove = Boolean(persisted.autoApprove);
+    created.activeModel = persisted.activeModel || created.activeModel;
+    created.language = persisted.language || created.language;
+    created.concuerdo = Boolean(persisted.concuerdo);
+    await saveState(created);
+  }
+  return { state: created, resumed: false };
 }
 
 async function listSessions() {

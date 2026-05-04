@@ -436,22 +436,31 @@ function EventLine({ kind, title, detail }) {
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
-  return h(Box, { paddingLeft: 5, gap: 1 },
-    h(Text, { color }, sym),
-    h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted }, title),
-    detail ? h(Text, { color: T.textGhost }, detail) : null,
+  const compactTitle = String(title || '').replace(/\s{2,}/g, ' ').trim();
+  const compactDetail = String(detail || '').replace(/\s{2,}/g, ' ').trim();
+
+  return h(Box, { paddingLeft: 3, flexDirection: 'column' },
+    h(Box, { gap: 1 },
+      h(Text, { color }, sym),
+      h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, compactTitle),
+    ),
+    compactDetail ? h(Box, { paddingLeft: 2 }, h(Text, { color: T.textGhost, wrap: 'wrap' }, compactDetail)) : null,
   );
 }
 
 function UserMessage({ text }) {
+  const rawLines = String(text || '').split('\n');
+  const lines = rawLines.slice(0, 40);
+  const more = rawLines.length - lines.length;
   return h(Box, { paddingLeft: 3, paddingRight: 3, marginTop: 1, marginBottom: 0, flexDirection: 'row' },
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
         h(Text, { color: T.accent, bold: true }, '\u29bf'),
-        h(Text, { color: T.textDim, bold: true }, 'You'),
+        h(Text, { color: T.textDim, bold: true }, uiText('You', 'Tú')),
       ),
-      h(Box, { paddingLeft: 2 },
-        h(Text, { color: T.text, wrap: 'wrap' }, text),
+      h(Box, { paddingLeft: 2, flexDirection: 'column' },
+        ...lines.map((line, i) => h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line)),
+        more > 0 ? h(Text, { color: T.textGhost }, `... ${more} ${uiText('more lines', 'líneas más')}`) : null,
       ),
     ),
   );
@@ -472,17 +481,17 @@ function ThinkingBlock({ text, elapsed, live, width }) {
   const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '\u25d0';
 
   const label = live
-    ? pulseChar + '  Pensando...'
-    : '\u25d0  Penso ' + elapsed + 's';
+    ? pulseChar + '  ' + uiText('Thinking...', 'Pensando...')
+    : '\u25d0  ' + uiText('Thought for ', 'Pensó durante ') + elapsed + 's';
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 1 },
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
     h(Text, { color: T.textGhost }, label),
     lines.length > 0
-      ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
+      ? h(Box, { flexDirection: 'column', paddingLeft: 1 },
           ...lines.map((line, i) =>
             h(Text, { key: String(i), color: T.textInvis, wrap: 'wrap' }, line),
           ),
-          more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' lineas mas') : null,
+          more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' ' + uiText('more lines', 'líneas más')) : null,
         )
       : null,
   );
@@ -541,10 +550,10 @@ function ConfirmBar({ title, detail }) {
       : null,
     h(Box, { marginTop: 0, paddingLeft: 2, gap: 2 },
       h(Text, { color: T.green, bold: true }, '[y]'),
-      h(Text, { color: T.textMuted }, 'permitir'),
+      h(Text, { color: T.textMuted }, uiText('allow', 'permitir')),
       h(Text, { color: T.textInvis }, '\u00b7'),
       h(Text, { color: T.red, bold: true }, '[n]'),
-      h(Text, { color: T.textMuted }, 'denegar'),
+      h(Text, { color: T.textMuted }, uiText('deny', 'denegar')),
     ),
   );
 }
@@ -573,7 +582,7 @@ function StatusBar({ model, processing, width, turnCount }) {
           ? h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame])
           : null,
         turnCount > 0
-          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + (turnCount === 1 ? ' turno' : ' turnos'))
+          ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + ' ' + uiText(turnCount === 1 ? 'turn' : 'turns', turnCount === 1 ? 'turno' : 'turnos'))
           : null,
       ),
       h(Box, { gap: 1 },
@@ -599,7 +608,7 @@ function StaticItem({ item, width }) {
   }
 }
 
-function InputBar({ onSubmit, processing }) {
+function InputBar({ onSubmit, processing, width = 100 }) {
   const [value, setValue] = useState('');
   const [cursor, setCursor] = useState(0);
   const [histIdx, setHistIdx] = useState(-1);
@@ -716,16 +725,25 @@ function InputBar({ onSubmit, processing }) {
     }
 
     if (input && !key.ctrl && !key.meta) {
-      setValue(v => v.slice(0, cursor) + input + v.slice(cursor));
-      setCursor(c => c + input.length);
+      const normalizedInput = input.replace(/\r\n/g, '\n');
+      const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
+      setValue(v => v.slice(0, cursor) + safeInput + v.slice(cursor));
+      setCursor(c => c + safeInput.length);
       setSuggestIdx(0);
     }
   });
 
   const hasText = value.length > 0;
-  const before = value.slice(0, cursor);
-  const cursorChar = value[cursor] || ' ';
-  const after = value.slice(cursor + 1);
+  const maxInputCols = Math.max(20, (width || 100) - 12);
+  let start = Math.max(0, cursor - Math.floor(maxInputCols * 0.7));
+  if (value.length - start < maxInputCols) {
+    start = Math.max(0, value.length - maxInputCols);
+  }
+  const visibleText = value.slice(start, start + maxInputCols);
+  const cursorInVisible = Math.max(0, Math.min(cursor - start, visibleText.length));
+  const before = visibleText.slice(0, cursorInVisible);
+  const cursorChar = visibleText[cursorInVisible] || ' ';
+  const after = visibleText.slice(cursorInVisible + 1);
 
   const promptColor = processing ? T.amber : T.accent;
   const placeholder = processing ? uiText(' Queued — type and it will run later...', ' En cola — escribe y se procesará después...') : uiText(' Type a message...', ' Escribe un mensaje...');
@@ -756,7 +774,7 @@ function InputBar({ onSubmit, processing }) {
     inputLine,
     h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 0 },
       hasMore && windowStart > 0
-        ? h(Text, { color: T.textInvis }, '  \u2191 mas')
+        ? h(Text, { color: T.textInvis }, '  \u2191 ' + uiText('more', 'más'))
         : null,
       ...visible.map((cmd, i) => {
         const realIdx = windowStart + i;
@@ -773,10 +791,10 @@ function InputBar({ onSubmit, processing }) {
         );
       }),
       hasMore && windowStart + maxVisible < suggestions.length
-        ? h(Text, { color: T.textInvis }, '  \u2193 mas')
+        ? h(Text, { color: T.textInvis }, '  \u2193 ' + uiText('more', 'más'))
         : null,
       h(Box, { paddingTop: 0 },
-        h(Text, { color: T.textInvis }, 'Tab completar \u00b7 \u2191\u2193 navegar'),
+        h(Text, { color: T.textInvis }, uiText('Tab complete · ↑↓ navigate', 'Tab completar · ↑↓ navegar')),
       ),
     ),
   );
@@ -862,7 +880,7 @@ function App({ store, state, onSubmit }) {
 
   if (showInput) {
     dynamicArea.push(
-      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing })
+      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing, width })
     );
   }
 
@@ -912,6 +930,12 @@ export async function startTUI(options = {}) {
     if (msgs.length) store._emit();
     return msgs;
   };
+  state.clearQueuedMessages = () => {
+    if (store.messageQueue.length) {
+      store.messageQueue = [];
+      store._emit();
+    }
+  };
 
   const modelKey   = state.activeModel || DEFAULT_MODEL_KEY;
   const modelLabel = (MODELS[modelKey]?.label || modelKey).toLowerCase();
@@ -950,7 +974,7 @@ export async function startTUI(options = {}) {
           const clean = lines.filter(l => l.trim()).join('\n');
           if (clean) store.addItem({ type: 'system', text: clean });
         }
-        if (!handled) store.addEvent('warn', 'comando no reconocido', input);
+        if (!handled) store.addEvent('warn', uiText('command not recognized', 'comando no reconocido'), input);
       } catch (err) {
         store.addEvent('error', uiText('error', 'error'), err.message);
       } finally {

@@ -36,9 +36,15 @@ const TOOL_DEFINITIONS = [
   { name: 'append_file', usage: '{ path, content }' },
   { name: 'replace_in_file', usage: '{ path, search, replace, all? }' },
   { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
-  { name: 'web_search', usage: '{ query }' },
+  { name: 'fetch', usage: '{ url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }' },
+  { name: 'fetch_http', usage: '{ url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }' },
+  { name: 'webfetch', usage: '{ url, headers?, timeoutMs? }' },
+  { name: 'scrape_site', usage: '{ url, selectors, limit?, headers? }' },
+  { name: 'web_search', usage: '{ query, lang?, limit? }' },
   { name: 'web_read', usage: '{ url }' },
+  { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
 ];
+const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
 
 function getToolPromptText() {
   return [
@@ -95,7 +101,19 @@ function getToolPromptText() {
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
     '',
-    'web_search { query }',
+    'fetch_http { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
+    '  Cliente HTTP avanzado: soporta headers custom, query params, body JSON/texto, form-data y adjuntar archivos.',
+    '',
+    'fetch { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
+    '  Alias profesional recomendado para solicitudes HTTP avanzadas.',
+    '',
+    'webfetch { url, headers?, timeoutMs? }',
+    '  Descarga una pagina web y la convierte a Markdown estructurado (enlaces, botones, imagenes, texto).',
+    '',
+    'scrape_site { url, selectors, limit?, headers? }',
+    '  Scraping avanzado con multiples selectores en una sola llamada.',
+    '',
+    'web_search { query, lang?, limit? }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
     '  Si el usuario pide investigar algo, realiza la busqueda en lugar de explicar como hacerlo.',
     '  Ejemplo: {"type":"tool","tool":"web_search","args":{"query":"como usar puppeteer node"}}',
@@ -104,6 +122,17 @@ function getToolPromptText() {
     '  Descarga una pagina web y la convierte a texto legible (sin HTML).',
     '  Ideal para leer articulos, documentacion o contenido de paginas.',
     '  Ejemplo: {"type":"tool","tool":"web_read","args":{"url":"https://docs.example.com/guide"}}',
+    '',
+    '## Imagen profesional con Jimp',
+    '',
+    'create_canvas_image { width, height, background?, elements?, format?, outputPath? }',
+    '  Crea imagenes desde cero usando Jimp con composicion por elementos.',
+    '  width/height son obligatorios. background puede ser color HEX (#RRGGBB o #RRGGBBAA).',
+    '  elements permite combinar rect, circle/ellipse, line, text e image.',
+    '  Usa este flujo profesional: definir lienzo -> capas base -> tipografia -> detalles -> exportacion.',
+    '  Ejemplo:',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":628,"background":"#0f172a","format":"png","outputPath":"generated/cover.png","elements":[{"type":"rect","x":48,"y":48,"w":1104,"h":532,"radius":24,"fill":"#111827"},{"type":"text","x":96,"y":120,"fontSize":32,"text":"Quarterly Business Report"}]}}',
+    '',
   ].join('\n');
 }
 
@@ -141,12 +170,22 @@ function describeToolCall(call) {
       const sel = call.args.selector ? ` → ${shortText(call.args.selector, 30)}` : '';
       return `Fetch ${shortText(cleanedUrl, 50)}${sel}`;
     }
+    case 'fetch_http':
+      return `HTTP ${String(call.args.method || 'GET').toUpperCase()} ${shortText(cleanUrl(call.args.url || ''), 50)}`;
+    case 'fetch':
+      return `Fetch ${String(call.args.method || 'GET').toUpperCase()} ${shortText(cleanUrl(call.args.url || ''), 50)}`;
+    case 'webfetch':
+      return `WebFetch ${shortText(cleanUrl(call.args.url || ''), 50)}`;
+    case 'scrape_site':
+      return `Scraping ${shortText(cleanUrl(call.args.url || ''), 50)}`;
     case 'web_search':
       return `Buscando "${shortText(call.args.query || '', 50)}"`;
     case 'web_read': {
       const readUrl = cleanUrl(call.args.url || '');
       return `Leyendo ${shortText(readUrl, 60)}`;
     }
+    case 'create_canvas_image':
+      return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     default:
       return call.tool;
   }
@@ -257,6 +296,35 @@ async function askConfirmation(rl, title, detail, paint, state) {
   console.error('');
 
   const answer = (await rl.question(`  ${paint('s/N', 'yellow')} ${paint('\u276F', 'yellow')} `))
+    .trim()
+    .toLowerCase();
+  return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
+}
+
+function isIpHost(hostname = '') {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)
+    || /^\[[0-9a-f:]+\]$/i.test(hostname)
+    || /^[0-9a-f:]+$/i.test(hostname);
+}
+
+async function requireIpConsent(urlValue, state, paint) {
+  let parsed;
+  try {
+    parsed = new URL(urlValue);
+  } catch {
+    return true;
+  }
+  if (!isIpHost(parsed.hostname)) return true;
+
+  if (state?.tuiConfirm) {
+    const answer = await state.tuiConfirm('Permiso obligatorio para IP', `Destino IP detectado: ${urlValue}\nConfirma acceso de red explícitamente.`);
+    return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
+  }
+  if (!state?.rl) return false;
+  console.error('');
+  console.error(`  ${paint('!', 'yellow')} Permiso obligatorio para IP`);
+  console.error(`    ${paint(`Destino IP detectado: ${urlValue}`, 'dim')}`);
+  const answer = (await state.rl.question(`  ${paint('s/N', 'yellow')} ${paint('\u276F', 'yellow')} `))
     .trim()
     .toLowerCase();
   return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
@@ -379,6 +447,7 @@ async function runCommandTool(args, state, paint) {
   if (!allowed) {
     return 'Comando cancelado por el usuario.';
   }
+
 
   const result = await runProcess('bash', ['-lc', command], {
     cwd: state.cwd,
@@ -607,23 +676,37 @@ async function fetchUrlTool(args, state, paint) {
   if (!allowed) {
     return 'Fetch cancelado por el usuario.';
   }
+  if (!(await requireIpConsent(url, state, paint))) {
+    return 'Fetch a IP cancelado por falta de consentimiento explícito.';
+  }
 
   const axios = require('axios');
-  const response = await axios({
-    url,
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-      ...(args.headers || {}),
-    },
-    timeout: 15000,
-    maxContentLength: 512000,
-    maxRedirects: 5,
-    responseType: 'text',
-    validateStatus: () => true,
-  });
+  let response;
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await axios({
+        url,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+          ...(args.headers || {}),
+        },
+        timeout: 15000,
+        maxContentLength: 512000,
+        maxRedirects: 5,
+        responseType: 'text',
+        validateStatus: () => true,
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 0) continue;
+    }
+  }
+  if (!response) throw lastErr || new Error('fetch_url fallo');
 
   const body = typeof response.data === 'string'
     ? response.data
@@ -670,6 +753,183 @@ async function fetchUrlTool(args, state, paint) {
   return truncateText(parts.join('\n'));
 }
 
+async function fetchHttpTool(args, state, paint) {
+  if (!args.url || typeof args.url !== 'string') throw new Error('fetch_http requiere url');
+  const method = String(args.method || 'GET').toUpperCase();
+  const url = cleanUrl(args.url);
+  const detail = `${method} ${url}`;
+  const allowed = await askConfirmation(state.rl, 'HTTP avanzado', detail, paint, state);
+  if (!allowed) return 'Solicitud cancelada.';
+  if (!(await requireIpConsent(url, state, paint))) {
+    return 'Solicitud a IP cancelada por falta de consentimiento explícito.';
+  }
+
+  const headers = { ...(args.headers || {}) };
+  let body;
+  const isCatbox = /catbox\.moe/i.test(url);
+  if (args.json && typeof args.json === 'object') {
+    body = JSON.stringify(args.json);
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  } else if (args.data !== undefined) {
+    body = String(args.data);
+  } else if (args.form && typeof args.form === 'object') {
+    const formPayload = { ...args.form };
+    if (isCatbox && !formPayload.reqtype) formPayload.reqtype = 'fileupload';
+    const form = new FormData();
+    for (const [k, v] of Object.entries(formPayload)) form.append(k, String(v));
+    if (Array.isArray(args.files)) {
+      for (const file of args.files) {
+        if (!file || !file.path || !file.field) continue;
+        const filePath = resolveInputPath(file.path, state.cwd);
+        const buffer = await fs.promises.readFile(filePath);
+        const blob = new Blob([buffer], { type: file.type || 'application/octet-stream' });
+        const fieldName = isCatbox ? 'fileToUpload' : String(file.field);
+        form.append(fieldName, blob, file.name || path.basename(file.path));
+      }
+    }
+    body = form;
+  } else if (Array.isArray(args.files) && args.files.length > 0) {
+    const form = new FormData();
+    if (isCatbox) form.append('reqtype', 'fileupload');
+    for (const file of args.files) {
+      if (!file || !file.path) continue;
+      const filePath = resolveInputPath(file.path, state.cwd);
+      const buffer = await fs.promises.readFile(filePath);
+      const blob = new Blob([buffer], { type: file.type || 'application/octet-stream' });
+      const fieldName = isCatbox ? 'fileToUpload' : String(file.field || 'file');
+      form.append(fieldName, blob, file.name || path.basename(file.path));
+    }
+    body = form;
+  }
+  if (body instanceof FormData) {
+    delete headers['Content-Type'];
+    delete headers['content-type'];
+  }
+  const finalUrl = new URL(url);
+  if (args.query && typeof args.query === 'object') {
+    for (const [k, v] of Object.entries(args.query)) finalUrl.searchParams.set(k, String(v));
+  }
+  let res;
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(args.timeoutMs || 20000)));
+    try {
+      res = await fetch(finalUrl.toString(), { method, headers, body, signal: controller.signal });
+      clearTimeout(timeout);
+      break;
+    } catch (err) {
+      clearTimeout(timeout);
+      lastErr = err;
+      if (attempt === 0) continue;
+    }
+  }
+  if (!res) throw lastErr || new Error('fetch fallo');
+  const text = await res.text();
+  return truncateText(`Status: ${res.status}\nContent-Type: ${res.headers.get('content-type') || '-'}\n\n${text}`);
+}
+
+async function scrapeSiteTool(args, state, paint) {
+  if (!args.url || typeof args.url !== 'string') throw new Error('scrape_site requiere url');
+  if (!args.selectors || typeof args.selectors !== 'object') throw new Error('scrape_site requiere selectors objeto');
+  const url = cleanUrl(args.url);
+  const allowed = await askConfirmation(state.rl, 'Scrape site', `GET ${url}`, paint, state);
+  if (!allowed) return 'Scraping cancelado.';
+  if (!(await requireIpConsent(url, state, paint))) return 'Scraping a IP cancelado por falta de consentimiento explícito.';
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: { 'User-Agent': 'Mozilla/5.0', ...(args.headers || {}) },
+    timeout: 15000,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+  const body = typeof res.data === 'string' ? res.data : String(res.data || '');
+  const cheerio = require('cheerio');
+  const $ = cheerio.load(body);
+  const limit = Math.min(Number(args.limit) || 20, 100);
+  const out = {};
+  for (const [key, spec] of Object.entries(args.selectors)) {
+    const selector = typeof spec === 'string' ? spec : spec?.selector;
+    const attr = typeof spec === 'object' ? spec.attribute : null;
+    if (!selector) continue;
+    const arr = [];
+    $(selector).each((i, el) => {
+      if (i >= limit) return false;
+      const node = $(el);
+      const tag = String(el.tagName || '').toLowerCase();
+      let value = '';
+      if (attr) {
+        value = node.attr(attr) || '';
+      } else if (tag === 'meta') {
+        value = node.attr('content') || '';
+      } else if (tag === 'title') {
+        value = node.text().trim();
+      } else {
+        value = node.text().trim();
+      }
+      if (value) arr.push(value);
+    });
+    out[key] = arr;
+  }
+  return truncateText(JSON.stringify(out, null, 2));
+}
+
+function htmlToMarkdown(html) {
+  const cheerio = require('cheerio');
+  const $ = cheerio.load(html);
+  $('script,style,noscript').remove();
+  const lines = [];
+  const root = $('body').length ? $('body') : $.root();
+  root.find('h1,h2,h3,h4,h5,h6,p,li,pre,code,blockquote,a,img,button').each((_, el) => {
+    const tag = (el.tagName || '').toLowerCase();
+    const node = $(el);
+    const text = node.text().trim().replace(/\s+/g, ' ');
+    if (!text && !['img', 'a'].includes(tag)) return;
+    if (tag.startsWith('h')) lines.push(`${'#'.repeat(Number(tag[1]) || 1)} ${text}`);
+    else if (tag === 'li') lines.push(`- ${text}`);
+    else if (tag === 'a') lines.push(`[${text || 'link'}](${node.attr('href') || ''})`);
+    else if (tag === 'img') lines.push(`![${node.attr('alt') || 'image'}](${node.attr('src') || ''})`);
+    else if (tag === 'button') lines.push(`**[Button]** ${text}`);
+    else if (tag === 'blockquote') lines.push(`> ${text}`);
+    else if (tag === 'pre' || tag === 'code') lines.push(`\`\`\`\n${node.text()}\n\`\`\``);
+    else lines.push(text);
+  });
+  return lines.join('\n\n').trim();
+}
+
+async function webfetchTool(args, state, paint) {
+  const rawUrl = String(args.url || '').trim();
+  if (!rawUrl) throw new Error('webfetch requiere url');
+  const url = cleanUrl(rawUrl);
+  const allowed = await askConfirmation(state.rl, 'WebFetch HTML → Markdown', `GET ${url}`, paint, state);
+  if (!allowed) return 'WebFetch cancelado por el usuario.';
+  if (!(await requireIpConsent(url, state, paint))) {
+    return 'WebFetch a IP cancelado por falta de consentimiento explícito.';
+  }
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept': 'text/html,application/xhtml+xml',
+      ...(args.headers || {}),
+    },
+    timeout: Math.max(1000, Number(args.timeoutMs || 20000)),
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+  const ct = String(res.headers['content-type'] || '').toLowerCase();
+  if (!ct.includes('text/html')) {
+    throw new Error(`webfetch solo permite HTML. Content-Type recibido: ${ct || 'desconocido'}`);
+  }
+  const html = typeof res.data === 'string' ? res.data : String(res.data || '');
+  const markdown = htmlToMarkdown(html);
+  return truncateText(markdown || '[sin contenido markdown]');
+}
+
 async function webSearchTool(args, state, paint) {
   const query = (args.query || '').trim();
   if (!query) throw new Error('web_search requiere query');
@@ -679,36 +939,33 @@ async function webSearchTool(args, state, paint) {
   );
   if (!allowed) return 'Busqueda cancelada.';
 
-  const axios = require('axios');
   const cheerio = require('cheerio');
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-
-  const res = await axios({
-    url,
-    method: 'GET',
+  const lang = String(args.lang || (state.language === 'es' ? 'es-es' : 'us-en')).toLowerCase();
+  const limit = Math.max(1, Math.min(Number(args.limit) || 5, 20));
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(lang)}`;
+  const res = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+      'User-Agent': 'Mozilla/5.0',
+      'Accept-Language': lang.startsWith('es') ? 'es-ES,es;q=0.9,en;q=0.7' : 'en-US,en;q=0.9',
     },
-    timeout: 15000,
-    responseType: 'text',
   });
-
-  const $ = cheerio.load(res.data);
+  const html = await res.text();
+  const $ = cheerio.load(html);
   const results = [];
-
-  $('.result').each((i, el) => {
-    if (i >= 10) return false;
-    const title = $(el).find('.result__a').text().trim();
-    const snippet = $(el).find('.result__snippet').text().trim();
-    const href = $(el).find('.result__url').attr('href')
-      || $(el).find('.result__a').attr('href') || '';
-    if (title) results.push(`${i + 1}. ${title}\n   ${href}\n   ${snippet}`);
+  $('.result').each((_, el) => {
+    if (results.length >= limit) return false;
+    const titleEl = $(el).find('.result__a').first();
+    const snippetEl = $(el).find('.result__snippet').first();
+    let href = titleEl.attr('href') || '';
+    const match = href.match(/uddg=([^&]+)/);
+    if (match) href = decodeURIComponent(match[1]);
+    const title = titleEl.text().trim();
+    const snippet = snippetEl.text().trim();
+    if (title && href) results.push(`${results.length + 1}. ${title}\n   ${href}\n   ${snippet}`);
   });
-
-  return results.length > 0
-    ? `Resultados para: ${query}\n\n${results.join('\n\n')}`
-    : 'Sin resultados para esa busqueda.';
+  return results.length
+    ? `Resultados para: ${query}\nIdioma: ${lang}\n\n${results.join('\n\n')}`
+    : 'Sin resultados para esa búsqueda.';
 }
 
 async function webReadTool(args, state, paint) {
@@ -726,6 +983,9 @@ async function webReadTool(args, state, paint) {
     state.rl, 'Leer pagina web', url, paint, state,
   );
   if (!allowed) return 'Lectura cancelada.';
+  if (!(await requireIpConsent(url, state, paint))) {
+    return 'Lectura a IP cancelada por falta de consentimiento explícito.';
+  }
 
   const axios = require('axios');
   const res = await axios({
@@ -761,6 +1021,9 @@ async function webReadTool(args, state, paint) {
 }
 
 async function executeToolCall(call, state, ui) {
+  if (!call || typeof call.tool !== 'string' || !REGISTERED_TOOLS.has(call.tool)) {
+    throw new Error(`Herramienta no registrada: ${call?.tool || 'desconocida'}`);
+  }
   ui.logEvent(state, 'tool', describeToolCall(call));
 
   const startTime = Date.now();
@@ -800,11 +1063,26 @@ async function executeToolCall(call, state, ui) {
     case 'fetch_url':
       result = await fetchUrlTool(call.args, state, ui.paint);
       break;
+    case 'fetch_http':
+      result = await fetchHttpTool(call.args, state, ui.paint);
+      break;
+    case 'fetch':
+      result = await fetchHttpTool(call.args, state, ui.paint);
+      break;
+    case 'webfetch':
+      result = await webfetchTool(call.args, state, ui.paint);
+      break;
+    case 'scrape_site':
+      result = await scrapeSiteTool(call.args, state, ui.paint);
+      break;
     case 'web_search':
       result = await webSearchTool(call.args, state, ui.paint);
       break;
     case 'web_read':
       result = await webReadTool(call.args, state, ui.paint);
+      break;
+    case 'create_canvas_image':
+      result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
     default:
       throw new Error(`Herramienta no soportada: ${call.tool}`);
@@ -829,6 +1107,9 @@ function buildOllamaInstallCommand() {
 
 function parseDirectAction(input) {
   const text = input.trim();
+  if (/^(git|npm|node|pnpm|yarn)\s+/.test(text)) {
+    return { tool: 'run_command', args: { command: text } };
+  }
 
   const runMatch = text.match(/^(?:ejecuta|corre)\s+(?:el\s+)?comando\s+([\s\S]+)$/i);
   if (runMatch) {
@@ -842,6 +1123,19 @@ function parseDirectAction(input) {
     return {
       tool: 'run_command',
       args: { command: buildOllamaInstallCommand() },
+    };
+  }
+
+  const createRepoMatch = text.match(/^(?:crea|crear|create)\s+(?:un\s+)?(?:repo|repositorio)\s+(?:en\s+)?github\s+([a-z0-9._-]+)$/i);
+  if (createRepoMatch) {
+    return {
+      tool: 'git_api_request',
+      args: {
+        provider: 'github',
+        method: 'POST',
+        path: '/user/repos',
+        body: { name: createRepoMatch[1] },
+      },
     };
   }
 
@@ -1073,7 +1367,10 @@ function drawLine(image, x1, y1, x2, y2, color) {
 }
 
 async function createCanvasImageTool(args, state, paint) {
-  const { Jimp } = require('jimp');
+  const { Jimp, loadFont } = require('jimp');
+  const pluginPrintMain = require.resolve('@jimp/plugin-print');
+  const fontsPath = path.join(path.dirname(pluginPrintMain), 'fonts.js');
+  const fonts = require(fontsPath);
   const width = Math.max(1, Number(args.width || 0));
   const height = Math.max(1, Number(args.height || 0));
   if (!width || !height) {
@@ -1138,11 +1435,11 @@ async function createCanvasImageTool(args, state, paint) {
     const text = String(element.text || '');
     if (!text) continue;
     const size = Math.max(8, Math.min(64, Number(element.fontSize || 32)));
-    const font = await Jimp.loadFont(
-      size <= 8 ? Jimp.FONT_SANS_8_BLACK :
-      size <= 16 ? Jimp.FONT_SANS_16_BLACK :
-      size <= 32 ? Jimp.FONT_SANS_32_BLACK :
-      Jimp.FONT_SANS_64_BLACK,
+    const font = await loadFont(
+      size <= 8 ? fonts.SANS_8_BLACK :
+      size <= 16 ? fonts.SANS_16_BLACK :
+      size <= 32 ? fonts.SANS_32_BLACK :
+      fonts.SANS_64_BLACK,
     );
     image.print({ font, x: Number(element.x || 0), y: Number(element.y || 0), maxWidth: element.maxWidth ? Number(element.maxWidth) : undefined }, text);
   }
@@ -1151,6 +1448,7 @@ async function createCanvasImageTool(args, state, paint) {
   await image.write(outputPath);
   return [`Imagen creada: ${outputPath}`, `Formato: ${safeFormat}`, `Tamano: ${width}x${height}`, `Elementos: ${elements.length}`].join('\\n');
 }
+
 
 async function gitSecretSetTool(args) {
   const provider = normalizeProfileName(args.provider || '');
@@ -1170,13 +1468,19 @@ async function gitSecretListTool(args) {
     return secret.key === provider;
   });
   if (!filtered.length) return 'No hay credenciales Git guardadas.';
+  const maskToken = (token) => {
+    const value = String(token || '');
+    if (!value) return '-';
+    if (value.length <= 8) return `${value.slice(0, 2)}***`;
+    return `${value.slice(0, 4)}...${value.slice(-4)}`;
+  };
   return filtered.map(secret => [
     `${secret.key}`,
     `  username: ${secret.username || '-'}`,
     `  apiBaseUrl: ${secret.apiBaseUrl || '-'}`,
     `  cloneBaseUrl: ${secret.cloneBaseUrl || '-'}`,
     `  authHeader: ${secret.authHeader || '-'}`,
-    `  token: ${secret.token}`,
+    `  tokenMasked: ${maskToken(secret.token)}`,
   ].join('\n')).join('\n\n');
 }
 
