@@ -40,7 +40,7 @@ const TOOL_DEFINITIONS = [
   { name: 'fetch_http', usage: '{ url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }' },
   { name: 'webfetch', usage: '{ url, headers?, timeoutMs? }' },
   { name: 'scrape_site', usage: '{ url, selectors, limit?, headers? }' },
-  { name: 'web_search', usage: '{ query }' },
+  { name: 'web_search', usage: '{ query, lang?, limit? }' },
   { name: 'web_read', usage: '{ url }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
 ];
@@ -113,7 +113,7 @@ function getToolPromptText() {
     'scrape_site { url, selectors, limit?, headers? }',
     '  Scraping avanzado con multiples selectores en una sola llamada.',
     '',
-    'web_search { query }',
+    'web_search { query, lang?, limit? }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
     '  Si el usuario pide investigar algo, realiza la busqueda en lugar de explicar como hacerlo.',
     '  Ejemplo: {"type":"tool","tool":"web_search","args":{"query":"como usar puppeteer node"}}',
@@ -766,24 +766,44 @@ async function fetchHttpTool(args, state, paint) {
 
   const headers = { ...(args.headers || {}) };
   let body;
+  const isCatbox = /catbox\.moe/i.test(url);
   if (args.json && typeof args.json === 'object') {
     body = JSON.stringify(args.json);
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   } else if (args.data !== undefined) {
     body = String(args.data);
   } else if (args.form && typeof args.form === 'object') {
+    const formPayload = { ...args.form };
+    if (isCatbox && !formPayload.reqtype) formPayload.reqtype = 'fileupload';
     const form = new FormData();
-    for (const [k, v] of Object.entries(args.form)) form.append(k, String(v));
+    for (const [k, v] of Object.entries(formPayload)) form.append(k, String(v));
     if (Array.isArray(args.files)) {
       for (const file of args.files) {
         if (!file || !file.path || !file.field) continue;
         const filePath = resolveInputPath(file.path, state.cwd);
         const buffer = await fs.promises.readFile(filePath);
         const blob = new Blob([buffer], { type: file.type || 'application/octet-stream' });
-        form.append(String(file.field), blob, file.name || path.basename(file.path));
+        const fieldName = isCatbox ? 'fileToUpload' : String(file.field);
+        form.append(fieldName, blob, file.name || path.basename(file.path));
       }
     }
     body = form;
+  } else if (Array.isArray(args.files) && args.files.length > 0) {
+    const form = new FormData();
+    if (isCatbox) form.append('reqtype', 'fileupload');
+    for (const file of args.files) {
+      if (!file || !file.path) continue;
+      const filePath = resolveInputPath(file.path, state.cwd);
+      const buffer = await fs.promises.readFile(filePath);
+      const blob = new Blob([buffer], { type: file.type || 'application/octet-stream' });
+      const fieldName = isCatbox ? 'fileToUpload' : String(file.field || 'file');
+      form.append(fieldName, blob, file.name || path.basename(file.path));
+    }
+    body = form;
+  }
+  if (body instanceof FormData) {
+    delete headers['Content-Type'];
+    delete headers['content-type'];
   }
   const finalUrl = new URL(url);
   if (args.query && typeof args.query === 'object') {
@@ -812,9 +832,20 @@ async function fetchHttpTool(args, state, paint) {
 async function scrapeSiteTool(args, state, paint) {
   if (!args.url || typeof args.url !== 'string') throw new Error('scrape_site requiere url');
   if (!args.selectors || typeof args.selectors !== 'object') throw new Error('scrape_site requiere selectors objeto');
-  const raw = await fetchUrlTool({ url: args.url, headers: args.headers }, state, paint);
-  const htmlStart = raw.indexOf('\n\n');
-  const body = htmlStart === -1 ? raw : raw.slice(htmlStart + 2);
+  const url = cleanUrl(args.url);
+  const allowed = await askConfirmation(state.rl, 'Scrape site', `GET ${url}`, paint, state);
+  if (!allowed) return 'Scraping cancelado.';
+  if (!(await requireIpConsent(url, state, paint))) return 'Scraping a IP cancelado por falta de consentimiento explícito.';
+  const axios = require('axios');
+  const res = await axios({
+    url,
+    method: 'GET',
+    headers: { 'User-Agent': 'Mozilla/5.0', ...(args.headers || {}) },
+    timeout: 15000,
+    responseType: 'text',
+    validateStatus: () => true,
+  });
+  const body = typeof res.data === 'string' ? res.data : String(res.data || '');
   const cheerio = require('cheerio');
   const $ = cheerio.load(body);
   const limit = Math.min(Number(args.limit) || 20, 100);
@@ -826,7 +857,18 @@ async function scrapeSiteTool(args, state, paint) {
     const arr = [];
     $(selector).each((i, el) => {
       if (i >= limit) return false;
-      const value = attr ? $(el).attr(attr) : $(el).text().trim();
+      const node = $(el);
+      const tag = String(el.tagName || '').toLowerCase();
+      let value = '';
+      if (attr) {
+        value = node.attr(attr) || '';
+      } else if (tag === 'meta') {
+        value = node.attr('content') || '';
+      } else if (tag === 'title') {
+        value = node.text().trim();
+      } else {
+        value = node.text().trim();
+      }
       if (value) arr.push(value);
     });
     out[key] = arr;
@@ -861,7 +903,7 @@ async function webfetchTool(args, state, paint) {
   const rawUrl = String(args.url || '').trim();
   if (!rawUrl) throw new Error('webfetch requiere url');
   const url = cleanUrl(rawUrl);
-  const allowed = await askConfirmation(state.rl, 'WebFetch HTML → JSON/MD', `GET ${url}`, paint, state);
+  const allowed = await askConfirmation(state.rl, 'WebFetch HTML → Markdown', `GET ${url}`, paint, state);
   if (!allowed) return 'WebFetch cancelado por el usuario.';
   if (!(await requireIpConsent(url, state, paint))) {
     return 'WebFetch a IP cancelado por falta de consentimiento explícito.';
@@ -885,12 +927,7 @@ async function webfetchTool(args, state, paint) {
   }
   const html = typeof res.data === 'string' ? res.data : String(res.data || '');
   const markdown = htmlToMarkdown(html);
-  const cheerio = require('cheerio');
-  const $ = cheerio.load(html);
-  const links = $('a').map((_, el) => ({ text: $(el).text().trim(), href: $(el).attr('href') || '' })).get().slice(0, 200);
-  const buttons = $('button,input[type=button],input[type=submit]').map((_, el) => ({ text: $(el).text().trim() || $(el).attr('value') || '', type: el.tagName })).get().slice(0, 200);
-  const images = $('img').map((_, el) => ({ alt: $(el).attr('alt') || '', src: $(el).attr('src') || '' })).get().slice(0, 200);
-  return truncateText(JSON.stringify({ format: 'json', source: url, markdown, links, buttons, images }, null, 2));
+  return truncateText(markdown || '[sin contenido markdown]');
 }
 
 async function webSearchTool(args, state, paint) {
@@ -902,56 +939,33 @@ async function webSearchTool(args, state, paint) {
   );
   if (!allowed) return 'Busqueda cancelada.';
 
-  const axios = require('axios');
   const cheerio = require('cheerio');
-  const urls = [
-    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-    `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-  ];
+  const lang = String(args.lang || (state.language === 'es' ? 'es-es' : 'us-en')).toLowerCase();
+  const limit = Math.max(1, Math.min(Number(args.limit) || 5, 20));
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=${encodeURIComponent(lang)}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept-Language': lang.startsWith('es') ? 'es-ES,es;q=0.9,en;q=0.7' : 'en-US,en;q=0.9',
+    },
+  });
+  const html = await res.text();
+  const $ = cheerio.load(html);
   const results = [];
-
-  for (const url of urls) {
-    if (results.length >= 5) break;
-    let data = '';
-    try {
-      const res = await axios({
-        url,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-        },
-        timeout: 15000,
-        responseType: 'text',
-      });
-      data = String(res.data || '');
-    } catch {
-      continue;
-    }
-    const $ = cheerio.load(data);
-    const rows = $('.result, .results_links, .web-result').toArray();
-    rows.forEach((el) => {
-      if (results.length >= 10) return;
-      const root = $(el);
-      const linkEl = root.find('.result__a, a.result-link, a').first();
-      const title = linkEl.text().trim();
-      const href = linkEl.attr('href') || '';
-      const snippet = root.find('.result__snippet, .result-snippet').first().text().trim();
-      if (title && href) results.push(`${results.length + 1}. ${title}\n   ${href}\n   ${snippet}`);
-    });
-    if (results.length === 0) {
-      $('a[href^="http"]').each((_, el) => {
-        if (results.length >= 10) return false;
-        const title = $(el).text().trim();
-        const href = $(el).attr('href') || '';
-        if (title && href) results.push(`${results.length + 1}. ${title}\n   ${href}`);
-      });
-    }
-  }
-
-  return results.length > 0
-    ? `Resultados para: ${query}\n\n${results.join('\n\n')}`
-    : 'Sin resultados para esa busqueda.';
+  $('.result').each((_, el) => {
+    if (results.length >= limit) return false;
+    const titleEl = $(el).find('.result__a').first();
+    const snippetEl = $(el).find('.result__snippet').first();
+    let href = titleEl.attr('href') || '';
+    const match = href.match(/uddg=([^&]+)/);
+    if (match) href = decodeURIComponent(match[1]);
+    const title = titleEl.text().trim();
+    const snippet = snippetEl.text().trim();
+    if (title && href) results.push(`${results.length + 1}. ${title}\n   ${href}\n   ${snippet}`);
+  });
+  return results.length
+    ? `Resultados para: ${query}\nIdioma: ${lang}\n\n${results.join('\n\n')}`
+    : 'Sin resultados para esa búsqueda.';
 }
 
 async function webReadTool(args, state, paint) {
@@ -1109,6 +1123,19 @@ function parseDirectAction(input) {
     return {
       tool: 'run_command',
       args: { command: buildOllamaInstallCommand() },
+    };
+  }
+
+  const createRepoMatch = text.match(/^(?:crea|crear|create)\s+(?:un\s+)?(?:repo|repositorio)\s+(?:en\s+)?github\s+([a-z0-9._-]+)$/i);
+  if (createRepoMatch) {
+    return {
+      tool: 'git_api_request',
+      args: {
+        provider: 'github',
+        method: 'POST',
+        path: '/user/repos',
+        body: { name: createRepoMatch[1] },
+      },
     };
   }
 

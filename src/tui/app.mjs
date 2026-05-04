@@ -730,10 +730,6 @@ function InputBar({ onSubmit, processing, width = 100 }) {
     if (input && !key.ctrl && !key.meta) {
       const normalizedInput = input.replace(/\r\n/g, '\n');
       const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
-      const looksLikePaste = normalizedInput.length >= 120 || normalizedInput.includes('\n') || normalizedInput.includes('\t');
-      if (looksLikePaste) {
-        lastPasteMetaRef.current = { length: normalizedInput.length };
-      }
       setValue(v => v.slice(0, cursor) + safeInput + v.slice(cursor));
       setCursor(c => c + safeInput.length);
       setSuggestIdx(0);

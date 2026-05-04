@@ -1,49 +1,17 @@
-# Jimp avanzado: ilustración, posts y composición profesional
+# Jimp avanzado (ilustración y composición)
 
-Usa `create_canvas_image` para generar piezas visuales con calidad alta, composición limpia y resultados acordes al tipo de solicitud del usuario.
-
-## Objetivo
-El agente debe adaptar la composición al pedido real del usuario. Si pide un post, debe verse como post. Si pide un dibujo, debe verse como ilustración. Si pide una portada, banner, meme, miniatura o pieza promocional, debe ajustar el estilo, la jerarquía visual, el balance de color y el uso del espacio para lograr el mejor resultado posible.
-
-## Reglas de trabajo
-1. Analiza primero la intención exacta del usuario.
-2. Elige una composición adecuada al formato pedido.
-3. Prioriza claridad visual, legibilidad y coherencia estética.
-4. Usa capas, contraste y alineación para dar apariencia profesional.
-5. Evita errores de tamaño, proporción, texto cortado, elementos mal centrados o saturación visual innecesaria.
-6. Si el usuario no da suficientes datos, completa de forma inteligente con criterio visual profesional.
-7. Mantén el estilo coherente con la temática solicitada: anime, noticia, promocional, infografía, cartoon, elegante, futurista, infantil, serio, etc.
-8. No hagas diseños genéricos. Cada pieza debe sentirse hecha a medida.
-9. Revisa antes de exportar: composición, ortografía, espaciado, equilibrio y legibilidad.
-10. Si una propuesta necesita varias iteraciones, mejora la versión anterior en vez de reinventarla sin motivo.
+Usa `create_canvas_image` para composición profesional por capas.
 
 ## Flujo recomendado
-1. Define el objetivo visual según la solicitud.
-2. Define lienzo con dimensiones correctas para el uso final.
-3. Construye base visual con formas, fondos y jerarquía.
-4. Inserta imágenes o elementos principales con posiciones y tamaños precisos.
-5. Agrega texto solo donde tenga buen contraste y lectura limpia.
-6. Ajusta detalles de composición para que el resultado se vea intencional y profesional.
-7. Exporta con formato y ruta consistentes.
+1. Define lienzo (`width`, `height`, `background`).
+2. Crea capas base (`rect`, `line`, `circle/ellipse`) para jerarquía visual.
+3. Inserta assets (`image`) con coordenadas y tamaño explícitos.
+4. Agrega titulares/texto (`text`) en zonas de alto contraste.
+5. Exporta con `format` y `outputPath` consistente.
 
-## Criterios de calidad
-- El diseño debe verse como el usuario pidió.
-- El texto no debe invadir zonas visuales importantes.
-- Los elementos principales deben destacar de forma clara.
-- El estilo debe coincidir con el propósito del contenido.
-- La pieza final debe verse lista para publicar o compartir.
+## Plantilla: estilo anime de gato (base)
+```json
+{"type":"tool","tool":"create_canvas_image","args":{"width":1024,"height":1024,"background":"#1e1b4b","format":"png","outputPath":"generated/anime-cat.png","elements":[{"type":"circle","x":512,"y":512,"r":360,"fill":"#312e81"},{"type":"circle","x":390,"y":430,"r":48,"fill":"#f8fafc"},{"type":"circle","x":634,"y":430,"r":48,"fill":"#f8fafc"},{"type":"rect","x":420,"y":610,"w":200,"h":26,"radius":13,"fill":"#f472b6"},{"type":"text","x":300,"y":860,"fontSize":32,"text":"Anime Cat"}]}}
+```
 
-## Buenas prácticas
-- Usa contraste fuerte entre fondo y contenido.
-- Distribuye elementos con equilibrio visual.
-- Evita dejar espacios vacíos sin intención.
-- No sobrecargues la imagen con demasiados elementos.
-- Usa bordes, sombras, formas y capas solo cuando aporten valor.
-- Si el diseño es para redes, prioriza impacto inmediato.
-- Si el diseño es ilustración, prioriza expresión, volumen y detalle.
-- Si el diseño es informativo, prioriza orden, jerarquía y lectura.
-
-## Plantilla de ejecución
-> Un gato riendo de la risa.
-
-{"type":"tool","tool":"create_canvas_image","args":{"width":128,"height":128,"background":"transparent","format":"png","outputPath":"generated/emoji-svg.png","elements":[{"type":"path","d":"M110.47 59.02c9.51-24.83 3.65-43.83.29-49.28c-1.33-2.16-3.89-2.76-6.25-2.02C98.29 9.68 81.5 23.4 74.08 42.6","fill":"#ffc022"},{"type":"path","d":"M17.53 59.02c-9.51-24.83-3.65-43.83-.29-49.28c1.33-2.16 3.89-2.76 6.25-2.02C29.71 9.68 46.5 23.4 53.92 42.6","fill":"#ffc022"},{"type":"path","d":"M114.11 70.76C112.31 44.78 94.44 26.3 64 26.3S15.69 44.78 13.89 70.76c-1.05 15.14 5.05 28.01 17.09 36.21c0 0 12.21 9.88 33.02 10.14c20.81-.26 33.02-10.14 33.02-10.14c12.03-8.2 18.14-21.07 17.09-36.21z","fill":"#ffc022"},{"type":"path","d":"M54.12 45.02c1.13.96 3.42.82 4.75-.72c1.61-1.87 3.29-8.17 2.24-17.91c-4.67.17-9.09.84-13.21 1.97c3.33 5.46 4.13 14.88 6.22 16.66z","fill":"#ff7043","opacity":0.47},{"type":"path","d":"M73.88 45.02c-1.13.96-3.42.82-4.75-.72c-1.61-1.87-3.29-8.17-2.24-17.91c4.67.17 9.09.84 13.21 1.97c-3.33 5.46-4.13 14.88-6.22 16.66z","fill":"#ff7043","opacity":0.47},{"type":"path","d":"M6.09 64.82l15.1 7.44","stroke":"#9e9e9e","strokeWidth":3},{"type":"path","d":"M3.99 77.03l18.15 3.15","stroke":"#9e9e9e","strokeWidth":3},{"type":"path","d":"M121.91 64.82l-15.1 7.44","stroke":"#9e9e9e","strokeWidth":3},{"type":"path","d":"M124.01 77.03l-18.15 3.15","stroke":"#9e9e9e","strokeWidth":3},{"type":"path","d":"M32.56 70.26c-.3 0-.6-.06-.89-.19a2.21 2.21 0 0 1-1.14-2.92c.35-.8 3.6-7.85 9.35-7.85c5.68 0 9.17 6.74 9.55 7.51c.54 1.1.09 2.43-1.01 2.97s-2.17-.12-2.97-1.01c-.97-1.08-3.08-3.5-5.57-3.5c-2.5 0-4.58 2.59-5.28 3.65c-.51.77-1.19 1.34-2.04 1.34z","fill":"#000000"},{"type":"path","d":"M95.44 70.26c.3 0 .6-.06.89-.19a2.21 2.21 0 0 0 1.14-2.92c-.35-.8-3.6-7.85-9.35-7.85c-5.68 0-9.17 6.74-9.55 7.51c-.54 1.1-.09 2.43 1.01 2.97s2.17-.12 2.97-1.01c.97-1.08 3.08-3.5 5.57-3.5c2.5 0 4.58 2.59 5.28 3.65c.51.77 1.19 1.34 2.04 1.34z","fill":"#000000"},{"type":"path","d":"M55.96 76.98c-.05-2.86 4.06-4.24 7.95-4.3c3.89-.07 8.07 1.2 8.12 4.06s-4.86 6.64-7.95 6.64s-8.07-3.54-8.12-6.4z","fill":"#000000"},{"type":"path","d":"M90.06 90.38c-1.64-1.67-4.29-2.16-6.75-1.24c-2.71 1.02-11 4.13-15.22 1.45c-3.71-2.35-3.51-7.13-3.51-7.13h-1.57s.25 5.21-3.11 7.13c-4.35 2.5-12.51-.44-15.22-1.45c-2.45-.92-5.1-.43-6.75 1.24c-1.55 1.57-1.82 3.82-.72 5.88c2.32 4.35 10.58 11.71 26.78 11.77c16.2-.05 24.46-7.42 26.78-11.77c1.11-2.06.84-4.31-.71-5.88z","fill":"#ffffff"},{"type":"path","d":"M91.58 88.8c-1.74-1.89-4.54-2.44-7.14-1.4c-2.87 1.15-11.64 4.68-16.11 1.64c-3.93-2.66-2.33-6.8-2.33-6.8h-4s1.22 4.62-2.33 6.8c-4.61 2.83-13.24-.5-16.11-1.64c-2.6-1.04-5.4-.49-7.14 1.4c-1.64 1.78-1.93 4.33-.76 6.66c2.46 4.92 11.2 13.26 28.34 13.32c17.15-.06 25.88-8.4 28.34-13.32c1.17-2.33.88-4.88-.76-6.66zm-1.92 5.32c-2.01 4.01-9.95 11.61-25.66 11.66c-15.71-.06-23.65-7.65-25.66-11.66c-.61-1.23-.51-2.43.28-3.29c.57-.62 1.4-.95 2.3-.95c.49 0 1.01.1 1.52.3c5.61 2.25 13.68 4.83 18.89 1.36c1.2-.8 2.04-1.46 2.64-2c.01.01.02.02.03.02c.01-.01.02-.02.03-.02c.6.54 1.45 1.2 2.64 2c5.21 3.47 13.28.89 18.89-1.36c.51-.2 1.02-.3 1.52-.3c.9 0 1.73.33 2.3.95c.79.87.89 2.06.28 3.29z","fill":"#000000"},{"type":"path","d":"M42.93 89.54v12.33","stroke":"#000000","strokeWidth":2},{"type":"path","d":"M53.47 91.5v13.65","stroke":"#000000","strokeWidth":2},{"type":"path","d":"M64 86.8v19.91","stroke":"#000000","strokeWidth":2},{"type":"path","d":"M85.07 88.39v12.33","stroke":"#000000","strokeWidth":2},{"type":"path","d":"M74.53 90.48v14.18","stroke":"#000000","strokeWidth":2},{"type":"path","d":"M99.01 75.05c-.25-.56.2-1.18.82-1.11c3.71.4 13.83 2.22 20 10.38c3.52 4.65 4.72 13.12-.49 17c-6.36 4.73-13.99.35-15.15-5.36c-.88-4.33-1.38-8.5-2.13-11.49c-1.24-4.96-2.39-7.93-3.05-9.42z","fill":"#28b3f2"},{"type":"path","d":"M120.9 98.21c-6.44 4.61-13.12 1.04-14.58-5.32c0 0-1.65-7.51-2.75-10.71c-1.75-5.13-4.42-7.98-4.42-7.98s-.36.36-.14.86c.66 1.5 1.81 4.46 3.05 9.42c.75 2.99 1.25 7.16 2.13 11.49c1.16 5.72 8.79 10.09 15.15 5.36c1.78-1.32 2.79-3.18 3.24-5.24c-.4.85-.95 1.59-1.68 2.12z","fill":"#0277bd"},{"type":"path","d":"M113.51 83.7c1.88-.94 5.42.81 7.06 5.49c1.68 4.83-1.6 7.81-4.9 4.1c-2.41-2.69-4.07-8.63-2.16-9.59z","fill":"#81d4fa"},{"type":"path","d":"M28.99 75.05a.792.792 0 0 0-.82-1.11c-3.71.4-13.83 2.22-20 10.38c-3.52 4.65-4.72 13.12.49 17c6.36 4.73 13.99.35 15.15-5.36c.88-4.33 1.38-8.5 2.13-11.49c1.24-4.96 2.39-7.93-3.05-9.42z","fill":"#28b3f2"},{"type":"path","d":"M7.1 98.21c6.44 4.61 13.12 1.04 14.58-5.32c0 0 1.65-7.51 2.75-10.71c1.75-5.13 4.42-7.98 4.42-7.98s.36.36.14.86c-.66 1.5-1.81 4.46-3.05 9.42c-.75 2.99-1.25 7.16-2.13 11.49c-1.16 5.72-8.79 10.09-15.15 5.36c-1.78-1.32-2.79-3.18-3.24-5.24c.4.85.95 1.59 1.68 2.12z","fill":"#0277bd"},{"type":"path","d":"M14.49 83.7c-1.88-.94-5.42.81-7.06 5.49c-1.68 4.83 1.6 7.81 4.9 4.1c2.41-2.69 4.07-8.63 2.16-9.59z","fill":"#81d4fa"},{"type":"path","d":"M92.16 36.23c-1.54-1.29-1.5-3.37-.6-5.16c2.16-4.31 7.33-8.78 9.16-10.23c3-2.38 5.32-3.18 6.21.65c1.65 7.08 1.52 16.69-.25 21.99c-.62 1.87-2.54 2.86-4.02 1.57l-10.5-8.82z","fill":"#ffd1d1"},{"type":"path","d":"M35.84 36.23c1.54-1.29 1.5-3.37.6-5.16c-2.16-4.31-7.33-8.78-9.16-10.23c-3-2.38-5.32-3.18-6.21.65c-1.65 7.08-1.52 16.69.25 21.99c.62 1.87 2.54 2.86 4.02 1.57l10.5-8.82z","fill":"#ffd1d1"}]}}
+Nota: Para resultados “anime” avanzados, combinar esta base con imágenes de referencia vía `image` y múltiples iteraciones.

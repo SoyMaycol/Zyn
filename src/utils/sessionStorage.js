@@ -33,6 +33,7 @@ function createState(rl = null) {
     concuerdo: false,
     activeModel: DEFAULT_MODEL_KEY,
     language: DEFAULT_LANGUAGE,
+    personaPrompt: '',
   };
 }
 
@@ -116,6 +117,7 @@ function applyLoadedState(state, loaded) {
   state.concuerdo = Boolean(loaded.concuerdo);
   state.activeModel = loaded.activeModel || DEFAULT_MODEL_KEY;
   state.language = loaded.language || DEFAULT_LANGUAGE;
+  state.personaPrompt = loaded.personaPrompt || '';
   if (state.actionLog.length > ACTION_LOG_LIMIT) {
     state.actionLog = state.actionLog.slice(-ACTION_LOG_LIMIT);
   }
@@ -143,6 +145,7 @@ async function saveState(state) {
     concuerdo: Boolean(state.concuerdo),
     activeModel: state.activeModel || DEFAULT_MODEL_KEY,
     language: state.language || DEFAULT_LANGUAGE,
+    personaPrompt: state.personaPrompt || '',
   });
   await setCurrentSessionId(state.sessionId);
   await savePersistentConfig(state);

@@ -43,6 +43,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Usa exclusivamente tools registradas en "Tool use". No inventes nombres de tools ni aliases.',
         'Para tareas empresariales, mantente acotado y determinista: entradas claras, salidas claras, sin razonamiento creativo salvo que el usuario lo pida.',
         'Cuando aplique, entrega resumen ejecutivo corto + riesgos/banderas rojas + siguiente accion concreta.',
+        'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), documentar (final).',
+        'No te limites a una sola tool por costumbre; elige la mejor secuencia técnica para el objetivo.',
+        'Si el usuario pide logos, mockups o piezas visuales para un proyecto/frontend, usa create_canvas_image cuando corresponda, junto al resto de tools del flujo.',
       ]
     : [
         'Always respond in English.',
@@ -58,6 +61,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Use only tools listed under "Tool use". Never invent tool names or aliases.',
         'For business tasks, stay bounded and deterministic: clear inputs, clear outputs, no creative reasoning unless explicitly requested.',
         'When relevant, provide a short executive summary + obvious red flags + next concrete action.',
+        'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), then report.',
+        'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
+        'If the user asks for logos, mockups, or visual assets for a project/frontend, use create_canvas_image when appropriate together with the rest of the workflow.',
       ];
 
   const parts = [
@@ -78,6 +84,15 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     '# Available providers and models',
     providerGroups,
   ];
+
+  if (state.personaPrompt && state.personaPrompt.trim()) {
+    parts.push(
+      '',
+      '# Persona style (tone only)',
+      'Apply this only to communication style. Do NOT change tool choice, safety rules, or technical decisions.',
+      state.personaPrompt.trim(),
+    );
+  }
 
   if (state.concuerdo) {
     const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
@@ -188,7 +203,7 @@ const TOOL_ARG_KEYS = {
   fetch_http: ['url', 'method', 'headers', 'query', 'json', 'data', 'form', 'files', 'timeoutMs'],
   webfetch: ['url', 'headers', 'timeoutMs'],
   scrape_site: ['url', 'selectors', 'limit', 'headers'],
-  web_search: ['query'],
+  web_search: ['query', 'lang', 'limit'],
   web_read: ['url'],
   create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
 };

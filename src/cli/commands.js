@@ -26,6 +26,7 @@ const SLASH_COMMANDS = [
   { name: 'models', desc: 'list models' },
   { name: 'providers', desc: 'list providers' },
   { name: 'git', desc: 'configure git credentials' },
+  { name: 'persona', desc: 'set response tone/personality' },
   { name: 'lang', desc: 'change language' },
   { name: 'language', desc: 'change language' },
   { name: 'auto', desc: 'auto-approval' },
@@ -223,6 +224,29 @@ async function handleLocalCommand(input, state, deps) {
       return true;
     }
     throw new Error('Subcomando git no reconocido. Usa /git help');
+  }
+
+  if (commandName === 'persona') {
+    const [sub, ...rest] = args.split(' ');
+    if (!sub || sub === 'show') {
+      console.log(state.personaPrompt ? `Persona activa:\n${state.personaPrompt}` : 'Persona por defecto activa.');
+      return true;
+    }
+    if (sub === 'reset' || sub === 'default') {
+      state.personaPrompt = '';
+      await saveState(state);
+      console.log('Persona restaurada al estado por defecto.');
+      return true;
+    }
+    if (sub === 'set') {
+      const text = rest.join(' ').trim();
+      if (!text) throw new Error('Uso: /persona set <descripcion>');
+      state.personaPrompt = text;
+      await saveState(state);
+      console.log('Persona actualizada (solo estilo).');
+      return true;
+    }
+    throw new Error('Uso: /persona show | /persona set <texto> | /persona reset');
   }
 
   if (commandName === 'new') {

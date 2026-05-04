@@ -133,3 +133,11 @@ Pregunta: "ejecuta esto" → run_command
 Pregunta: "crea/edita archivo" → read_file primero, luego write_file o replace_in_file
 Pregunta: "descarga/scrapea" → fetch_url
 Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametros exactos
+
+## Flujo profesional para proyectos (no usar una sola tool)
+
+1) Descubrir contexto: `list_dir` + `search_text`
+2) Entender detalle: `read_file` o `webfetch`
+3) Ejecutar cambios: `write_file` / `replace_in_file` / `run_command`
+4) Validar resultados: `run_command` (tests/checks)
+5) Entregar resumen: cambios, riesgos, siguientes pasos
