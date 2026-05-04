@@ -437,10 +437,15 @@ function EventLine({ kind, title, detail }) {
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
-  return h(Box, { paddingLeft: 5, gap: 1 },
-    h(Text, { color }, sym),
-    h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, title),
-    detail ? h(Text, { color: T.textGhost, wrap: 'wrap' }, detail) : null,
+  const compactTitle = String(title || '').replace(/\s{2,}/g, ' ').trim();
+  const compactDetail = String(detail || '').replace(/\s{2,}/g, ' ').trim();
+
+  return h(Box, { paddingLeft: 3, flexDirection: 'column' },
+    h(Box, { gap: 1 },
+      h(Text, { color }, sym),
+      h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, compactTitle),
+    ),
+    compactDetail ? h(Box, { paddingLeft: 2 }, h(Text, { color: T.textGhost, wrap: 'wrap' }, compactDetail)) : null,
   );
 }
 
@@ -476,10 +481,10 @@ function ThinkingBlock({ text, elapsed, live, width }) {
     ? pulseChar + '  ' + uiText('Thinking...', 'Pensando...')
     : '\u25d0  ' + uiText('Thought for ', 'Pensó durante ') + elapsed + 's';
 
-  return h(Box, { flexDirection: 'column', paddingLeft: 5, marginTop: 1 },
+  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
     h(Text, { color: T.textGhost }, label),
     lines.length > 0
-      ? h(Box, { flexDirection: 'column', paddingLeft: 2 },
+      ? h(Box, { flexDirection: 'column', paddingLeft: 1 },
           ...lines.map((line, i) =>
             h(Text, { key: String(i), color: T.textInvis, wrap: 'wrap' }, line),
           ),

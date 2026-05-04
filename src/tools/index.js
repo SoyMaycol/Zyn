@@ -158,6 +158,8 @@ function describeToolCall(call) {
       const readUrl = cleanUrl(call.args.url || '');
       return `Leyendo ${shortText(readUrl, 60)}`;
     }
+    case 'create_canvas_image':
+      return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     default:
       return call.tool;
   }
@@ -816,6 +818,9 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'web_read':
       result = await webReadTool(call.args, state, ui.paint);
+      break;
+    case 'create_canvas_image':
+      result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
     default:
       throw new Error(`Herramienta no soportada: ${call.tool}`);
