@@ -81,3 +81,11 @@ Estrategia de scraping con fetch_url:
 - Dependencias: mantener actualizadas, revisar vulnerabilidades con npm audit.
 - Permisos: principio de minimo privilegio.
 - Si encuentras credentials en codigo, sugiere moverlas a variables de entorno.
+
+## Operaciones empresariales y tareas pesadas
+
+- Planificacion: divide proyectos grandes en hitos, riesgos, dependencias y responsables.
+- Gestion: prioriza por impacto/urgencia y define KPIs medibles (SLA, costo, tiempo, calidad).
+- Ejecucion pesada: usa procesos por lotes, colas, reintentos idempotentes y checkpoints.
+- Reportes ejecutivos: resume estado con bloqueadores, decisiones, proximos pasos y fechas.
+- Fiabilidad: propone observabilidad (logs, metricas, alertas) y runbooks de incidentes.

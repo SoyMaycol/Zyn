@@ -196,9 +196,39 @@ async function handleLocalCommand(input, state, deps) {
     return true;
   }
 
+  if (commandName === 'git') {
+    const [sub, ...rest] = args.split(' ').filter(Boolean);
+    if (!sub || sub === 'help') {
+      console.log('Uso: /git list | /git set <provider> <token> [username] | /git remove <provider>');
+      return true;
+    }
+    if (sub === 'list') {
+      const secrets = listGitSecrets();
+      if (!secrets.length) console.log('No hay credenciales git guardadas.');
+      else secrets.forEach(s => console.log(`${s.key}  user:${s.username || '-'}  api:${s.apiBaseUrl || '-'}`));
+      return true;
+    }
+    if (sub === 'set') {
+      const [provider, token, username] = rest;
+      if (!provider || !token) throw new Error('Uso: /git set <provider> <token> [username]');
+      upsertGitSecret(provider, { provider, token, username });
+      console.log(`Credencial guardada para ${provider}`);
+      return true;
+    }
+    if (sub === 'remove') {
+      const [provider] = rest;
+      if (!provider) throw new Error('Uso: /git remove <provider>');
+      const removed = removeGitSecret(provider);
+      console.log(removed ? `Credencial eliminada: ${provider}` : `No existe credencial para ${provider}`);
+      return true;
+    }
+    throw new Error('Subcomando git no reconocido. Usa /git help');
+  }
+
   if (commandName === 'new') {
     const nextState = await createNewSessionState(state.rl);
     applyLoadedState(state, nextState);
+    if (typeof state.clearQueuedMessages === 'function') state.clearQueuedMessages();
     global.__zynActiveModel = state.activeModel || DEFAULT_MODEL_KEY;
     printBanner(state);
     console.log(`${t(state.language, 'newSessionCreated')}: ${state.sessionId}`);
@@ -217,6 +247,7 @@ async function handleLocalCommand(input, state, deps) {
     }
 
     applyLoadedState(state, loaded);
+    if (typeof state.clearQueuedMessages === 'function') state.clearQueuedMessages();
     global.__zynActiveModel = state.activeModel || DEFAULT_MODEL_KEY;
     await saveState(state);
     printBanner(state);

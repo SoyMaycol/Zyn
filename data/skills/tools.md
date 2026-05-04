@@ -92,6 +92,38 @@ fetch_url { url, selector?, attribute?, limit? }
   2. Luego fetch con selector especifico para extraer lo que necesitas.
   Ejemplo: {"type":"tool","tool":"fetch_url","args":{"url":"https://example.com","selector":"h1"}}
 
+fetch { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }
+  Cliente HTTP avanzado profesional. Permite headers personalizados, metodos, body JSON y adjuntos.
+  Ejemplo: {"type":"tool","tool":"fetch","args":{"url":"https://api.example.com/items","method":"POST","headers":{"Authorization":"Bearer TOKEN"},"json":{"name":"demo"}}}
+
+webfetch { url, headers?, timeoutMs? }
+  Descarga una pagina y la devuelve en Markdown estructurado (titulos, texto, links, botones e imagenes).
+  Ejemplo: {"type":"tool","tool":"webfetch","args":{"url":"https://example.com"}}
+
+## Imagen profesional con Jimp (control total)
+
+create_canvas_image { width, height, background?, elements?, format?, outputPath? }
+  Genera imagenes desde cero con Jimp usando capas y composicion precisa.
+  NO es un "canvas" limitado: aqui se controla toda la imagen final por parametros.
+  Recomendado para banners, portadas, assets de marketing y reportes empresariales.
+
+  Parametros clave:
+  - width, height: obligatorios (pixeles)
+  - background: color HEX (#RRGGBB o #RRGGBBAA)
+  - elements: lista de capas (rect, line, circle/ellipse, text, image)
+  - format: png/jpg/webp/bmp/gif/tiff
+  - outputPath: ruta final de salida
+
+  Flujo profesional:
+  1) Define tamano y fondo segun canal de salida (web, presentacion, reporte).
+  2) Crea capas base (rect/circle/line) para jerarquia visual.
+  3) Inserta imagenes de referencia con posiciones y dimensiones exactas.
+  4) Agrega tipografia y mensajes clave (text) con espaciado consistente.
+  5) Exporta en formato final y valida peso/calidad.
+
+  Ejemplo:
+  {"type":"tool","tool":"create_canvas_image","args":{"width":1600,"height":900,"background":"#0b1020","format":"png","outputPath":"generated/board-q2.png","elements":[{"type":"rect","x":40,"y":40,"w":1520,"h":820,"radius":24,"fill":"#111827"},{"type":"text","x":96,"y":100,"fontSize":32,"text":"Executive Business Dashboard"},{"type":"line","x1":96,"y1":160,"x2":1504,"y2":160,"stroke":"#334155"}]}}
+
 ## Seleccion de herramienta
 
 Pregunta: "donde se usa X?" → search_text con patron
@@ -100,3 +132,4 @@ Pregunta: "que dice este archivo?" → read_file
 Pregunta: "ejecuta esto" → run_command
 Pregunta: "crea/edita archivo" → read_file primero, luego write_file o replace_in_file
 Pregunta: "descarga/scrapea" → fetch_url
+Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametros exactos

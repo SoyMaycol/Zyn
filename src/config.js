@@ -104,6 +104,7 @@ const KEEP_RECENT_MESSAGES = 12;
 const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
 const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
 const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
+const PERSISTENT_CONFIG_FILE = path.join(SESSION_ROOT, 'persistent-config.json');
 const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
 const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -134,6 +135,7 @@ module.exports = {
   APP_ROOT,
   BUILTIN_MODELS,
   CURRENT_SESSION_FILE,
+  PERSISTENT_CONFIG_FILE,
   DATA_ROOT,
   DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
