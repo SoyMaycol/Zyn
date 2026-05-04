@@ -4,16 +4,7 @@
   <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
 </p>
 
-<p>
-  <img src="https://img.shields.io/npm/v/zyn-ai?label=npm&color=%23CB3837" alt="NPM Version"/>
-  
-  <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
-  
-  <img src="https://img.shields.io/github/forks/SoyMaycol/Zyn" alt="Forks"/>
 
-  <img src="https://badge.socket.dev/npm/package/zyn-ai/latest" alt="Security"/>
-  
-</p>
 
 <p align="center">
   <b>Local terminal and web agent for multi-provider AI workflows.</b>
