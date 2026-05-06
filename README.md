@@ -6,58 +6,41 @@
 
 <p align="center">
   <img src="https://img.shields.io/npm/v/zyn-ai?label=npm&color=%23CB3837" alt="NPM Version"/>
-
   <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
-
   <img src="https://img.shields.io/npm/dt/zyn-ai" alt="Downloads"/>
-
-  <img src="https://img.shields.io/github/forks/SoyMaycol/Zyn" alt="Forks"/>
 </p>
 
 <p align="center">
-  <b>Local terminal and web agent for multi-provider AI workflows.</b>
+  <b>Local AI agent for terminal, TUI, and web.</b>
 </p>
 
 <p align="center">
   <a href="https://github.com/SoyMaycol/Zyn">Official repository</a>
 </p>
 
-## What Zyn is
+---
 
-Zyn is a local agent for terminal and web workflows. It supports multiple AI providers, persistent sessions, system tools, contextual memory, and collaborative multi-model reasoning. The project is designed to be direct, extensible, and practical for real development work.
+## What is Zyn
 
-## Features
+Zyn is a local AI agent designed for terminal and web usage. It supports persistent sessions, system tools, multiple AI providers, session exports, and configurable models.
 
-- Interactive terminal mode with reactive TUI and visual confirmations.
-- Classic CLI mode for direct prompts.
-- Web mode for collaborative usage and cross-model review.
-- Multiple providers and custom model support.
-- Modular skills system (reasoning, debugging, frontend, testing, and more).
-- Persistent sessions, history, and transcript export.
-- Unified Git tool with full API control (`action="api"` and `action="clone"`).
-- Custom persona configuration for response tone (`/persona`).
-- Automatic system detection (reads real OS, not fixed to Termux).
-- Professional image generation with Jimp (social posts, thumbnails, infographics, banners).
-- Extensible architecture for tools and providers.
+---
 
 ## Requirements
 
-- Node.js 18 or newer
+- Node.js 18+
 - npm
 - Internet connection for remote providers
 - Optional: Ollama for local models
 
-## Install
+---
+
+## Installation
 
 ### Global install
 
 ```bash
-npm install zyn-ai -g
-```
-
-Then run:
-
-```bash
+npm install -g zyn-ai
 zyn
 ```
 
@@ -67,23 +50,23 @@ zyn
 git clone https://github.com/SoyMaycol/Zyn.git
 cd Zyn
 npm install
+npm start
 ```
+
+---
 
 ## Usage
 
-### Interactive terminal
-
 ```bash
 zyn
-```
-
-### Direct prompt
-
-```bash
 zyn "Explain this project"
+zyn --new
+zyn --resume ID
 ```
 
-### Open the web version
+---
+
+## Web mode
 
 Inside Zyn:
 
@@ -96,21 +79,18 @@ Or directly from the project:
 
 ```bash
 npm run web
-# or
-node src/web/server.js
 ```
 
-### Help
+---
 
-Inside Zyn:
+## Language
 
-```bash
-/help
-```
+Supported languages:
 
-## Language selection
+- `en`
+- `es`
 
-Use these commands inside Zyn:
+Commands:
 
 ```text
 /lang
@@ -120,92 +100,68 @@ Use these commands inside Zyn:
 /config lang en
 ```
 
-English is the default unless `ZYN_DEFAULT_LANG`, `ZYN_LANGUAGE`, or the environment locale resolves to another supported language.
+---
 
-## Main commands
+## Main Commands
 
 ### Sessions
 
 | Command | Description |
-|---------|-------------|
-| `/help` | Shows full command list with descriptions |
-| `/status` | Current status: model, language, session, queue, and working directory |
-| `/history` | Recent session actions |
-| `/memory` | Agent memory summary |
-| `/summary` | Alias of `/memory` |
-| `/session` | Current session information |
-| `/sessions` | Lists all saved sessions |
-| `/new` | Creates a new session |
-| `/resume <ID>` | Resumes an existing session |
-| `/title <text>` | Renames the current session |
-| `/rename <text>` | Alias of `/title` |
+|---|---|
+| `/help` | Show available commands |
+| `/status` | Show current status |
+| `/history` | Show recent actions |
+| `/memory` | Show memory summary |
+| `/sessions` | List saved sessions |
+| `/new` | Create a new session |
+| `/resume <ID>` | Resume a session |
+| `/title <text>` | Rename session |
 
 ### Configuration
 
 | Command | Description |
-|---------|-------------|
-| `/model` / `/model <key>` | View or change the active model |
-| `/models` | Lists available models |
-| `/providers` | Lists detected providers |
-| `/lang <en\|es>` | Changes interface language |
-| `/language <en\|es>` | Alias of `/lang` |
-| `/config show` | Shows current session configuration |
-| `/config lang <en\|es>` | Changes language from config |
-| `/config model <key>` | Changes model from config |
-| `/auto` / `/auto on` / `/auto off` | Views or changes auto-approval for tool calls |
-| `/persona show` / `/persona set <text>` | Shows or sets custom response tone/personality |
-| `/persona reset` | Resets personality to system default |
-| `/concuerdo` | Toggles group model mode |
-| `/config auto on\|off` | Changes auto-approval from config |
-| `/config group on\|off` | Changes group model mode from config |
-| `/config cwd <path>` | Changes working directory from config |
+|---|---|
+| `/model` | Show or change model |
+| `/models` | List models |
+| `/providers` | List providers |
+| `/lang <en\|es>` | Change language |
+| `/config show` | Show config |
+| `/auto on\|off` | Toggle auto approval |
+| `/cwd <path>` | Change working directory |
 
-### Tools and Git
+### Tools
 
 | Command | Description |
-|---------|-------------|
-| `/tools` | Lists available agent tools |
-| `/skills` | Lists loaded agent skills |
-| `/git help` | Shows Git credential help |
-| `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]` | Configures Git credentials for `github`, `gitlab`, or `custom` |
-| `/git list` | Lists configured git profiles (tokens hidden) |
-| `/git remove <provider> [name]` | Removes credentials for a provider/profile |
-| `/cwd` | Shows current working directory |
-| `/cwd <path>` | Changes current working directory |
+|---|---|
+| `/tools` | List tools |
+| `/skills` | List skills |
+| `/cwd` | Show working directory |
 
-### Web and export
+### Web & Export
 
 | Command | Description |
-|---------|-------------|
-| `/web` | Opens the web version on `127.0.0.1:3000` |
-| `/web <host:port>` | Opens the web version on a custom host/port |
-| `/transcript` | Views the full session transcript |
-| `/export` | Exports session to a text file |
-| `/export <path>` | Exports session to a specific path |
+|---|---|
+| `/web` | Start web interface |
+| `/transcript` | Show transcript |
+| `/export` | Export session |
 
 ### Control
 
 | Command | Description |
-|---------|-------------|
-| `/stop` | Stops the current agent turn |
-| `/abort` | Alias of `/stop` |
-| `/reset` | Resets the current context |
-| `/clear` | Alias of `/reset` |
-| `/exit` | Exits Zyn |
-| `/quit` | Alias of `/exit` |
+|---|---|
+| `/stop` | Stop current task |
+| `/reset` | Reset session |
+| `/exit` | Exit Zyn |
 
-## Providers
+In the TUI, press `ESC` twice to stop the current task.
 
-Zyn includes support for:
+---
 
-- Qwen
-- Zen
-- Ollama
-- OpenAI-compatible providers
+## Models
 
-Models can be extended from `data/models.json` or from the internal configuration. If `data/models.json` does not exist, use `data/models.example.json` as the shape reference.
+Custom models can be added using `data/models.json`.
 
-### Example model config
+Example:
 
 ```json
 {
@@ -224,60 +180,3 @@ Models can be extended from `data/models.json` or from the internal configuratio
   }
 }
 ```
-
-## Git — Full API control
-
-The unified `git` tool provides complete control over any configured provider. The file-reading tool supports up to 5000 lines per `read_file` call; for large files, use `startLine` and `endLine`.
-
-The Git tool supports:
-
-- **action="api"**: Any HTTP operation (GET, POST, PATCH, PUT, DELETE) against the provider API.
-- **action="clone"**: Clone repositories with configured credentials.
-
-No hardcoded actions. Choose `method` and `path` freely based on your APIKey permissions. Configure credentials with `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]`.
-
-## Web collaboration
-
-The web version is designed for cross-review between multiple models. That helps one model correct or contrast what another generated, which is useful when consistency matters.
-
-## Skills
-
-The skills system breaks the agent behavior into focused pieces:
-
-- `core`
-- `reasoning`
-- `methodology`
-- `thinking`
-- `tools`
-- `web-agent`
-- `debugging`
-- `frontend_design`
-- `code-style`
-- `domains`
-- `testing`
-
-Each skill can evolve without breaking the rest of the project.
-
-## Image generation with Jimp
-
-Zyn includes professional image generation via `create_canvas_image`. Supported templates:
-
-- **Social posts**: Facebook, Twitter/X, Instagram, LinkedIn
-- **YouTube thumbnails**: 1280x720 with ready-to-use layouts
-- **Banners**: GitHub repos, Discord, YouTube
-- **Infographics**: Statistic cards with color coding
-- **Quotes**: Inspirational text layouts
-- **Event posters**: Date, time, venue
-- **Geometric art**: Landscapes and compositions
-- **Profile cards**: Avatar, name, details
-
-Each template includes coordinates, colors, and typography ready to use.
-
-## License
-
-This project includes an attribution-friendly license. Keep the credits, the repository link, and the license notices when redistributing or deriving the project.
-
-## Credits
-
-- Project: [SoyMaycol/Zyn](https://github.com/SoyMaycol/Zyn)
-- Author: Maycol
