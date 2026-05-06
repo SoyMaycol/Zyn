@@ -72,6 +72,7 @@ class UIStore extends EventEmitter {
     this.processing = false;
     this.confirmRequest = null;
     this.lastUserMessage = '';
+    this.inputDraft = '';
     this.turnCount = 0;
     this.messageQueue = [];
     this.pendingExit = false;
@@ -128,6 +129,10 @@ class UIStore extends EventEmitter {
 
   addEvent(kind, title, detail) {
     this.addItem({ type: 'event', kind, title, detail: detail || '' });
+  }
+
+  setInputDraft(text) {
+    this.inputDraft = String(text || '');
   }
 
   requestConfirm(title, detail) {
@@ -533,7 +538,7 @@ function QueuedMessage({ text }) {
   );
 }
 
-function ConfirmBar({ title, detail, lastMessage }) {
+function ConfirmBar({ title, detail, lastMessage, draft }) {
   const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 10);
 
   return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
@@ -557,8 +562,14 @@ function ConfirmBar({ title, detail, lastMessage }) {
       : null,
     lastMessage
       ? h(Box, { marginTop: 0, paddingLeft: 2 },
-          h(Text, { color: T.textGhost }, uiText('Tu mensaje: ', 'Your message: ')),
+          h(Text, { color: T.textGhost }, uiText('Your message: ', 'Tu mensaje: ')),
           h(Text, { color: T.textDim, wrap: 'wrap' }, shortTextPreview(lastMessage, 80)),
+        )
+      : null,
+    draft
+      ? h(Box, { marginTop: 0, paddingLeft: 2 },
+          h(Text, { color: T.textGhost }, uiText('Saved draft: ', 'Borrador guardado: ')),
+          h(Text, { color: T.textDim, wrap: 'wrap' }, shortTextPreview(draft, 80)),
         )
       : null,
     h(Box, { marginTop: 0, paddingLeft: 2, gap: 2 },
@@ -621,14 +632,28 @@ function StaticItem({ item, width }) {
   }
 }
 
-function InputBar({ onSubmit, processing, width = 100 }) {
-  const [value, setValue] = useState('');
-  const [cursor, setCursor] = useState(0);
+function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange }) {
+  const [value, setValue] = useState(draft || '');
+  const [cursor, setCursor] = useState((draft || '').length);
   const [histIdx, setHistIdx] = useState(-1);
   const [suggestIdx, setSuggestIdx] = useState(0);
   const historyRef = useRef([]);
   const savedRef = useRef('');
   const lastPasteMetaRef = useRef(null);
+
+  useEffect(() => {
+    if (draft !== value) {
+      setValue(draft || '');
+      setCursor((draft || '').length);
+      setHistIdx(-1);
+      setSuggestIdx(0);
+    }
+  }, [draft]);
+
+  const updateValue = useCallback((next) => {
+    setValue(next);
+    if (onDraftChange) onDraftChange(next);
+  }, [onDraftChange]);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
   const suggestions = showSuggestions
@@ -646,7 +671,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
       }
       historyRef.current.unshift(text);
       if (historyRef.current.length > 100) historyRef.current.pop();
-      setValue('');
+      updateValue('');
       setCursor(0);
       setHistIdx(-1);
       setSuggestIdx(0);
@@ -659,7 +684,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
       const cmd = suggestions[suggestIdx] || suggestions[0];
       if (cmd) {
         const completed = `/${cmd.name} `;
-        setValue(completed);
+        updateValue(completed);
         setCursor(completed.length);
         setSuggestIdx(0);
       }
@@ -683,7 +708,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
       if (histIdx === -1) savedRef.current = value;
       const next = Math.min(histIdx + 1, hist.length - 1);
       setHistIdx(next);
-      setValue(hist[next]);
+      updateValue(hist[next]);
       setCursor(hist[next].length);
       return;
     }
@@ -691,13 +716,13 @@ function InputBar({ onSubmit, processing, width = 100 }) {
     if (key.downArrow) {
       if (histIdx <= 0) {
         setHistIdx(-1);
-        setValue(savedRef.current);
+        updateValue(savedRef.current);
         setCursor(savedRef.current.length);
         return;
       }
       const next = histIdx - 1;
       setHistIdx(next);
-      setValue(historyRef.current[next]);
+      updateValue(historyRef.current[next]);
       setCursor(historyRef.current[next].length);
       return;
     }
@@ -717,7 +742,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
 
     if (key.ctrl && input === 'u') {
       const after = value.slice(cursor);
-      setValue(after);
+      updateValue(after);
       setCursor(0);
       return;
     }
@@ -726,14 +751,14 @@ function InputBar({ onSubmit, processing, width = 100 }) {
       const before = value.slice(0, cursor);
       const after = value.slice(cursor);
       const trimmed = before.replace(/\S+\s*$/, '');
-      setValue(trimmed + after);
+      updateValue(trimmed + after);
       setCursor(trimmed.length);
       return;
     }
 
     if (key.backspace || key.delete) {
       if (cursor === 0) return;
-      setValue(v => v.slice(0, cursor - 1) + v.slice(cursor));
+      updateValue(value.slice(0, cursor - 1) + value.slice(cursor));
       setCursor(c => Math.max(0, c - 1));
       setSuggestIdx(0);
       return;
@@ -742,7 +767,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
     if (input && !key.ctrl && !key.meta) {
       const normalizedInput = input.replace(/\r\n/g, '\n');
       const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
-      setValue(v => v.slice(0, cursor) + safeInput + v.slice(cursor));
+      updateValue(value.slice(0, cursor) + safeInput + value.slice(cursor));
       setCursor(c => c + safeInput.length);
       setSuggestIdx(0);
     }
@@ -802,7 +827,7 @@ function InputBar({ onSubmit, processing, width = 100 }) {
           h(Text, {
             color: selected ? T.accent : T.textMuted,
           }, `/${cmd.name}`),
-          h(Text, { color: T.textGhost }, `  ${cmd.desc}`),
+          h(Text, { color: T.textGhost }, `  ${getTuiLang() === 'es' ? (cmd.descEs || cmd.desc) : cmd.desc}`),
         );
       }),
       hasMore && windowStart + maxVisible < suggestions.length
@@ -889,13 +914,13 @@ function App({ store, state, onSubmit }) {
 
   if (showConfirm) {
     dynamicArea.push(
-      h(ConfirmBar, { key: 'confirm', title: store.confirmRequest.title, detail: store.confirmRequest.detail, lastMessage: store.lastUserMessage })
+      h(ConfirmBar, { key: 'confirm', title: store.confirmRequest.title, detail: store.confirmRequest.detail, lastMessage: store.lastUserMessage, draft: store.inputDraft })
     );
   }
 
   if (showInput) {
     dynamicArea.push(
-      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing, width })
+      h(InputBar, { key: 'input', onSubmit: handleInput, processing: store.processing, width, draft: store.inputDraft, onDraftChange: (text) => store.setInputDraft(text) })
     );
   }
 
