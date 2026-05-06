@@ -57,11 +57,26 @@ zyn --new           # crea una sesión nueva antes de abrir Zyn
 zyn --resume ID     # reanuda una sesión guardada por ID
 ```
 
-También puedes iniciar el servidor web directamente:
+### Direct prompt
+
+```bash
+zyn "Explain this project"
+```
+
+### Open the web version
+
+Inside Zyn:
+
+```text
+/web
+/web 0.0.0.0:3000
+```
+
+Or directly from the project:
 
 ```bash
 npm run web
-# o
+# or
 node src/web/server.js
 ```
 
@@ -77,84 +92,80 @@ El idioma se guarda en la configuración de la sesión. Los idiomas soportados s
 /config lang en    # cambia el idioma desde /config
 ```
 
-## Comandos disponibles
+## Language selection
 
-Estos comandos son los que reconoce actualmente la CLI/TUI.
-
-### Sesiones e información
-
-| Comando | Qué hace |
-|---|---|
-| `/help` | Muestra la ayuda completa. |
-| `/status` | Muestra estado actual de sesión, modelo, idioma, cwd y cola. |
-| `/history` | Muestra acciones recientes. |
-| `/memory` | Muestra la memoria compactada del agente. |
-| `/summary` | Alias de `/memory`. |
-| `/session` | Muestra información de la sesión actual. |
-| `/sessions` | Lista sesiones guardadas. |
-| `/new` | Crea una sesión nueva. |
-| `/resume <ID>` | Reanuda una sesión guardada. |
-| `/title <texto>` | Renombra la sesión actual. |
-| `/rename <texto>` | Alias de `/title`. |
-
-### Configuración
-
-| Comando | Qué hace |
-|---|---|
-| `/model` | Muestra el modelo activo. |
-| `/model <key>` | Cambia el modelo activo. |
-| `/models` | Lista los modelos disponibles. |
-| `/providers` | Lista proveedores detectados y sus modelos. |
-| `/lang` | Muestra el idioma actual. |
-| `/lang <en\|es>` | Cambia el idioma. |
-| `/language <en\|es>` | Alias de `/lang`. |
-| `/auto` | Muestra si la auto-aprobación está activa. |
-| `/auto on` | Activa auto-aprobación de herramientas. |
-| `/auto off` | Desactiva auto-aprobación. |
-| `/concuerdo` | Alterna el modo de grupo donde varios modelos colaboran. |
-| `/persona show` | Muestra la persona/tono activo. |
-| `/persona set <texto>` | Define la persona/tono de respuesta. |
-| `/persona reset` | Restaura la persona por defecto. |
-| `/config show` | Muestra configuración de sesión. |
-| `/config lang <en\|es>` | Cambia el idioma. |
-| `/config model <key>` | Cambia el modelo. |
-| `/config auto on\|off` | Activa o desactiva auto-aprobación. |
-| `/config group on\|off` | Activa o desactiva modo de grupo. |
-| `/config cwd <path>` | Cambia el directorio de trabajo. |
-
-### Herramientas, Git y directorio
-
-| Comando | Qué hace |
-|---|---|
-| `/tools` | Lista herramientas disponibles para el agente. |
-| `/skills` | Lista skills cargadas. |
-| `/git help` | Muestra ayuda de credenciales Git. |
-| `/git list` | Lista credenciales Git guardadas con tokens ocultos. |
-| `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]` | Guarda credenciales para `github`, `gitlab` o `custom`. |
-| `/git remove <provider> [name]` | Elimina credenciales Git. |
-| `/cwd` | Muestra el directorio de trabajo actual. |
-| `/cwd <path>` | Cambia el directorio de trabajo. |
-
-Ejemplos reales de Git:
+Use these commands inside Zyn:
 
 ```text
-/git set github ghp_xxxxx
-/git set gitlab glpat_xxxxx mi_usuario
-/git set custom token_xxxxx mi_usuario apiBaseUrl:https://git.empresa.com/api/v4 cloneBaseUrl:https://git.empresa.com name:empresa
-/git list
-/git remove github
-/git remove custom name:empresa
+/lang
+/lang en
+/lang es
+/language es
+/config lang en
 ```
 
-### Web, transcripción y exportación
+English is the default unless `ZYN_DEFAULT_LANG`, `ZYN_LANGUAGE`, or the environment locale resolves to another supported language.
 
-| Comando | Qué hace |
-|---|---|
-| `/web` | Inicia la versión web en `127.0.0.1:3000`. |
-| `/web <host:port>` | Inicia la versión web en host/puerto personalizado. |
-| `/transcript` | Muestra una vista previa de la transcripción. |
-| `/export` | Exporta la transcripción a un archivo `.txt`. |
-| `/export <path>` | Exporta la transcripción a una ruta específica. |
+## Main commands
+
+### Sessions
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Shows full command list with descriptions |
+| `/status` | Current status: model, language, session, queue, and working directory |
+| `/history` | Recent session actions |
+| `/memory` | Agent memory summary |
+| `/summary` | Alias of `/memory` |
+| `/session` | Current session information |
+| `/sessions` | Lists all saved sessions |
+| `/new` | Creates a new session |
+| `/resume <ID>` | Resumes an existing session |
+| `/title <text>` | Renames the current session |
+| `/rename <text>` | Alias of `/title` |
+
+### Configuration
+
+| Command | Description |
+|---------|-------------|
+| `/model` / `/model <key>` | View or change the active model |
+| `/models` | Lists available models |
+| `/providers` | Lists detected providers |
+| `/lang <en\|es>` | Changes interface language |
+| `/language <en\|es>` | Alias of `/lang` |
+| `/config show` | Shows current session configuration |
+| `/config lang <en\|es>` | Changes language from config |
+| `/config model <key>` | Changes model from config |
+| `/auto` / `/auto on` / `/auto off` | Views or changes auto-approval for tool calls |
+| `/persona show` / `/persona set <text>` | Shows or sets custom response tone/personality |
+| `/persona reset` | Resets personality to system default |
+| `/concuerdo` | Toggles group model mode |
+| `/config auto on\|off` | Changes auto-approval from config |
+| `/config group on\|off` | Changes group model mode from config |
+| `/config cwd <path>` | Changes working directory from config |
+
+### Tools and Git
+
+| Command | Description |
+|---------|-------------|
+| `/tools` | Lists available agent tools |
+| `/skills` | Lists loaded agent skills |
+| `/git help` | Shows Git credential help |
+| `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]` | Configures Git credentials for `github`, `gitlab`, or `custom` |
+| `/git list` | Lists configured git profiles (tokens hidden) |
+| `/git remove <provider> [name]` | Removes credentials for a provider/profile |
+| `/cwd` | Shows current working directory |
+| `/cwd <path>` | Changes current working directory |
+
+### Web and export
+
+| Command | Description |
+|---------|-------------|
+| `/web` | Opens the web version on `127.0.0.1:3000` |
+| `/web <host:port>` | Opens the web version on a custom host/port |
+| `/transcript` | Views the full session transcript |
+| `/export` | Exports session to a text file |
+| `/export <path>` | Exports session to a specific path |
 
 ### Control
 
@@ -173,10 +184,7 @@ En la TUI, pulsa `ESC` dos veces durante un turno para detener al agente.
 
 Zyn incluye modelos integrados para estos proveedores:
 
-- Qwen.
-- Zen.
-- Ollama.
-- Proveedores compatibles con OpenAI.
+Models can be extended from `data/models.json` or from the internal configuration. If `data/models.json` does not exist, use `data/models.example.json` as the shape reference.
 
 Puedes extenderlos con `data/models.json`. Si no existe, puedes copiar la estructura de `data/models.example.json`.
 
@@ -198,7 +206,18 @@ Puedes extenderlos con `data/models.json`. Si no existe, puedes copiar la estruc
 }
 ```
 
-## Herramientas del agente
+## Git — Full API control
+
+The unified `git` tool provides complete control over any configured provider. The file-reading tool supports up to 5000 lines per `read_file` call; for large files, use `startLine` and `endLine`.
+
+The Git tool supports:
+
+- **action="api"**: Any HTTP operation (GET, POST, PATCH, PUT, DELETE) against the provider API.
+- **action="clone"**: Clone repositories with configured credentials.
+
+No hardcoded actions. Choose `method` and `path` freely based on your APIKey permissions. Configure credentials with `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]`.
+
+## Web collaboration
 
 El agente puede usar herramientas como lectura/búsqueda de archivos, escritura, edición, comandos del sistema, HTTP, scraping, búsqueda web, generación de imágenes con canvas/Jimp y operaciones Git. La herramienta `read_file` permite leer hasta 5000 líneas por llamada; para archivos grandes conviene usar `startLine` y `endLine`.
 

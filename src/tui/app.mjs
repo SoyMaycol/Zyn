@@ -132,7 +132,10 @@ class UIStore extends EventEmitter {
   }
 
   setInputDraft(text) {
-    this.inputDraft = String(text || '');
+    const nextDraft = String(text || '');
+    if (nextDraft === this.inputDraft) return;
+    this.inputDraft = nextDraft;
+    this._emit();
   }
 
   requestConfirm(title, detail) {
