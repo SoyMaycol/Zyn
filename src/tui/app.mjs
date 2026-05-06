@@ -71,6 +71,7 @@ class UIStore extends EventEmitter {
     this.spinner = null;
     this.processing = false;
     this.confirmRequest = null;
+    this.lastUserMessage = '';
     this.turnCount = 0;
     this.messageQueue = [];
     this.pendingExit = false;
@@ -161,6 +162,11 @@ class UIStore extends EventEmitter {
 
 function stripAnsi(str) {
   return str.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function shortTextPreview(str, maxLen) {
+  const s = String(str || '').replace(/\n/g, ' ').trim();
+  return s.length > maxLen ? s.slice(0, maxLen - 3) + '...' : s;
 }
 
 function formatElapsed(ms) {
@@ -527,7 +533,7 @@ function QueuedMessage({ text }) {
   );
 }
 
-function ConfirmBar({ title, detail }) {
+function ConfirmBar({ title, detail, lastMessage }) {
   const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 10);
 
   return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
@@ -547,6 +553,12 @@ function ConfirmBar({ title, detail }) {
           ...detailLines.map((line, i) =>
             h(Text, { key: String(i), color: T.textDim, wrap: 'wrap' }, line),
           ),
+        )
+      : null,
+    lastMessage
+      ? h(Box, { marginTop: 0, paddingLeft: 2 },
+          h(Text, { color: T.textGhost }, uiText('Tu mensaje: ', 'Your message: ')),
+          h(Text, { color: T.textDim, wrap: 'wrap' }, shortTextPreview(lastMessage, 80)),
         )
       : null,
     h(Box, { marginTop: 0, paddingLeft: 2, gap: 2 },
@@ -877,7 +889,7 @@ function App({ store, state, onSubmit }) {
 
   if (showConfirm) {
     dynamicArea.push(
-      h(ConfirmBar, { key: 'confirm', title: store.confirmRequest.title, detail: store.confirmRequest.detail })
+      h(ConfirmBar, { key: 'confirm', title: store.confirmRequest.title, detail: store.confirmRequest.detail, lastMessage: store.lastUserMessage })
     );
   }
 
@@ -954,6 +966,7 @@ export async function startTUI(options = {}) {
     }
 
     if (input.startsWith('/')) {
+      const commandName = input.split(' ')[0].slice(1).toLowerCase();
       const lines = [];
       const origLog = console.log;
       const origError = console.error;
@@ -972,12 +985,21 @@ export async function startTUI(options = {}) {
           printSessions: printMod.printSessions,
           printStatus: printMod.printStatus,
         };
-        const handled = await handleLocalCommand(input, state, deps);
-        if (handled && lines.length > 0) {
-          const clean = lines.filter(l => l.trim()).join('\n');
-          if (clean) store.addItem({ type: 'system', text: clean });
+
+        if (commandName === 'persona') {
+          const handled = await handleLocalCommand(input, state, deps);
+          if (handled && lines.length > 0) {
+            const clean = lines.filter(l => l.trim()).join('\n');
+            if (clean) store.addItem({ type: 'system', text: clean });
+          }
+        } else {
+          const handled = await handleLocalCommand(input, state, deps);
+          if (handled && lines.length > 0) {
+            const clean = lines.filter(l => l.trim()).join('\n');
+            if (clean) store.addItem({ type: 'system', text: clean });
+          }
+          if (!handled) store.addEvent('warn', uiText('command not recognized', 'comando no reconocido'), input);
         }
-        if (!handled) store.addEvent('warn', uiText('command not recognized', 'comando no reconocido'), input);
       } catch (err) {
         store.addEvent('error', uiText('error', 'error'), err.message);
       } finally {
@@ -989,6 +1011,7 @@ export async function startTUI(options = {}) {
 
     store.addItem({ type: 'divider' });
     store.addItem({ type: 'user', text: input });
+    store.lastUserMessage = input;
 
     const origError = console.error;
     console.error = () => {};

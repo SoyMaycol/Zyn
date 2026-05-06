@@ -251,7 +251,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
   const toolPathUsage = new Map();
   let step = 0;
   const turnLanguage = detectLanguage(input, state.language);
-  state.language = turnLanguage;
 
   while (true) {
     if (signal?.aborted) {
@@ -270,7 +269,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     const messages = buildConversationMessages(
       state,
       turnMessages,
-      buildSystemPrompt(state.cwd, state, { input, language: detectLanguage(input, state.language) }),
+      buildSystemPrompt(state.cwd, state, { input, language: turnLanguage }),
     );
 
     const primaryPromise = requestModel(messages, state, ui, {

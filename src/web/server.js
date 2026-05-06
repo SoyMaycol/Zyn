@@ -11,7 +11,8 @@ const { runWebAgent } = require('./webAgent');
 const { MODELS, DEFAULT_MODEL_KEY, listProvidersFromModels, DEFAULT_LANGUAGE } = require('../config');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '127.0.0.1';
+const PORT = Number(process.env.PORT || process.env.ZYN_WEB_PORT || 3000);
 
 // Evitar crashes silenciosos
 process.on('uncaughtException', (err) => {
@@ -31,7 +32,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
-// Persistir secreto de sesión en disco
+// Persistir secreto de sesion en disco
 const SECRET_FILE = path.join(__dirname, 'data', '.session-secret');
 let sessionSecret;
 try {
@@ -42,9 +43,13 @@ try {
   fs.writeFileSync(SECRET_FILE, sessionSecret);
 }
 
+// Asegurar que el directorio de sesiones existe
+const SESSION_DIR = path.join(__dirname, 'data', 'sessions');
+fs.mkdirSync(SESSION_DIR, { recursive: true });
+
 app.use(session({
   store: new FileStore({
-    path: path.join(__dirname, 'data', 'sessions'),
+    path: SESSION_DIR,
     ttl: 30 * 24 * 60 * 60,
     retries: 0,
     logFn: () => {},
@@ -294,6 +299,6 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`\n  ● Zyn Web → http://localhost:${PORT}\n`);
+app.listen(PORT, HOST, () => {
+  console.log(`\n  \u25cf Zyn Web \u2192 http://${HOST}:${PORT}\n`);
 });

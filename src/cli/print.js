@@ -57,7 +57,7 @@ function wrapLines(text, maxWidth, indent = '') {
       continue;
     }
 
-    const words = rawLine.split(/(\s+)/);
+    const words = rawLine.split(/(\s+)/).filter(Boolean);
     let line = '';
     let lineLen = indentLen;
 
@@ -97,7 +97,9 @@ function wrapLines(text, maxWidth, indent = '') {
       lineLen += word.length;
     }
 
-    lines.push(indent + line);
+    if (line || rawLine.trim()) {
+      lines.push(indent + line);
+    }
   }
 
   return lines;

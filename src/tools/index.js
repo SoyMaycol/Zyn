@@ -43,6 +43,7 @@ const TOOL_DEFINITIONS = [
   { name: 'web_search', usage: '{ query, lang?, limit? }' },
   { name: 'web_read', usage: '{ url }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
+  { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
 
@@ -92,6 +93,9 @@ function getToolPromptText() {
     '  Retorna exit code, stdout y stderr.',
     '  Ejecuta la accion directamente. No expliques pasos al usuario salvo que sea estrictamente necesario.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
+    '  Ejemplo instalar: {"type":"tool","tool":"run_command","args":{"command":"apt-get update && apt-get install -y curl"}}',
+    '  Ejemplo git: {"type":"tool","tool":"run_command","args":{"command":"git log --oneline -10"}}',
+    '  Ejemplo npm: {"type":"tool","tool":"run_command","args":{"command":"npm install express --save"}}',
     '',
     '## Web',
     '',
@@ -100,9 +104,14 @@ function getToolPromptText() {
     '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
+    '  Ejemplo (extraer titulos): {"type":"tool","tool":"fetch_url","args":{"url":"https://news.ycombinator.com","selector":".titleline > a"}}',
+    '  Ejemplo (extraer links de imagenes): {"type":"tool","tool":"fetch_url","args":{"url":"https://example.com","selector":"img","attribute":"src","limit":10}}',
     '',
     'fetch_http { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
     '  Cliente HTTP avanzado: soporta headers custom, query params, body JSON/texto, form-data y adjuntar archivos.',
+    '  Ejemplo GET: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.github.com/users/octocat","method":"GET"}}',
+    '  Ejemplo POST JSON: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/items","method":"POST","json":true,"data":{"name":"test","value":42},"headers":{"Authorization":"Bearer token123"}}}',
+    '  Ejemplo con query params: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/search","query":{"q":"hello","page":1}}}',
     '',
     'fetch { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
     '  Alias profesional recomendado para solicitudes HTTP avanzadas.',
@@ -112,6 +121,8 @@ function getToolPromptText() {
     '',
     'scrape_site { url, selectors, limit?, headers? }',
     '  Scraping avanzado con multiples selectores en una sola llamada.',
+    '  selectors: objeto con nombres y selectores CSS. Ejemplo:',
+    '  {"type":"tool","tool":"scrape_site","args":{"url":"https://news.ycombinator.com","selectors":{"titulos":".titleline > a","urls":".titleline > a","scores":".score"},"limit":10}}',
     '',
     'web_search { query, lang?, limit? }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
@@ -130,8 +141,69 @@ function getToolPromptText() {
     '  width/height son obligatorios. background puede ser color HEX (#RRGGBB o #RRGGBBAA).',
     '  elements permite combinar rect, circle/ellipse, line, text e image.',
     '  Usa este flujo profesional: definir lienzo -> capas base -> tipografia -> detalles -> exportacion.',
-    '  Ejemplo:',
+    '',
+    '  Tipos de elementos soportados:',
+    '    rect: { type:"rect", x, y, w, h, fill?, radius?, stroke? } — rectangulos y tarjetas',
+    '    circle/ellipse: { type:"circle", x, y, r } o { type:"ellipse", x, y, rx, ry, fill }',
+    '    line: { type:"line", x1, y1, x2, y2, stroke } — lineas y separadores',
+    '    image: { type:"image", src, x, y, w?, h? } — insertar imagenes externas o locales',
+    '    text: { type:"text", x, y, text, fontSize?, maxWidth? } — texto libre',
+    '',
+    '  === TUTORIALES DE USO ===',
+    '',
+    '  POST DE NOTICIA (1200x630 — formato Facebook/LinkedIn):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":630,"background":"#1a1a2e","format":"jpg","outputPath":"generated/news-post.jpg","elements":[{"type":"rect","x":0,"y":0,"w":1200,"h":8,"fill":"#e94560"},{"type":"rect","x":60,"y":40,"w":1080,"h":550,"radius":16,"fill":"#16213e"},{"type":"text","x":100,"y":80,"fontSize":32,"text":"BREAKING NEWS"},{"type":"rect","x":100,"y":125,"w":200,"h":4,"fill":"#e94560"},{"type":"text","x":100,"y":160,"fontSize":64,"maxWidth":1000,"text":"Nuevo avance en inteligencia artificial revoluciona la industria"},{"type":"text","x":100,"y":400,"fontSize":24,"text":"Fuente: Tech Daily — Hace 2 horas"},{"type":"rect","x":0,"y":580,"w":1200,"h":50,"fill":"#0f3460"},{"type":"text","x":100,"y":590,"fontSize":16,"text":"@noticias_tech"}]}}',
+    '',
+    '  POST DE TWITTER/X (1600x900):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1600,"height":900,"background":"#000000","format":"png","outputPath":"generated/twitter-post.png","elements":[{"type":"rect","x":80,"y":80,"w":1440,"h":740,"radius":32,"fill":"#111111"},{"type":"rect","x":120,"y":120,"w":60,"h":60,"radius":30,"fill":"#1da1f2"},{"type":"text","x":200,"y":130,"fontSize":32,"text":"@usuario"},{"type":"text","x":120,"y":240,"fontSize":48,"maxWidth":1360,"text":"Este es un ejemplo de tweet con imagen generada automaticamente"},{"type":"text","x":120,"y":600,"fontSize":24,"text":"10:30 AM · 5 May 2026"},{"type":"rect","x":120,"y":680,"w":200,"h":40,"radius":20,"fill":"#1da1f2"},{"type":"text","x":160,"y":688,"fontSize":16,"text":"♡ 1.2K  ↗ 340"}]}}',
+    '',
+    '  INSTAGRAM POST CUADRADO (1080x1080):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1080,"height":1080,"background":"#f8f0e3","format":"jpg","outputPath":"generated/instagram-post.jpg","elements":[{"type":"rect","x":40,"y":40,"w":1000,"h":1000,"radius":20,"fill":"#ffffff"},{"type":"rect","x":80,"y":80,"w":920,"h":600,"radius":12,"fill":"#e8d5b7"},{"type":"text","x":120,"y":140,"fontSize":56,"maxWidth":840,"text":"Tips de productividad para developers"},{"type":"text","x":120,"y":740,"fontSize":36,"maxWidth":840,"text":"1. Usa Pomodoro\\n2. Bloquea distracciones\\n3. Planifica tu dia"},{"type":"text","x":120,"y":960,"fontSize":24,"text":"@dev_tips"}]}}',
+    '',
+    '  THUMBNAIL DE YOUTUBE (1280x720):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1280,"height":720,"background":"#ff0000","format":"jpg","outputPath":"generated/youtube-thumb.jpg","elements":[{"type":"rect","x":0,"y":0,"w":1280,"h":720,"fill":"#1a1a1a"},{"type":"rect","x":60,"y":60,"w":1160,"h":600,"radius":24,"fill":"#2a2a2a"},{"type":"text","x":100,"y":120,"fontSize":72,"maxWidth":1080,"text":"APRENDER JAVASCRIPT"},{"type":"text","x":100,"y":220,"fontSize":48,"maxWidth":1080,"text":"en 10 minutos"},{"type":"rect","x":100,"y":480,"w":300,"h":80,"radius":40,"fill":"#ff0000"},{"type":"text","x":160,"y":500,"fontSize":32,"text":"▶ PLAY"}]}}',
+    '',
+    '  BANNER DE GITHUB/REPO (1280x320):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1280,"height":320,"background":"#24292e","format":"png","outputPath":"generated/repo-banner.png","elements":[{"type":"rect","x":0,"y":0,"w":1280,"h":4,"fill":"#0366d6"},{"type":"text","x":80,"y":80,"fontSize":64,"text":"mi-proyecto"},{"type":"text","x":80,"y":170,"fontSize":28,"text":"Una descripcion genial del proyecto en pocas palabras"},{"type":"rect","x":80,"y":230,"w":16,"h":16,"radius":8,"fill":"#2ea44f"},{"type":"text","x":106,"y":230,"fontSize":20,"text":"MIT License"}]}}',
+    '',
+    '  CARTEL DE EVENTO (800x1000):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":800,"height":1000,"background":"#0d1b2a","format":"png","outputPath":"generated/evento.png","elements":[{"type":"rect","x":40,"y":40,"w":720,"h":920,"radius":24,"fill":"#1b2838"},{"type":"text","x":80,"y":100,"fontSize":48,"text":"MEETUP TECH"},{"type":"rect","x":80,"y":170,"w":200,"h":4,"fill":"#00d4ff"},{"type":"text","x":80,"y":220,"fontSize":36,"text":"Inteligencia Artificial"},{"type":"text","x":80,"y":280,"fontSize":24,"text":"y Desarrollo Moderno"},{"type":"text","x":80,"y":500,"fontSize":28,"text":"20 de Mayo 2026"},{"type":"text","x":80,"y":560,"fontSize":24,"text":"18:00 hrs"},{"type":"text","x":80,"y":640,"fontSize":20,"text":"Centro de Innovacion"},{"type":"rect","x":80,"y":780,"w":640,"h":80,"radius":40,"fill":"#00d4ff"},{"type":"text","x":240,"y":800,"fontSize":28,"text":"REGISTRATE"}]}}',
+    '',
+    '  DIBUJO SIMPLE — PAISAJE GEOMETRICO (800x600):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":800,"height":600,"background":"#87CEEB","format":"png","outputPath":"generated/paisaje.png","elements":[{"type":"rect","x":0,"y":400,"w":800,"h":200,"fill":"#228B22"},{"type":"circle","x":650,"y":100,"r":60,"fill":"#FFD700"},{"type":"rect","x":100,"y":250,"w":80,"h":150,"fill":"#8B4513"},{"type":"circle","x":140,"y":230,"r":60,"fill":"#006400"},{"type":"rect","x":300,"y":200,"w":60,"h":200,"fill":"#8B4513"},{"type":"circle","x":330,"y":180,"r":70,"fill":"#006400"},{"type":"rect","x":500,"y":280,"w":70,"h":120,"fill":"#8B4513"},{"type":"circle","x":535,"y":260,"r":55,"fill":"#006400"},{"type":"rect","x":0,"y":450,"w":800,"h":60,"fill":"#4169E1"}]}}',
+    '',
+    '  TARJETA DE PERFIL (600x350):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":600,"height":350,"background":"#f0f0f0","format":"png","outputPath":"generated/profile-card.png","elements":[{"type":"rect","x":0,"y":0,"w":600,"h":120,"fill":"#4a90d9"},{"type":"circle","x":300,"y":120,"r":70,"fill":"#ffffff"},{"type":"text","x":300,"y":210,"fontSize":28,"text":"Nombre Apellido"},{"type":"text","x":300,"y":250,"fontSize":16,"text":"Software Developer"},{"type":"text","x":300,"y":280,"fontSize":14,"text":"username@email.com"}]}}',
+    '',
+    '  INFOGRAFIA SIMPLE (800x1200):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":800,"height":1200,"background":"#1e1e2e","format":"png","outputPath":"generated/infografia.png","elements":[{"type":"rect","x":40,"y":40,"w":720,"h":100,"radius":16,"fill":"#333355"},{"type":"text","x":80,"y":70,"fontSize":40,"text":"ESTADISTICAS 2026"},{"type":"rect","x":40,"y":180,"w":720,"h":120,"radius":12,"fill":"#2a2a4a"},{"type":"circle","x":100,"y":240,"r":30,"fill":"#4fc3f7"},{"type":"text","x":150,"y":220,"fontSize":36,"text":"85%"},{"type":"text","x":150,"y":260,"fontSize":18,"text":"desarrolladores usan IA"},{"type":"rect","x":40,"y":340,"w":720,"h":120,"radius":12,"fill":"#2a2a4a"},{"type":"circle","x":100,"y":400,"r":30,"fill":"#81c784"},{"type":"text","x":150,"y":380,"fontSize":36,"text":"3.2x"},{"type":"text","x":150,"y":420,"fontSize":18,"text":"mas rapido con herramientas"},{"type":"rect","x":40,"y":500,"w":720,"h":120,"radius":12,"fill":"#2a2a4a"},{"type":"circle","x":100,"y":560,"r":30,"fill":"#ffb74d"},{"type":"text","x":150,"y":540,"fontSize":36,"text":"120k"},{"type":"text","x":150,"y":580,"fontSize":18,"text":"proyectos creados este mes"}]}}',
+    '',
+    '  POST DE CITAS/FRASES (1080x1080):',
+    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1080,"height":1080,"background":"#000000","format":"jpg","outputPath":"generated/quote.jpg","elements":[{"type":"rect","x":100,"y":100,"w":880,"h":880,"radius":0,"fill":"#111111"},{"type":"rect","x":200,"y":300,"w":680,"h":4,"fill":"#ffffff"},{"type":"text","x":150,"y":200,"fontSize":80,"text":"\\""},{"type":"text","x":150,"y":340,"fontSize":48,"maxWidth":780,"text":"El codigo es poesia que las maquinas pueden leer."},{"type":"text","x":150,"y":700,"fontSize":32,"text":"— Autor Desconocido"}]}}',
+    '',
+    '  Ejemplo basico:',
     '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":628,"background":"#0f172a","format":"png","outputPath":"generated/cover.png","elements":[{"type":"rect","x":48,"y":48,"w":1104,"h":532,"radius":24,"fill":"#111827"},{"type":"text","x":96,"y":120,"fontSize":32,"text":"Quarterly Business Report"}]}}',
+    '',
+    '## Git - Control total de API',
+    '',
+    'git { provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }',
+    '  Unica herramienta Git. Control total sobre la API del proveedor.',
+    '  provider: "github", "gitlab" o "custom". name: identificador para perfil custom.',
+    '  action: "api" | "clone"',
+    '',
+    '  action="api" — cualquier operacion HTTP sobre la API del proveedor:',
+    '    method: GET, POST, PATCH, PUT, DELETE. path: ruta de la API sin / inicial.',
+    '    body: objeto JSON para POST/PATCH/PUT. headers: headers adicionales opcionales.',
+    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"github","action":"api","method":"POST","path":"user/repos","body":{"name":"mi-proyecto","private":true}}}',
+    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"github","action":"api","method":"GET","path":"repos/owner/repo/issues?state=open"}}',
+    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"custom","name":"empresa","action":"api","method":"POST","path":"projects","body":{"name":"nuevo"}}}',
+    '',
+    '  action="clone" — clonar repositorio con credenciales configuradas:',
+    '    repoUrl: URL del repositorio. destination: carpeta destino. branch: rama especifica.',
+    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"github","action":"clone","repoUrl":"https://github.com/user/repo","destination":"./repo"}}',
+    '',
+    '  Control total: repos, issues, PRs, releases, webhooks, users, etc. Segun permisos del token.',
+    '  No hay acciones fijas. Elige method y path libremente.',
     '',
   ].join('\n');
 }
@@ -186,6 +258,8 @@ function describeToolCall(call) {
     }
     case 'create_canvas_image':
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
+    case 'git':
+      return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
     default:
       return call.tool;
   }
@@ -1084,6 +1158,9 @@ async function executeToolCall(call, state, ui) {
     case 'create_canvas_image':
       result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
+    case 'git':
+      result = await gitUnifiedTool(call.args, state, ui.paint);
+      break;
     default:
       throw new Error(`Herramienta no soportada: ${call.tool}`);
   }
@@ -1446,111 +1523,72 @@ async function createCanvasImageTool(args, state, paint) {
 
   await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
   await image.write(outputPath);
-  return [`Imagen creada: ${outputPath}`, `Formato: ${safeFormat}`, `Tamano: ${width}x${height}`, `Elementos: ${elements.length}`].join('\\n');
+  return [`Imagen creada: ${outputPath}`, `Formato: ${safeFormat}`, `Tamano: ${width}x${height}`, `Elementos: ${elements.length}`].join('\n');
 }
 
 
-async function gitSecretSetTool(args) {
-  const provider = normalizeProfileName(args.provider || '');
-  if (!provider) throw new Error('git_secret_set requiere provider');
-  if (!args.token || typeof args.token !== 'string') throw new Error('git_secret_set requiere token');
-  const saved = upsertGitSecret(provider, args);
-  return `Credencial guardada: ${getGitSecretLabel(provider, saved?.name || args.name || '')}`;
-}
-
-async function gitSecretListTool(args) {
+async function gitUnifiedTool(args, state, paint) {
+  const action = String(args.action || '').trim().toLowerCase();
   const provider = normalizeProfileName(args.provider || '');
   const name = String(args.name || '').trim();
-  const secrets = listGitSecrets();
-  const filtered = secrets.filter(secret => {
-    if (!provider) return true;
-    if (provider === 'custom') return !name || secret.key === `custom:${name}`;
-    return secret.key === provider;
-  });
-  if (!filtered.length) return 'No hay credenciales Git guardadas.';
-  const maskToken = (token) => {
-    const value = String(token || '');
-    if (!value) return '-';
-    if (value.length <= 8) return `${value.slice(0, 2)}***`;
-    return `${value.slice(0, 4)}...${value.slice(-4)}`;
-  };
-  return filtered.map(secret => [
-    `${secret.key}`,
-    `  username: ${secret.username || '-'}`,
-    `  apiBaseUrl: ${secret.apiBaseUrl || '-'}`,
-    `  cloneBaseUrl: ${secret.cloneBaseUrl || '-'}`,
-    `  authHeader: ${secret.authHeader || '-'}`,
-    `  tokenMasked: ${maskToken(secret.token)}`,
-  ].join('\n')).join('\n\n');
-}
 
-async function gitSecretRemoveTool(args) {
-  const provider = normalizeProfileName(args.provider || '');
-  if (!provider) throw new Error('git_secret_remove requiere provider');
-  const name = String(args.name || '').trim();
-  const removed = removeGitSecret(provider, name);
-  return removed ? `Credencial eliminada: ${getGitSecretLabel(provider, name)}` : 'No encontre esa credencial.';
-}
+  if (!action) throw new Error('git requiere action: "api" | "clone"');
 
-async function gitCloneRepoTool(args, state, paint) {
-  const repoUrl = String(args.repoUrl || '').trim();
-  if (!repoUrl) throw new Error('git_clone_repo requiere repoUrl');
-  const provider = normalizeProfileName(args.provider || '');
-  const name = String(args.name || '').trim();
-  const profile = provider ? resolveGitProfile(provider, name) : null;
-  const finalUrl = buildCloneUrl(repoUrl, profile || {});
-  const destination = args.destination ? resolveInputPath(args.destination, state.cwd) : '';
-  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 10 * 60 * 1000);
+  if (action === 'clone') {
+    const repoUrl = String(args.repoUrl || '').trim();
+    if (!repoUrl) throw new Error('git action="clone" requiere repoUrl');
+    if (!provider) throw new Error('git action="clone" requiere provider');
+    const profile = resolveGitProfile(provider, name);
+    const finalUrl = buildCloneUrl(repoUrl, profile || {});
+    const destination = args.destination ? resolveInputPath(args.destination, state.cwd) : '';
+    const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 10 * 60 * 1000);
+    const allowed = await askConfirmation(state.rl, 'Clonar repositorio', [
+      repoUrl,
+      profile ? `Provider: ${provider}${name ? ` (${name})` : ''}` : 'Provider: direct',
+      destination ? `Destino: ${destination}` : null,
+      `Timeout: ${timeoutMs}ms`,
+    ].filter(Boolean).join('\n'), paint, state);
+    if (!allowed) return 'Clonado cancelado por el usuario.';
+    const result = await runProcess('git', ['clone', ...(args.branch ? ['--branch', String(args.branch)] : []), finalUrl, ...(destination ? [destination] : [])], { cwd: state.cwd, timeoutMs });
+    const lines = [`Exit code: ${result.code}`];
+    if (result.timedOut) lines.push('Timeout: el clon fue detenido por tiempo.');
+    if (result.stdout.trim()) lines.push(`STDOUT:\n${result.stdout.trim()}`);
+    if (result.stderr.trim()) lines.push(`STDERR:\n${result.stderr.trim()}`);
+    return lines.join('\n\n');
+  }
 
-  const allowed = await askConfirmation(state.rl, 'Clonar repositorio', [
-    repoUrl,
-    profile ? `Provider: ${provider}${name ? ` (${name})` : ''}` : 'Provider: direct',
-    destination ? `Destino: ${destination}` : null,
-    `Timeout: ${timeoutMs}ms`,
-  ].filter(Boolean).join('\n'), paint, state);
-  if (!allowed) return 'Clonado cancelado por el usuario.';
+  if (action === 'api') {
+    if (!provider) throw new Error('git action="api" requiere provider');
+    const pathValue = String(args.path || '').trim();
+    if (!pathValue) throw new Error('git action="api" requiere path');
+    const profile = resolveGitProfile(provider, name);
+    if (!profile) throw new Error(`Proveedor ${provider}${provider === 'custom' && name ? `:${name}` : ''} no configurado.`);
+    const baseUrl = getApiBaseUrl(provider, profile);
+    if (!baseUrl) throw new Error(`apiBaseUrl no configurada para ${provider}.`);
+    const url = `${baseUrl.replace(/\/+$/, '')}/${pathValue.replace(/^\/+/, '')}`;
+    const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 30000);
+    const method = String(args.method || 'GET').toUpperCase();
+    const headers = buildApiHeaders(provider, profile, args.headers && typeof args.headers === 'object' ? args.headers : {});
+    const bodyPreview = args.body && typeof args.body === 'object' ? JSON.stringify(args.body).slice(0, 200) : '';
+    const allowed = await askConfirmation(state.rl, `Git API ${method}`, `${url}${bodyPreview ? `\nBody: ${bodyPreview}` : ''}\nTimeout: ${timeoutMs}ms`, paint, state);
+    if (!allowed) return 'Request cancelado por el usuario.';
+    const axios = require('axios');
+    const response = await axios({
+      url,
+      method,
+      headers: {
+        'User-Agent': 'Zyn/1.0',
+        Accept: 'application/json, text/plain, */*',
+        ...headers,
+      },
+      data: args.body && typeof args.body === 'object' ? args.body : args.body,
+      timeout: timeoutMs,
+      responseType: 'text',
+      validateStatus: () => true,
+    });
+    const text = typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2);
+    return `Status: ${response.status}\n\n${text}`;
+  }
 
-  const result = await runProcess('git', ['clone', ...(args.branch ? ['--branch', String(args.branch)] : []), finalUrl, ...(destination ? [destination] : [])], { cwd: state.cwd, timeoutMs });
-  const lines = [`Exit code: ${result.code}`];
-  if (result.timedOut) lines.push('Timeout: el clon fue detenido por tiempo.');
-  if (result.stdout.trim()) lines.push(`STDOUT:\n${result.stdout.trim()}`);
-  if (result.stderr.trim()) lines.push(`STDERR:\n${result.stderr.trim()}`);
-  return lines.join('\n\n');
-}
-
-async function gitApiRequestTool(args, state, paint) {
-  const provider = normalizeProfileName(args.provider || '');
-  if (!provider) throw new Error('git_api_request requiere provider');
-  const pathValue = String(args.path || '').trim();
-  if (!pathValue) throw new Error('git_api_request requiere path');
-  const name = String(args.name || '').trim();
-  const profile = resolveGitProfile(provider, name);
-  if (!profile) throw new Error(`No hay credenciales para ${provider}${provider === 'custom' && name ? `:${name}` : ''}`);
-  const baseUrl = getApiBaseUrl(provider, profile);
-  if (!baseUrl) throw new Error(`No hay apiBaseUrl para ${provider}`);
-  const url = `${baseUrl.replace(/\/+$/, '')}/${pathValue.replace(/^\/+/, '')}`;
-  const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 15000);
-  const method = String(args.method || 'GET').toUpperCase();
-  const headers = buildApiHeaders(provider, profile, args.headers && typeof args.headers === 'object' ? args.headers : {});
-
-  const allowed = await askConfirmation(state.rl, 'Git API request', `${method} ${url}\nTimeout: ${timeoutMs}ms`, paint, state);
-  if (!allowed) return 'Request cancelado por el usuario.';
-
-  const axios = require('axios');
-  const response = await axios({
-    url,
-    method,
-    headers: {
-      'User-Agent': 'Zyn/1.0',
-      Accept: 'application/json, text/plain, */*',
-      ...headers,
-    },
-    data: args.body && typeof args.body === 'object' ? args.body : args.body,
-    timeout: timeoutMs,
-    responseType: 'text',
-    validateStatus: () => true,
-  });
-
-  const text = typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2);
-  return `Status: ${response.status}\n\n${text}`;
+  throw new Error(`git action "${action}" no reconocida. Usa: "api" | "clone"`);
 }

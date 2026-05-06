@@ -17,11 +17,13 @@ const SLASH_COMMANDS = [
   { name: 'status', desc: 'current status' },
   { name: 'history', desc: 'recent actions' },
   { name: 'memory', desc: 'memory summary' },
+  { name: 'summary', desc: 'memory summary' },
   { name: 'session', desc: 'current session' },
   { name: 'sessions', desc: 'list sessions' },
   { name: 'new', desc: 'new session' },
   { name: 'resume', desc: 'resume session' },
   { name: 'title', desc: 'rename session' },
+  { name: 'rename', desc: 'rename session' },
   { name: 'model', desc: 'view/change model' },
   { name: 'models', desc: 'list models' },
   { name: 'providers', desc: 'list providers' },
@@ -38,10 +40,12 @@ const SLASH_COMMANDS = [
   { name: 'stop', desc: 'stop agent' },
   { name: 'abort', desc: 'stop agent' },
   { name: 'reset', desc: 'reset context' },
+  { name: 'clear', desc: 'reset context' },
   { name: 'cwd', desc: 'working directory' },
   { name: 'transcript', desc: 'view transcript' },
   { name: 'export', desc: 'export to txt' },
   { name: 'exit', desc: 'exit' },
+  { name: 'quit', desc: 'exit' },
 ];
 
 function parseSlashCommand(input) {
@@ -57,6 +61,7 @@ function printHelp(state = {}) {
   const { paint } = require('./print');
   const lang = normalizeLanguage(state.language || DEFAULT_LANGUAGE);
   const m = (value) => paint(value, 'dim');
+  const b = (value) => paint(value, 'cyan');
   const providers = listProvidersFromModels(MODELS);
 
   console.log('');
@@ -68,15 +73,77 @@ function printHelp(state = {}) {
   console.log(`    zyn --new          ${m(t(lang, 'newSession'))}`);
   console.log(`    zyn --resume ID    ${m(t(lang, 'resumeSession'))}`);
   console.log('');
-  console.log(`  ${m(t(lang, 'commands'))}`);
-  for (const cmd of SLASH_COMMANDS) {
-    console.log(`    /${cmd.name.padEnd(14)} ${m(cmd.desc)}`);
-  }
+
+  // Sessions
+  console.log(`  ${paint('── Sessions ──', 'dim')}`);
+  console.log(`    ${b('/help')}                        Show this help`);
+  console.log(`    ${b('/status')}                      Show current status`);
+  console.log(`    ${b('/history')}                     Recent actions (last 20)`);
+  console.log(`    ${b('/memory')}                      Agent memory summary`);
+  console.log(`    ${b('/summary')}                     Alias of /memory`);
+  console.log(`    ${b('/session')}                     Current session info`);
+  console.log(`    ${b('/sessions')}                    List all saved sessions`);
+  console.log(`    ${b('/new')}                         Create a new session`);
+  console.log(`    ${b('/resume <ID>')}                 Resume an existing session`);
+  console.log(`    ${b('/title <text>')}                Rename current session`);
+  console.log(`    ${b('/rename <text>')}               Alias of /title`);
   console.log('');
-  console.log(`  /config lang en|es   ${m('change session language')}`);
-  console.log(`  /config model KEY    ${m('change active model')}`);
-  console.log(`  /config show         ${m('show current config')}`);
+
+  // Configuration
+  console.log(`  ${paint('── Configuration ──', 'dim')}`);
+  console.log(`    ${b('/model')}                       Show active model`);
+  console.log(`    ${b('/model <key>')}                 Change active model`);
+  console.log(`    ${b('/models')}                      List available models`);
+  console.log(`    ${b('/providers')}                   List detected providers`);
+  console.log(`    ${b('/lang')}                        Show current language`);
+  console.log(`    ${b('/lang <en|es>')}                Change language`);
+  console.log(`    ${b('/language <en|es>')}            Alias of /lang`);
+  console.log(`    ${b('/auto')}                        Show auto-approval status`);
+  console.log(`    ${b('/auto on')}                     Enable auto-approval`);
+  console.log(`    ${b('/auto off')}                    Disable auto-approval`);
+  console.log(`    ${b('/concuerdo')}                   Toggle group model mode`);
+  console.log(`    ${b('/persona set <text>')}          Set response persona/tone`);
+  console.log(`    ${b('/persona show')}                Show active persona`);
+  console.log(`    ${b('/persona reset')}               Reset to default persona`);
+  console.log(`    ${b('/config show')}                 Show session config`);
+  console.log(`    ${b('/config lang <en|es>')}         Change language from config`);
+  console.log(`    ${b('/config model <key>')}          Change model from config`);
+  console.log(`    ${b('/config auto on|off')}          Toggle auto from config`);
+  console.log(`    ${b('/config group on|off')}         Toggle group mode from config`);
+  console.log(`    ${b('/config cwd <path>')}           Change working dir from config`);
   console.log('');
+
+  // Tools and Git
+  console.log(`  ${paint('── Tools and Git ──', 'dim')}`);
+  console.log(`    ${b('/tools')}                       List available agent tools`);
+  console.log(`    ${b('/skills')}                      List loaded skills`);
+  console.log(`    ${b('/git set <provider> <token>')}  Configure git credentials`);
+  console.log(`    ${b('/git set <provider> <token> [user] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:X]')}`);
+  console.log(`    ${b('/git list')}                    List configured git profiles`);
+  console.log(`    ${b('/git remove <provider> [name]')} Remove git credentials`);
+  console.log(`    ${b('/cwd')}                         Show current working directory`);
+  console.log(`    ${b('/cwd <path>')}                  Change working directory`);
+  console.log('');
+
+  // Web and export
+  console.log(`  ${paint('── Web and Export ──', 'dim')}`);
+  console.log(`    ${b('/web')}                         Open web version`);
+  console.log(`    ${b('/web <host:port>')}             Open web version on custom host:port`);
+  console.log(`    ${b('/transcript')}                  View full session transcript`);
+  console.log(`    ${b('/export')}                      Export session to txt`);
+  console.log(`    ${b('/export <path>')}               Export session to specific path`);
+  console.log('');
+
+  // Control
+  console.log(`  ${paint('── Control ──', 'dim')}`);
+  console.log(`    ${b('/stop')}                        Stop current agent turn`);
+  console.log(`    ${b('/abort')}                       Alias of /stop`);
+  console.log(`    ${b('/reset')}                       Reset context (clear history)`);
+  console.log(`    ${b('/clear')}                       Alias of /reset`);
+  console.log(`    ${b('/exit')}                        Exit Zyn`);
+  console.log(`    ${b('/quit')}                        Alias of /exit`);
+  console.log('');
+
   console.log(`  ${m(t(lang, 'escTwice'))}`);
   console.log(`    ${m(t(lang, 'escTwiceDesc'))}`);
   console.log('');
@@ -123,15 +190,16 @@ function printConfig(state) {
   console.log('');
 }
 
-async function startWebVersion() {
+async function startWebVersion(host = '127.0.0.1', port = 3000) {
   const serverPath = path.join(__dirname, '..', 'web', 'server.js');
   const child = spawn(process.execPath, [serverPath], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
+    env: { ...process.env, HOST: host, PORT: String(port) },
   });
   child.unref();
-  return 'http://127.0.0.1:3000';
+  return `http://${host}:${port}`;
 }
 
 async function handleLocalCommand(input, state, deps) {
@@ -200,27 +268,50 @@ async function handleLocalCommand(input, state, deps) {
   if (commandName === 'git') {
     const [sub, ...rest] = args.split(' ').filter(Boolean);
     if (!sub || sub === 'help') {
-      console.log('Uso: /git list | /git set <provider> <token> [username] | /git remove <provider>');
+      console.log('Uso: /git list');
+      console.log('      /git set <provider> <token> [username] [apiBaseUrl] [cloneBaseUrl] [name]');
+      console.log('      /git remove <provider> [name]');
+      console.log('');
+      console.log('Proveedores: github, gitlab, custom');
+      console.log('Para custom: apiBaseUrl y cloneBaseUrl son obligatorios para configurar la URL');
+      console.log('name: identificador para multiples perfiles custom');
+      console.log('');
+      console.log('Ejemplos:');
+      console.log('  /git set github ghp_xxxxx');
+      console.log('  /git set custom glpat_xxxxx - apiBaseUrl:https://git.empresa.com/api/v4 cloneBaseUrl:https://git.empresa.com name:empresa');
       return true;
     }
     if (sub === 'list') {
       const secrets = listGitSecrets();
       if (!secrets.length) console.log('No hay credenciales git guardadas.');
-      else secrets.forEach(s => console.log(`${s.key}  user:${s.username || '-'}  api:${s.apiBaseUrl || '-'}`));
+      else {
+        for (const s of secrets) {
+          console.log(`${s.key}  user:${s.username || '-'}  api:${s.apiBaseUrl || '-'}  clone:${s.cloneBaseUrl || '-'}`);
+        }
+      }
       return true;
     }
     if (sub === 'set') {
+      if (rest.length < 2) throw new Error('Uso: /git set <provider> <token> [username] [apiBaseUrl] [cloneBaseUrl] [name]');
       const [provider, token, username] = rest;
-      if (!provider || !token) throw new Error('Uso: /git set <provider> <token> [username]');
-      upsertGitSecret(provider, { provider, token, username });
-      console.log(`Credencial guardada para ${provider}`);
+      let apiBaseUrl = '';
+      let cloneBaseUrl = '';
+      let name = '';
+      for (const part of rest.slice(3)) {
+        if (part.startsWith('apiBaseUrl:')) apiBaseUrl = part.slice('apiBaseUrl:'.length);
+        else if (part.startsWith('cloneBaseUrl:')) cloneBaseUrl = part.slice('cloneBaseUrl:'.length);
+        else if (part.startsWith('name:')) name = part.slice('name:'.length);
+      }
+      upsertGitSecret(provider, { provider, token, username: username || '', apiBaseUrl: apiBaseUrl || '', cloneBaseUrl: cloneBaseUrl || '', name });
+      console.log(`Credencial guardada para ${provider}${name ? `:${name}` : ''}`);
       return true;
     }
     if (sub === 'remove') {
-      const [provider] = rest;
-      if (!provider) throw new Error('Uso: /git remove <provider>');
-      const removed = removeGitSecret(provider);
-      console.log(removed ? `Credencial eliminada: ${provider}` : `No existe credencial para ${provider}`);
+      const [provider, namePart] = rest;
+      if (!provider) throw new Error('Uso: /git remove <provider> [name]');
+      const name = (namePart || '').startsWith('name:') ? namePart.slice('name:'.length) : '';
+      const removed = removeGitSecret(provider, name);
+      console.log(removed ? `Credencial eliminada: ${provider}${name ? `:${name}` : ''}` : `No existe credencial para ${provider}`);
       return true;
     }
     throw new Error('Subcomando git no reconocido. Usa /git help');
@@ -451,7 +542,19 @@ async function handleLocalCommand(input, state, deps) {
   }
 
   if (commandName === 'web') {
-    const url = await startWebVersion();
+    let host = '127.0.0.1';
+    let port = 3000;
+    if (args) {
+      const parts = args.split(/[\s:]+/).filter(Boolean);
+      for (const part of parts) {
+        if (/^\d{1,5}$/.test(part)) {
+          port = Math.min(65535, Math.max(1, Number(part)));
+        } else if (/^[\d.]+$/.test(part) || part === 'localhost' || part === '0.0.0.0') {
+          host = part;
+        }
+      }
+    }
+    const url = await startWebVersion(host, port);
     console.log(`Web version started at ${url}`);
     return true;
   }

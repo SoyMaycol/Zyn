@@ -108,6 +108,9 @@ const PERSISTENT_CONFIG_FILE = path.join(SESSION_ROOT, 'persistent-config.json')
 const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
 const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const USER_DATA_ROOT = path.join(os.homedir(), '.zyn');
+const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
+const PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
 
 function listProvidersFromModels(models = MODELS) {
   const grouped = new Map();
@@ -148,12 +151,15 @@ module.exports = {
   MAX_TOOL_STEPS,
   MODELS,
   MODELS_FILE,
+  PROVIDERS_FILE,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,
   SESSION_ROOT,
   SESSIONS_DIR,
+  TASKS_FILE,
   THINK_FRAMES,
   TRANSCRIPTS_DIR,
+  USER_DATA_ROOT,
   listProvidersFromModels,
 };

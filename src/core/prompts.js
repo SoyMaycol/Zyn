@@ -3,20 +3,56 @@ const { buildSkillsPrompt } = require('./skills');
 const { getToolPromptText, TOOL_DEFINITIONS } = require('../tools');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
+const os = require('os');
+const fs = require('fs');
+
+function getPlatformInfo() {
+  // Detectar SO real primero
+  let osName = 'Unknown';
+
+  if (process.platform === 'linux') {
+    try {
+      const release = fs.readFileSync('/etc/os-release', 'utf8');
+      const nameMatch = release.match(/^PRETTY_NAME="?([^"\n]+)"?/m);
+      if (nameMatch) {
+        osName = nameMatch[1];
+      } else {
+        const idMatch = release.match(/^ID="?([^"\n]+)"?/m);
+        const verMatch = release.match(/^VERSION_ID="?([^"\n]+)"?/m);
+        osName = `Linux ${idMatch ? idMatch[1] : ''}${verMatch ? ' ' + verMatch[1] : ''}`.trim();
+      }
+    } catch {
+      try {
+        const { execSync } = require('child_process');
+        osName = execSync('uname -o -r -m', { encoding: 'utf8', timeout: 3000 }).trim();
+      } catch {
+        osName = `Linux ${os.release()} ${os.arch()}`;
+      }
+    }
+  } else if (process.platform === 'darwin') {
+    try {
+      const { execSync } = require('child_process');
+      const ver = execSync('sw_vers -productVersion', { encoding: 'utf8', timeout: 3000 }).trim();
+      osName = `macOS ${ver} (${os.arch()})`;
+    } catch {
+      osName = `macOS ${os.release()} (${os.arch()})`;
+    }
+  } else if (process.platform === 'win32') {
+    osName = `Windows ${os.release()} (${os.arch()})`;
+  }
+
+  return osName;
+}
 
 const KNOWN_TOOLS = new Set([
   ...TOOL_DEFINITIONS.map(tool => tool.name),
   'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear',
-  'git_secret_set', 'git_secret_list', 'git_secret_remove',
-  'git_clone_repo', 'git_api_request',
 ]);
 
 
 function buildSystemPrompt(cwd, state = {}, options = {}) {
   const language = normalizeLanguage(options.language || state.language || detectLanguage(options.input || '', state.language));
-  const platform = process.platform === 'linux' ? 'Linux'
-    : process.platform === 'darwin' ? 'macOS'
-    : process.platform;
+  const platform = getPlatformInfo();
   const date = new Date().toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', {
     year: 'numeric',
     month: 'long',
@@ -39,9 +75,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Si la tarea requiere comprobar algo, primero intenta una herramienta real y espera el resultado antes de concluir.',
         'No cierres con una conclusion si todavia no has probado nada.',
         'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
-        'Para GitHub, GitLab o un Git personalizado usa git_secret_set para guardar credenciales y git_clone_repo o git_api_request para operar sin exponer secretos.',
+        'Para operaciones de Git usa la herramienta git con action="api" o action="clone".',
         'Usa exclusivamente tools registradas en "Tool use". No inventes nombres de tools ni aliases.',
-        'Para tareas empresariales, mantente acotado y determinista: entradas claras, salidas claras, sin razonamiento creativo salvo que el usuario lo pida.',
+        'Mantente acotado y determinista: entradas claras, salidas claras, sin razonamiento creativo salvo que el usuario lo pida.',
         'Cuando aplique, entrega resumen ejecutivo corto + riesgos/banderas rojas + siguiente accion concreta.',
         'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), documentar (final).',
         'No te limites a una sola tool por costumbre; elige la mejor secuencia técnica para el objetivo.',
@@ -57,9 +93,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'If the task requires verification, try a real tool first and wait for its result before concluding.',
         'Do not end with a conclusion if you have not tested anything yet.',
         'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
-        'For GitHub, GitLab, or a custom Git host, use git_secret_set to store credentials and git_clone_repo or git_api_request to operate without exposing secrets.',
+        'For Git operations use the git tool with action="api" or action="clone".',
         'Use only tools listed under "Tool use". Never invent tool names or aliases.',
-        'For business tasks, stay bounded and deterministic: clear inputs, clear outputs, no creative reasoning unless explicitly requested.',
+        'Stay bounded and deterministic: clear inputs, clear outputs, no creative reasoning unless explicitly requested.',
         'When relevant, provide a short executive summary + obvious red flags + next concrete action.',
         'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), then report.',
         'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
@@ -206,6 +242,7 @@ const TOOL_ARG_KEYS = {
   web_search: ['query', 'lang', 'limit'],
   web_read: ['url'],
   create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
+  git: ['provider', 'action', 'method', 'path', 'body', 'headers', 'name', 'repoUrl', 'destination', 'branch', 'timeoutMs'],
 };
 
 const LONG_VALUE_ARG = {
