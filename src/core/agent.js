@@ -418,7 +418,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
       const key = `${parsed.tool}:${targetPath}`;
       const nextCount = (toolPathUsage.get(key) || 0) + 1;
       toolPathUsage.set(key, nextCount);
-      if (nextCount >= 3 && ['write_file', 'append_file', 'replace_in_file'].includes(parsed.tool)) {
+      if (nextCount >= 20 && ['write_file', 'append_file', 'replace_in_file'].includes(parsed.tool)) {
         ui.logEvent(state, 'warn', state.language === 'es' ? 'Posible loop detectado' : 'Possible loop detected', `${parsed.tool} → ${targetPath} x${nextCount}`);
         turnMessages.push({
           role: 'user',
@@ -432,7 +432,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     }
     if (fingerprint === lastFingerprint) {
       repeatCount += 1;
-      if (repeatCount >= 2) {
+      if (repeatCount >= 19) {
         ui.logEvent(state, 'warn', 'Loop detectado', `${parsed.tool} repetido ${repeatCount + 1}x`);
         turnMessages.push({
           role: 'user',

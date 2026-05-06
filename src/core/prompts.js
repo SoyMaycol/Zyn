@@ -49,6 +49,106 @@ const KNOWN_TOOLS = new Set([
   'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear',
 ]);
 
+const TOOL_ALIASES = new Map([
+  ['command', 'run_command'],
+  ['cmd', 'run_command'],
+  ['exec', 'run_command'],
+  ['execute', 'run_command'],
+  ['run', 'run_command'],
+  ['runcommand', 'run_command'],
+  ['run_command_tool', 'run_command'],
+  ['shell', 'run_command'],
+  ['terminal', 'run_command'],
+  ['bash', 'run_command'],
+  ['list', 'list_dir'],
+  ['ls', 'list_dir'],
+  ['dir', 'list_dir'],
+  ['list_directory', 'list_dir'],
+  ['listdir', 'list_dir'],
+  ['list_dir_tool', 'list_dir'],
+  ['read', 'read_file'],
+  ['readfile', 'read_file'],
+  ['read_file_tool', 'read_file'],
+  ['cat', 'read_file'],
+  ['open_file', 'read_file'],
+  ['grep', 'search_text'],
+  ['search', 'search_text'],
+  ['find_text', 'search_text'],
+  ['searchtext', 'search_text'],
+  ['search_text_tool', 'search_text'],
+  ['glob', 'glob_files'],
+  ['mkdir', 'make_dir'],
+  ['makedir', 'make_dir'],
+  ['write', 'write_file'],
+  ['writefile', 'write_file'],
+  ['append', 'append_file'],
+  ['appendfile', 'append_file'],
+  ['replace', 'replace_in_file'],
+  ['replaceinfile', 'replace_in_file'],
+  ['http', 'fetch_http'],
+  ['fetch_url_content', 'fetch_url'],
+  ['web_fetch', 'webfetch'],
+]);
+
+function normalizeToolName(name) {
+  const normalized = String(name || '')
+    .trim()
+    .replace(/^tools?[./:-]/i, '')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase();
+  return TOOL_ALIASES.get(normalized) || normalized;
+}
+
+function normalizeToolArgs(tool, rawArgs) {
+  if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) return {};
+  const args = { ...rawArgs };
+
+  if (tool === 'run_command' && typeof args.command !== 'string') {
+    args.command = args.cmd || args.shell || args.input || args.code || args.query;
+  }
+  if (tool === 'list_dir' && typeof args.path !== 'string') {
+    args.path = args.directory || args.dir || args.cwd || args.target || '.';
+  }
+  if (tool === 'read_file' && typeof args.path !== 'string') {
+    args.path = args.file || args.filename || args.target;
+  }
+  if (tool === 'search_text' && typeof args.pattern !== 'string') {
+    args.pattern = args.regex || args.query || args.search;
+  }
+  if (tool === 'glob_files' && typeof args.pattern !== 'string') {
+    args.pattern = args.glob || args.query || args.search;
+  }
+
+  return args;
+}
+
+function getToolNameFromObject(obj) {
+  return obj?.tool || obj?.name || obj?.function?.name || obj?.tool_name || obj?.toolName;
+}
+
+function getToolArgsFromObject(obj) {
+  let args = obj?.args ?? obj?.arguments ?? obj?.input ?? obj?.parameters ?? obj?.function?.arguments;
+  if (typeof args === 'string') {
+    try { args = JSON.parse(args); } catch { args = {}; }
+  }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    args = { ...obj };
+    delete args.type;
+    delete args.tool;
+    delete args.name;
+    delete args.tool_name;
+    delete args.toolName;
+    delete args.function;
+  }
+  return args;
+}
+
+function toToolCall(obj) {
+  const tool = normalizeToolName(getToolNameFromObject(obj));
+  if (!KNOWN_TOOLS.has(tool)) return null;
+  return { type: 'tool', tool, args: normalizeToolArgs(tool, getToolArgsFromObject(obj)) };
+}
+
 
 function buildSystemPrompt(cwd, state = {}, options = {}) {
   const language = normalizeLanguage(options.language || state.language || detectLanguage(options.input || '', state.language));
@@ -106,6 +206,10 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     skills,
     '',
     '# Tool use',
+    'Tools are NOT native provider functions. To use a tool, output exactly one JSON object and no prose:',
+    '{"type":"tool","tool":"list_dir","args":{"path":"."}}',
+    'For command execution, use: {"type":"tool","tool":"run_command","args":{"command":"ls"}}',
+    'Never write phrases like "Tool X does not exist". If a tool is listed below, it exists in Zyn and must be requested with JSON.',
     getToolPromptText(),
     '',
     '# Environment',
@@ -185,26 +289,29 @@ function extractJson(text) {
 }
 
 function extractToolJson(text) {
-  return scanJson(text, obj =>
-    obj?.type === 'tool' && KNOWN_TOOLS.has(obj.tool),
-  );
+  const obj = scanJson(text, candidate => Boolean(toToolCall(candidate)));
+  return toToolCall(obj);
 }
 
 function extractXmlTool(text) {
   const invokeMatch = text.match(
-    /<invoke\s+name="([\w-]+)"\s*>\s*<args>\s*([\s\S]*?)\s*<\/args>\s*<\/invoke>/i,
+    /<invoke\s+name=["']([^"']+)["']\s*>\s*<args>\s*([\s\S]*?)\s*<\/args>\s*<\/invoke>/i,
   );
-  if (!invokeMatch) return null;
+  const toolCallMatch = text.match(
+    /<tool_call\s+name=["']([^"']+)["']\s*>\s*([\s\S]*?)\s*<\/tool_call>/i,
+  );
+  const match = invokeMatch || toolCallMatch;
+  if (!match) return null;
 
-  const tool = invokeMatch[1];
+  const tool = normalizeToolName(match[1]);
   if (!KNOWN_TOOLS.has(tool)) return null;
 
-  const rawArgs = invokeMatch[2].trim();
+  const rawArgs = (match[2] || '').trim();
   if (!rawArgs) return { type: 'tool', tool, args: {} };
 
   try {
     const args = JSON.parse(rawArgs);
-    return { type: 'tool', tool, args: args && typeof args === 'object' ? args : {} };
+    return { type: 'tool', tool, args: normalizeToolArgs(tool, args) };
   } catch {}
 
   const fuzzy = fuzzyExtractTool(`{"tool":"${tool}","args":${rawArgs}}`);
@@ -214,11 +321,27 @@ function extractXmlTool(text) {
 }
 
 function classifyParsed(parsed) {
-  if (parsed?.type === 'tool' && parsed.tool) {
-    return { type: 'tool', tool: parsed.tool, args: parsed.args ?? {} };
+  if (Array.isArray(parsed)) {
+    return parsed.map(classifyParsed).find(Boolean) || null;
+  }
+  const toolCall = toToolCall(parsed);
+  if (toolCall && (parsed?.type === 'tool' || parsed?.tool || parsed?.name || parsed?.function?.name)) {
+    return toolCall;
+  }
+  if (Array.isArray(parsed?.tool_calls) && parsed.tool_calls.length > 0) {
+    const firstTool = parsed.tool_calls.map(toToolCall).find(Boolean);
+    if (firstTool) return firstTool;
+  }
+  if (Array.isArray(parsed?.toolCalls) && parsed.toolCalls.length > 0) {
+    const firstTool = parsed.toolCalls.map(toToolCall).find(Boolean);
+    if (firstTool) return firstTool;
   }
   if (parsed?.type === 'final') {
     return { type: 'final', content: typeof parsed.content === 'string' ? parsed.content : '' };
+  }
+  if (parsed?.type === 'answer' || parsed?.type === 'message') {
+    const content = parsed.content ?? parsed.answer ?? parsed.message ?? '';
+    return { type: 'final', content: typeof content === 'string' ? content : JSON.stringify(content) };
   }
   return null;
 }
@@ -253,10 +376,10 @@ const LONG_VALUE_ARG = {
 };
 
 function fuzzyExtractTool(text) {
-  const toolMatch = text.match(/"tool"\s*:\s*"(\w+)"/);
+  const toolMatch = text.match(/"(?:tool|name|tool_name|toolName)"\s*:\s*"([\w\s.-]+)"/);
   if (!toolMatch) return null;
 
-  const tool = toolMatch[1];
+  const tool = normalizeToolName(toolMatch[1]);
   if (!KNOWN_TOOLS.has(tool)) return null;
 
   const longArg = LONG_VALUE_ARG[tool];
@@ -335,8 +458,13 @@ function extractSimpleArgsTool(text, tool) {
     : null;
 }
 
+function stripCodeFence(text) {
+  const match = String(text || '').trim().match(/^```(?:json|javascript|js)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1].trim() : text;
+}
+
 function parseAgentResponse(raw) {
-  const text = normalizeText(raw);
+  const text = stripCodeFence(normalizeText(raw));
 
   try {
     const parsed = JSON.parse(text);
@@ -425,6 +553,7 @@ module.exports = {
   buildSystemPrompt,
   buildToolErrorMessage,
   buildToolResultMessage,
+  normalizeToolName,
   parseAgentResponse,
   sanitizeArgsForModel,
 };

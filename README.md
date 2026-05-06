@@ -83,15 +83,20 @@ zyn
 zyn "Explain this project"
 ```
 
-### Open the web version from the CLI
+### Open the web version
 
-```bash
+Inside Zyn:
+
+```text
 /web
+/web 0.0.0.0:3000
 ```
 
-Or directly:
+Or directly from the project:
 
 ```bash
+npm run web
+# or
 node src/web/server.js
 ```
 
@@ -105,14 +110,17 @@ Inside Zyn:
 
 ## Language selection
 
-Use the command below inside Zyn:
+Use these commands inside Zyn:
 
 ```text
+/lang
 /lang en
 /lang es
+/language es
+/config lang en
 ```
 
-English is the default.
+English is the default unless `ZYN_DEFAULT_LANG`, `ZYN_LANGUAGE`, or the environment locale resolves to another supported language.
 
 ## Main commands
 
@@ -121,8 +129,8 @@ English is the default.
 | Command | Description |
 |---------|-------------|
 | `/help` | Shows full command list with descriptions |
-| `/status` | Current status: model, language, active sessions |
-| `/history` | Recent session actions (last 20) |
+| `/status` | Current status: model, language, session, queue, and working directory |
+| `/history` | Recent session actions |
 | `/memory` | Agent memory summary |
 | `/summary` | Alias of `/memory` |
 | `/session` | Current session information |
@@ -136,17 +144,21 @@ English is the default.
 
 | Command | Description |
 |---------|-------------|
-| `/model [KEY]` | View or change active model. Example: `/model qwen-turbo` |
+| `/model` / `/model <key>` | View or change the active model |
 | `/models` | Lists available models |
 | `/providers` | Lists detected providers |
 | `/lang <en\|es>` | Changes interface language |
 | `/language <en\|es>` | Alias of `/lang` |
 | `/config show` | Shows current session configuration |
-| `/config lang <en>` | Changes language from config |
-| `/config model <K>` | Changes model from config |
-| `/auto` | Toggles auto-approval for tool calls |
-| `/persona <text>` | Sets custom response tone/personality |
+| `/config lang <en\|es>` | Changes language from config |
+| `/config model <key>` | Changes model from config |
+| `/auto` / `/auto on` / `/auto off` | Views or changes auto-approval for tool calls |
+| `/persona show` / `/persona set <text>` | Shows or sets custom response tone/personality |
 | `/persona reset` | Resets personality to system default |
+| `/concuerdo` | Toggles group model mode |
+| `/config auto on\|off` | Changes auto-approval from config |
+| `/config group on\|off` | Changes group model mode from config |
+| `/config cwd <path>` | Changes working directory from config |
 
 ### Tools and Git
 
@@ -154,18 +166,22 @@ English is the default.
 |---------|-------------|
 | `/tools` | Lists available agent tools |
 | `/skills` | Lists loaded agent skills |
-| `/git set <prov>` | Configures git credentials. Example: `/git set github --token ghp_xxx` |
+| `/git help` | Shows Git credential help |
+| `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]` | Configures Git credentials for `github`, `gitlab`, or `custom` |
 | `/git list` | Lists configured git profiles (tokens hidden) |
-| `/git remove <prov>` | Removes credentials for a provider |
+| `/git remove <provider> [name]` | Removes credentials for a provider/profile |
 | `/cwd` | Shows current working directory |
+| `/cwd <path>` | Changes current working directory |
 
 ### Web and export
 
 | Command | Description |
 |---------|-------------|
-| `/web` | Opens the web version |
+| `/web` | Opens the web version on `127.0.0.1:3000` |
+| `/web <host:port>` | Opens the web version on a custom host/port |
 | `/transcript` | Views the full session transcript |
 | `/export` | Exports session to a text file |
+| `/export <path>` | Exports session to a specific path |
 
 ### Control
 
@@ -187,7 +203,7 @@ Zyn includes support for:
 - Ollama
 - OpenAI-compatible providers
 
-Models can be extended from `data/models.json` or from the internal configuration.
+Models can be extended from `data/models.json` or from the internal configuration. If `data/models.json` does not exist, use `data/models.example.json` as the shape reference.
 
 ### Example model config
 
@@ -211,12 +227,14 @@ Models can be extended from `data/models.json` or from the internal configuratio
 
 ## Git — Full API control
 
-The unified `git` tool provides complete control over any provider:
+The unified `git` tool provides complete control over any configured provider. The file-reading tool supports up to 5000 lines per `read_file` call; for large files, use `startLine` and `endLine`.
+
+The Git tool supports:
 
 - **action="api"**: Any HTTP operation (GET, POST, PATCH, PUT, DELETE) against the provider API.
 - **action="clone"**: Clone repositories with configured credentials.
 
-No hardcoded actions. Choose `method` and `path` freely based on your APIKey permissions.
+No hardcoded actions. Choose `method` and `path` freely based on your APIKey permissions. Configure credentials with `/git set <provider> <token> [username] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:N]`.
 
 ## Web collaboration
 

@@ -55,7 +55,7 @@ function getToolPromptText() {
     '  Lista archivos y carpetas ordenados. Sin path usa directorio actual.',
     '',
     'read_file { path, startLine?, endLine? }',
-    '  Lee contenido con numeros de linea. Max 500 lineas por llamada.',
+    '  Lee contenido con numeros de linea. Max 5000 lineas por llamada.',
     '  Para archivos grandes, usa startLine/endLine para leer por secciones.',
     '',
     'search_text { pattern, path?, glob? }',
@@ -1184,11 +1184,15 @@ function buildOllamaInstallCommand() {
 
 function parseDirectAction(input) {
   const text = input.trim();
-  if (/^(git|npm|node|pnpm|yarn)\s+/.test(text)) {
+  if (/^(git|npm|node|pnpm|yarn|npx|python|python3|pip|pip3|cargo|go|rustc|deno|bun)\s+/.test(text)) {
     return { tool: 'run_command', args: { command: text } };
   }
 
-  const runMatch = text.match(/^(?:ejecuta|corre)\s+(?:el\s+)?comando\s+([\s\S]+)$/i);
+  if (/^(?:ls|dir|pwd)(?:\s+[^;&|`$()<>]*)?$/i.test(text)) {
+    return { tool: 'run_command', args: { command: text } };
+  }
+
+  const runMatch = text.match(/^(?:ejecuta|ejecutar|corre|correr|run)\s+(?:(?:el\s+)?comando\s+)?([\s\S]+)$/i);
   if (runMatch) {
     return {
       tool: 'run_command',
@@ -1206,11 +1210,12 @@ function parseDirectAction(input) {
   const createRepoMatch = text.match(/^(?:crea|crear|create)\s+(?:un\s+)?(?:repo|repositorio)\s+(?:en\s+)?github\s+([a-z0-9._-]+)$/i);
   if (createRepoMatch) {
     return {
-      tool: 'git_api_request',
+      tool: 'git',
       args: {
         provider: 'github',
+        action: 'api',
         method: 'POST',
-        path: '/user/repos',
+        path: 'user/repos',
         body: { name: createRepoMatch[1] },
       },
     };
