@@ -6,75 +6,55 @@
 
 <p align="center">
   <img src="https://img.shields.io/npm/v/zyn-ai?label=npm&color=%23CB3837" alt="NPM Version"/>
-
   <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
-
   <img src="https://img.shields.io/npm/dt/zyn-ai" alt="Downloads"/>
-
   <img src="https://img.shields.io/github/forks/SoyMaycol/Zyn" alt="Forks"/>
 </p>
 
 <p align="center">
-  <b>Local terminal and web agent for multi-provider AI workflows.</b>
+  <b>Agente local para terminal, TUI y web con múltiples proveedores de IA.</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/SoyMaycol/Zyn">Official repository</a>
+  <a href="https://github.com/SoyMaycol/Zyn">Repositorio oficial</a>
 </p>
 
-## What Zyn is
+## Qué es Zyn
 
-Zyn is a local agent for terminal and web workflows. It supports multiple AI providers, persistent sessions, system tools, contextual memory, and collaborative multi-model reasoning. The project is designed to be direct, extensible, and practical for real development work.
+Zyn es un agente local para trabajar desde la terminal o desde una interfaz web. Mantiene sesiones persistentes, puede ejecutar herramientas del sistema, recuerda contexto compacto, exporta transcripciones y permite usar modelos de distintos proveedores configurados en el proyecto.
 
-## Features
+## Requisitos
 
-- Interactive terminal mode with reactive TUI and visual confirmations.
-- Classic CLI mode for direct prompts.
-- Web mode for collaborative usage and cross-model review.
-- Multiple providers and custom model support.
-- Modular skills system (reasoning, debugging, frontend, testing, and more).
-- Persistent sessions, history, and transcript export.
-- Unified Git tool with full API control (`action="api"` and `action="clone"`).
-- Custom persona configuration for response tone (`/persona`).
-- Automatic system detection (reads real OS, not fixed to Termux).
-- Professional image generation with Jimp (social posts, thumbnails, infographics, banners).
-- Extensible architecture for tools and providers.
+- Node.js 18 o superior.
+- npm.
+- Conexión a internet para proveedores remotos.
+- Opcional: Ollama si quieres usar modelos locales.
 
-## Requirements
+## Instalación
 
-- Node.js 18 or newer
-- npm
-- Internet connection for remote providers
-- Optional: Ollama for local models
-
-## Install
-
-### Global install
+### Instalación global
 
 ```bash
-npm install zyn-ai -g
-```
-
-Then run:
-
-```bash
+npm install -g zyn-ai
 zyn
 ```
 
-### Local development
+### Desarrollo local
 
 ```bash
 git clone https://github.com/SoyMaycol/Zyn.git
 cd Zyn
 npm install
+npm start
 ```
 
-## Usage
-
-### Interactive terminal
+## Uso real desde la terminal
 
 ```bash
-zyn
+zyn                 # abre la TUI interactiva
+zyn "pregunta"      # ejecuta un prompt directo en modo CLI clásico
+zyn --new           # crea una sesión nueva antes de abrir Zyn
+zyn --resume ID     # reanuda una sesión guardada por ID
 ```
 
 ### Direct prompt
@@ -100,12 +80,16 @@ npm run web
 node src/web/server.js
 ```
 
-### Help
+## Idioma
 
-Inside Zyn:
+El idioma se guarda en la configuración de la sesión. Los idiomas soportados son `en` y `es`.
 
-```bash
-/help
+```text
+/lang              # muestra el idioma actual
+/lang en           # cambia a inglés
+/lang es           # cambia a español
+/language es       # alias de /lang
+/config lang en    # cambia el idioma desde /config
 ```
 
 ## Language selection
@@ -185,27 +169,24 @@ English is the default unless `ZYN_DEFAULT_LANG`, `ZYN_LANGUAGE`, or the environ
 
 ### Control
 
-| Command | Description |
-|---------|-------------|
-| `/stop` | Stops the current agent turn |
-| `/abort` | Alias of `/stop` |
-| `/reset` | Resets the current context |
-| `/clear` | Alias of `/reset` |
-| `/exit` | Exits Zyn |
-| `/quit` | Alias of `/exit` |
+| Comando | Qué hace |
+|---|---|
+| `/stop` | Detiene el turno actual del agente. |
+| `/abort` | Alias de `/stop`. |
+| `/reset` | Limpia historial, acciones, contador de turnos y memoria compactada. |
+| `/clear` | Alias de `/reset`. |
+| `/exit` | Sale de Zyn. |
+| `/quit` | Alias de `/exit`. |
 
-## Providers
+En la TUI, pulsa `ESC` dos veces durante un turno para detener al agente.
 
-Zyn includes support for:
+## Proveedores y modelos
 
-- Qwen
-- Zen
-- Ollama
-- OpenAI-compatible providers
+Zyn incluye modelos integrados para estos proveedores:
 
 Models can be extended from `data/models.json` or from the internal configuration. If `data/models.json` does not exist, use `data/models.example.json` as the shape reference.
 
-### Example model config
+Puedes extenderlos con `data/models.json`. Si no existe, puedes copiar la estructura de `data/models.example.json`.
 
 ```json
 {
@@ -238,46 +219,22 @@ No hardcoded actions. Choose `method` and `path` freely based on your APIKey per
 
 ## Web collaboration
 
-The web version is designed for cross-review between multiple models. That helps one model correct or contrast what another generated, which is useful when consistency matters.
+El agente puede usar herramientas como lectura/búsqueda de archivos, escritura, edición, comandos del sistema, HTTP, scraping, búsqueda web, generación de imágenes con canvas/Jimp y operaciones Git. La herramienta `read_file` permite leer hasta 5000 líneas por llamada; para archivos grandes conviene usar `startLine` y `endLine`.
 
-## Skills
+## Git desde herramientas
 
-The skills system breaks the agent behavior into focused pieces:
+La herramienta interna `git` permite:
 
-- `core`
-- `reasoning`
-- `methodology`
-- `thinking`
-- `tools`
-- `web-agent`
-- `debugging`
-- `frontend_design`
-- `code-style`
-- `domains`
-- `testing`
+- `action="api"`: ejecutar operaciones HTTP contra la API configurada del proveedor (`method`, `path`, `body`, etc.).
+- `action="clone"`: clonar repositorios usando credenciales guardadas.
 
-Each skill can evolve without breaking the rest of the project.
+Las credenciales se gestionan con los comandos `/git` mostrados arriba.
 
-## Image generation with Jimp
+## Scripts de desarrollo
 
-Zyn includes professional image generation via `create_canvas_image`. Supported templates:
-
-- **Social posts**: Facebook, Twitter/X, Instagram, LinkedIn
-- **YouTube thumbnails**: 1280x720 with ready-to-use layouts
-- **Banners**: GitHub repos, Discord, YouTube
-- **Infographics**: Statistic cards with color coding
-- **Quotes**: Inspirational text layouts
-- **Event posters**: Date, time, venue
-- **Geometric art**: Landscapes and compositions
-- **Profile cards**: Avatar, name, details
-
-Each template includes coordinates, colors, and typography ready to use.
-
-## License
-
-This project includes an attribution-friendly license. Keep the credits, the repository link, and the license notices when redistributing or deriving the project.
-
-## Credits
-
-- Project: [SoyMaycol/Zyn](https://github.com/SoyMaycol/Zyn)
-- Author: Maycol
+```bash
+npm start      # inicia Zyn
+npm run dev    # alias de npm start
+npm run web    # inicia el servidor web
+npm run check  # valida sintaxis de zyn.js y src/cli/runtime.js
+```
