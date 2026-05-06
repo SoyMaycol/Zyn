@@ -55,7 +55,7 @@ function getToolPromptText() {
     '  Lista archivos y carpetas ordenados. Sin path usa directorio actual.',
     '',
     'read_file { path, startLine?, endLine? }',
-    '  Lee contenido con numeros de linea. Max 500 lineas por llamada.',
+    '  Lee contenido con numeros de linea. Max 5000 lineas por llamada.',
     '  Para archivos grandes, usa startLine/endLine para leer por secciones.',
     '',
     'search_text { pattern, path?, glob? }',
