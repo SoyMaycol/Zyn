@@ -1172,15 +1172,11 @@ async function executeToolCall(call, state, ui) {
 
 function parseDirectAction(input) {
   const text = input.trim();
-  if (/^(git|npm|node|pnpm|yarn|npx|python|python3|pip|pip3|cargo|go|rustc|deno|bun)\s+/.test(text)) {
+  if (/^(git|npm|node|pnpm|yarn)\s+/.test(text)) {
     return { tool: 'run_command', args: { command: text } };
   }
 
-  if (/^(?:ls|dir|pwd)(?:\s+[^;&|`$()<>]*)?$/i.test(text)) {
-    return { tool: 'run_command', args: { command: text } };
-  }
-
-  const runMatch = text.match(/^(?:ejecuta|ejecutar|corre|correr|run)\s+(?:(?:el\s+)?comando\s+)?([\s\S]+)$/i);
+  const runMatch = text.match(/^(?:ejecuta|corre)\s+(?:el\s+)?comando\s+([\s\S]+)$/i);
   if (runMatch) {
     return {
       tool: 'run_command',
@@ -1191,12 +1187,11 @@ function parseDirectAction(input) {
   const createRepoMatch = text.match(/^(?:crea|crear|create)\s+(?:un\s+)?(?:repo|repositorio)\s+(?:en\s+)?github\s+([a-z0-9._-]+)$/i);
   if (createRepoMatch) {
     return {
-      tool: 'git',
+      tool: 'git_api_request',
       args: {
         provider: 'github',
-        action: 'api',
         method: 'POST',
-        path: 'user/repos',
+        path: '/user/repos',
         body: { name: createRepoMatch[1] },
       },
     };

@@ -1,17 +1,5 @@
 const { REQUEST_TIMEOUT_MS } = require('../../config');
 
-function appendReplacementSafeDelta(previous, next) {
-  const current = String(previous || '');
-  const incoming = String(next || '');
-  if (!incoming) return { value: current, delta: '' };
-  if (!current) return { value: incoming, delta: incoming };
-  if (incoming.startsWith(current)) {
-    return { value: incoming, delta: incoming.slice(current.length) };
-  }
-  if (current.endsWith(incoming)) return { value: current, delta: '' };
-  return { value: incoming, delta: '\n' + incoming };
-}
-
 const DEFAULT_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
 
 async function streamCompletion(messages, modelId, onChunk, signal, baseUrl = DEFAULT_BASE_URL) {
@@ -64,10 +52,10 @@ async function streamCompletion(messages, modelId, onChunk, signal, baseUrl = DE
           if (onChunk) onChunk(delta, 'answer');
         }
         const reason = parsed?.thinking || parsed?.message?.thinking || '';
-        if (reason) {
-          const next = appendReplacementSafeDelta(thinking, reason);
-          thinking = next.value;
-          if (onChunk && next.delta) onChunk(next.delta, 'thinking');
+        if (reason && reason.length > thinking.length) {
+          const newDelta = reason.slice(thinking.length);
+          thinking = reason;
+          if (onChunk) onChunk(newDelta, 'thinking');
         }
       }
     }

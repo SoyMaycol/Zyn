@@ -9,18 +9,6 @@ const {
 const BASE = 'https://chat.qwen.ai';
 const MODEL = 'qwen3.6-plus';
 
-function appendReplacementSafeDelta(previous, next) {
-  const current = String(previous || '');
-  const incoming = String(next || '');
-  if (!incoming) return { value: current, delta: '' };
-  if (!current) return { value: incoming, delta: incoming };
-  if (incoming.startsWith(current)) {
-    return { value: incoming, delta: incoming.slice(current.length) };
-  }
-  if (current.endsWith(incoming)) return { value: current, delta: '' };
-  return { value: incoming, delta: '\n' + incoming };
-}
-
 const HEADERS = {
   'content-type': 'application/json',
   'accept': 'application/json',
@@ -201,10 +189,10 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
 
         if (delta.phase === 'thinking_summary') {
           const thought = delta.extra?.summary_thought?.content?.[0];
-          if (thought) {
-            const next = appendReplacementSafeDelta(thinking, thought);
-            thinking = next.value;
-            if (onChunk && next.delta) onChunk(next.delta, 'thinking');
+          if (thought && thought.length > thinking.length) {
+            const newDelta = thought.slice(thinking.length);
+            thinking = thought;
+            if (onChunk) onChunk(newDelta, 'thinking');
           }
         } else if (delta.phase === 'answer' && delta.content) {
           answer += delta.content;

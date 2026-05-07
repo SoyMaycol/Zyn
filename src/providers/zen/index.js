@@ -1,17 +1,5 @@
 const { REQUEST_TIMEOUT_MS } = require('../../config');
 
-function appendReplacementSafeDelta(previous, next) {
-  const current = String(previous || '');
-  const incoming = String(next || '');
-  if (!incoming) return { value: current, delta: '' };
-  if (!current) return { value: incoming, delta: incoming };
-  if (incoming.startsWith(current)) {
-    return { value: incoming, delta: incoming.slice(current.length) };
-  }
-  if (current.endsWith(incoming)) return { value: current, delta: '' };
-  return { value: incoming, delta: '\n' + incoming };
-}
-
 const BASE = 'https://opencode.ai/zen/v1';
 
 const HEADERS = {
@@ -73,10 +61,10 @@ async function streamCompletion(messages, modelId, onChunk, signal) {
         if (!delta) continue;
 
         const reasoning = delta.reasoning || delta.reasoning_details?.[0]?.text;
-        if (reasoning) {
-          const next = appendReplacementSafeDelta(thinking, reasoning);
-          thinking = next.value;
-          if (onChunk && next.delta) onChunk(next.delta, 'thinking');
+        if (reasoning && reasoning.length > thinking.length) {
+          const newDelta = reasoning.slice(thinking.length);
+          thinking = reasoning;
+          if (onChunk) onChunk(newDelta, 'thinking');
         }
 
         if (delta.content) {

@@ -1,17 +1,5 @@
 const { REQUEST_TIMEOUT_MS } = require('../../config');
 
-function appendReplacementSafeDelta(previous, next) {
-  const current = String(previous || '');
-  const incoming = String(next || '');
-  if (!incoming) return { value: current, delta: '' };
-  if (!current) return { value: incoming, delta: incoming };
-  if (incoming.startsWith(current)) {
-    return { value: incoming, delta: incoming.slice(current.length) };
-  }
-  if (current.endsWith(incoming)) return { value: current, delta: '' };
-  return { value: incoming, delta: '\n' + incoming };
-}
-
 const DEFAULT_BASE_URL = process.env.OPENAI_COMPAT_BASE_URL || process.env.OPENAI_BASE_URL || '';
 const DEFAULT_API_KEY = process.env.OPENAI_COMPAT_API_KEY || process.env.OPENAI_API_KEY || '';
 
@@ -77,9 +65,11 @@ async function streamCompletion(messages, modelId, onChunk, signal, options = {}
         const delta = parsed?.choices?.[0]?.delta || {};
         if (delta.reasoning) {
           const reason = String(delta.reasoning);
-          const next = appendReplacementSafeDelta(thinking, reason);
-          thinking = next.value;
-          if (onChunk && next.delta) onChunk(next.delta, 'thinking');
+          if (reason.length > thinking.length) {
+            const newDelta = reason.slice(thinking.length);
+            thinking = reason;
+            if (onChunk) onChunk(newDelta, 'thinking');
+          }
         }
         if (delta.content) {
           answer += delta.content;
