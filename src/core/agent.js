@@ -2,6 +2,7 @@ const {
   DEFAULT_MODEL_KEY,
   KEEP_RECENT_MESSAGES,
   MAX_HISTORY_CHARS,
+  MAX_TOOL_STEPS,
   MODELS,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
@@ -487,6 +488,17 @@ async function runAgentTurn(input, state, ui, options = {}) {
     }
 
     step += 1;
+    if (step >= MAX_TOOL_STEPS && MAX_TOOL_STEPS !== Number.POSITIVE_INFINITY) {
+      const limitMsg = state.language === 'es'
+        ? `Se alcanzó el límite de ${MAX_TOOL_STEPS} pasos. No se pueden ejecutar más herramientas en este turno. Responde con un resumen de lo que lograste.`
+        : `Reached the limit of ${MAX_TOOL_STEPS} steps. No more tools can be executed this turn. Reply with a summary of what was accomplished.`;
+      turnMessages.push({ role: 'assistant', content: limitMsg });
+      state.history.push(...turnMessages);
+      await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: limitMsg });
+      ui.logEvent(state, 'warn', state.language === 'es' ? 'Límite de pasos alcanzado' : 'Step limit reached');
+      await persistSessionState(state, ui);
+      return { content: limitMsg, rendered: false };
+    }
   }
 }
 

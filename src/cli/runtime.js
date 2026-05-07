@@ -82,6 +82,9 @@ async function runSinglePrompt(prompt, options = {}) {
   try {
     const loaded = await loadOrCreateSessionState(rl, options);
     state = loaded.state;
+    if (!rl) {
+      state.autoApprove = true;
+    }
     const { resumed } = loaded;
     if (process.stdout.isTTY) {
       await printWelcome();

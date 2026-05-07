@@ -76,9 +76,6 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'No cierres con una conclusion si todavia no has probado nada.',
         'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
         'Para operaciones de Git usa la herramienta git con action="api" o action="clone".',
-        'Usa exclusivamente tools registradas en "Tool use". No inventes nombres de tools ni aliases.',
-        'Mantente acotado y determinista: entradas claras, salidas claras, sin razonamiento creativo salvo que el usuario lo pida.',
-        'Cuando aplique, entrega resumen ejecutivo corto + riesgos/banderas rojas + siguiente accion concreta.',
         'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), documentar (final).',
         'No te limites a una sola tool por costumbre; elige la mejor secuencia técnica para el objetivo.',
         'Si el usuario pide logos, mockups o piezas visuales para un proyecto/frontend, usa create_canvas_image cuando corresponda, junto al resto de tools del flujo.',
@@ -94,12 +91,53 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Do not end with a conclusion if you have not tested anything yet.',
         'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
         'For Git operations use the git tool with action="api" or action="clone".',
-        'Use only tools listed under "Tool use". Never invent tool names or aliases.',
-        'Stay bounded and deterministic: clear inputs, clear outputs, no creative reasoning unless explicitly requested.',
-        'When relevant, provide a short executive summary + obvious red flags + next concrete action.',
         'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), then report.',
         'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
         'If the user asks for logos, mockups, or visual assets for a project/frontend, use create_canvas_image when appropriate together with the rest of the workflow.',
+      ];
+
+  const toolUseEnforcement = language === 'es'
+    ? [
+        '',
+        '# Formato obligatorio de respuesta',
+        'Solo existen DOS formatos de respuesta. NO inventes otros:',
+        '',
+        'FORMATO 1 — Para USAR una herramienta:',
+        '{"type":"tool","tool":"NOMBRE_EXACTO","args":{"clave":"valor"}}',
+        '',
+        'FORMATO 2 — Para responder AL USUARIO:',
+        '{"type":"final","content":"Tu respuesta aqui"}',
+        '',
+        'REGLAS ESTRICTAS:',
+        '- USA EXCLUSIVAMENTE los nombres de herramientas listados en "# Tool use".',
+        '- NO inventes herramientas como "code_interpreter", "python", "bash", "shell", etc.',
+        '- NO uses formatos como <invoke>, function calls, ni tool_use de otros sistemas.',
+        '- Si una herramienta falla, INTENTA con otra herramienta diferente.',
+        '- Si una herramienta falla 2 VECES seguidas, no la repitas. Cambia de estrategia o usa type=final.',
+        '- LIMITE: Maximo 8 herramientas por turno. Despues de 8 pasos, responde con type=final.',
+        '- Si no puedes completar la tarea, responde con type=final explicando honestamente por que.',
+        '- Cada respuesta debe ser UNICAMENTE el JSON. Sin texto antes ni despues.',
+      ]
+    : [
+        '',
+        '# Strict response format',
+        'Only TWO response formats are allowed. Do NOT use others:',
+        '',
+        'FORMAT 1 — To USE a tool:',
+        '{"type":"tool","tool":"EXACT_NAME","args":{"key":"value"}}',
+        '',
+        'FORMAT 2 — To REPLY to user:',
+        '{"type":"final","content":"Your answer here"}',
+        '',
+        'STRICT RULES:',
+        '- ONLY use tool names listed in "# Tool use".',
+        '- Do NOT invent tools like "code_interpreter", "python", "bash", "shell", etc.',
+        '- Do NOT use <invoke>, function call, or tool_use formats from other systems.',
+        '- If a tool fails, TRY a different tool instead.',
+        '- If a tool fails 2 TIMES in a row, do not repeat it. Change strategy or use type=final.',
+        '- LIMIT: Maximum 8 tools per turn. After 8 steps, respond with type=final.',
+        '- If you cannot complete the task, use type=final and honestly explain why.',
+        '- Each response must be ONLY the JSON. No text before or after.',
       ];
 
   const parts = [
@@ -107,6 +145,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     '',
     '# Tool use',
     getToolPromptText(),
+    ...toolUseEnforcement,
     '',
     '# Environment',
     `- Working directory: ${cwd}`,
@@ -220,6 +259,9 @@ function classifyParsed(parsed) {
   if (parsed?.type === 'final') {
     return { type: 'final', content: typeof parsed.content === 'string' ? parsed.content : '' };
   }
+  if (parsed?.tool && KNOWN_TOOLS.has(parsed.tool)) {
+    return { type: 'tool', tool: parsed.tool, args: parsed.args ?? {} };
+  }
   return null;
 }
 
@@ -253,7 +295,7 @@ const LONG_VALUE_ARG = {
 };
 
 function fuzzyExtractTool(text) {
-  const toolMatch = text.match(/"tool"\s*:\s*"(\w+)"/);
+  const toolMatch = text.match(/(?:"|')?tool(?:"|')?\s*:\s*"(\w+)"/i);
   if (!toolMatch) return null;
 
   const tool = toolMatch[1];
@@ -284,32 +326,57 @@ function findStringEnd(text, start) {
   return -1;
 }
 
+function extractArgsContext(text) {
+  const argsMatch = text.match(/(?:"|')?args(?:"|')?\s*:\s*\{/i);
+  if (!argsMatch) return text;
+
+  let depth = 1;
+  let inStr = false;
+  let esc = false;
+  const start = argsMatch.index + argsMatch[0].length - 1;
+
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\' && inStr) { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return text;
+}
+
 function extractLongValueTool(text, tool, longArg) {
+  const context = extractArgsContext(text);
   const args = {};
   const keys = TOOL_ARG_KEYS[tool] || [];
 
   for (const key of keys) {
     if (key === longArg) continue;
-    const m = text.match(new RegExp(`"${key}"\\s*:\\s*"([^"]*?)"`));
+    const m = context.match(new RegExp(`(?:"|')?${key}(?:"|')?\\s*:\\s*"([^"]*?)"`));
     if (m) args[key] = unescapeJsonString(m[1]);
-    const bm = text.match(new RegExp(`"${key}"\\s*:\\s*(true|false|\\d+)`));
+    const bm = context.match(new RegExp(`(?:"|')?${key}(?:"|')?\\s*:\\s*(true|false|\\d+)`));
     if (bm) args[key] = bm[1] === 'true' ? true : bm[1] === 'false' ? false : Number(bm[1]);
   }
 
-  const marker = `"${longArg}"`;
-  const argIdx = text.indexOf(marker);
-  if (argIdx === -1) return null;
+  const longKeyRe = new RegExp(`(?:"|')?${longArg}(?:"|')?\\s*:`);
+  const longMatch = context.match(longKeyRe);
+  if (!longMatch) return null;
 
-  let i = text.indexOf(':', argIdx + marker.length);
-  if (i === -1) return null;
-  i = text.indexOf('"', i);
-  if (i === -1) return null;
-  const valStart = i + 1;
+  const colonPos = context.indexOf(':', longMatch.index + longMatch[0].length - 1);
+  if (colonPos === -1) return null;
+  const quotePos = context.indexOf('"', colonPos);
+  if (quotePos === -1) return null;
+  const valStart = quotePos + 1;
 
-  const valEnd = findStringEnd(text, valStart);
+  const valEnd = findStringEnd(context, valStart);
   if (valEnd === -1 || valEnd <= valStart) return null;
 
-  const value = text.slice(valStart, valEnd);
+  const value = context.slice(valStart, valEnd);
   if (!value.trim()) return null;
 
   args[longArg] = unescapeJsonString(value);
@@ -321,9 +388,9 @@ function extractSimpleArgsTool(text, tool) {
   const keys = TOOL_ARG_KEYS[tool] || [];
 
   for (const key of keys) {
-    const strM = text.match(new RegExp(`"${key}"\\s*:\\s*"([^"]*?)"`));
+    const strM = text.match(new RegExp(`(?:"|')?${key}(?:"|')?\\s*:\\s*"([^"]*?)"`));
     if (strM) { args[key] = unescapeJsonString(strM[1]); continue; }
-    const numM = text.match(new RegExp(`"${key}"\\s*:\\s*(true|false|\\d+)`));
+    const numM = text.match(new RegExp(`(?:"|')?${key}(?:"|')?\\s*:\\s*(true|false|\\d+)`));
     if (numM) {
       const v = numM[1];
       args[key] = v === 'true' ? true : v === 'false' ? false : Number(v);
@@ -364,7 +431,7 @@ function parseAgentResponse(raw) {
   const fuzzy = fuzzyExtractTool(text);
   if (fuzzy) return fuzzy;
 
-  return { type: 'final', content: text || raw.trim() };
+  return { type: 'final', content: text || (raw ? String(raw).trim() : '') };
 }
 
 function sanitizeArgsForModel(parsed) {
@@ -402,11 +469,15 @@ function buildConversationMessages(state, turnMessages, systemPrompt) {
 }
 
 function buildToolResultMessage(parsed, result) {
+  const maxResultChars = 8000;
+  const truncatedResult = typeof result === 'string' && result.length > maxResultChars
+    ? `${result.slice(0, maxResultChars)}\n... [resultado truncado, ${result.length} caracteres totales]`
+    : result;
   return [
     `Herramienta: ${parsed.tool}`,
     `Argumentos: ${JSON.stringify(sanitizeArgsForModel(parsed), null, 2)}`,
     'Resultado:',
-    result,
+    truncatedResult,
     '',
     'Responde con la siguiente accion concreta o con el resultado final.',
   ].join('\n');
@@ -414,9 +485,10 @@ function buildToolResultMessage(parsed, result) {
 
 function buildToolErrorMessage(parsed, errorMessage) {
   return [
-    `La herramienta ${parsed.tool} fallo.`,
+    `La herramienta "${parsed.tool}" NO existe.`,
     `Error: ${errorMessage}`,
-    'Corrige la llamada o explica brevemente el problema si no puedes continuar.',
+    `Las unicas herramientas disponibles son: ${TOOL_DEFINITIONS.map(t => t.name).join(', ')}.`,
+    'Elige UNA de esas herramientas. Usa el formato exacto del nombre. No inventes herramientas.',
   ].join('\n');
 }
 
