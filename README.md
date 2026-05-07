@@ -75,7 +75,7 @@ Inside Zyn:
 /web 0.0.0.0:3000
 ```
 
-Or directly from the project:
+Or directly:
 
 ```bash
 npm run web
@@ -96,8 +96,6 @@ Commands:
 /lang
 /lang en
 /lang es
-/language es
-/config lang en
 ```
 
 ---
