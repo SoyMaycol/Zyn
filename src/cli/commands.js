@@ -4,13 +4,34 @@ const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
-const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, MODELS, listProvidersFromModels } = require('../config');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, MODELS, listProvidersFromModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
 const { listGitSecrets, removeGitSecret, upsertGitSecret } = require('../utils/secretStorage');
+const { clearGmailAuth, getGmailAuthStatus, startGmailOAuthFlow } = require('../utils/gmailAuth');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
 const { printTools } = require('../tools');
+
+
+function getModelWarning(key) {
+  const model = MODELS[key];
+  return model?.provider === 'gemini' ? GEMINI_MODEL_WARNING : '';
+}
+
+function printModelChanged(key) {
+  const warning = getModelWarning(key);
+  console.log(`Model: ${MODELS[key].label}`);
+  if (warning) console.log(`Warning: ${warning}`);
+}
+
+function printLanguageChanged(language) {
+  const normalized = normalizeLanguage(language);
+  const label = languageLabel(normalized);
+  console.log(normalized === 'es'
+    ? `Actualizado al idioma ${label} (${normalized})`
+    : `Updated to language ${label} (${normalized})`);
+}
 
 const SLASH_COMMANDS = [
   { name: 'help', desc: 'full help', descEs: 'ayuda completa' },
@@ -28,6 +49,7 @@ const SLASH_COMMANDS = [
   { name: 'models', desc: 'list models', descEs: 'listar modelos' },
   { name: 'providers', desc: 'list providers', descEs: 'listar proveedores' },
   { name: 'git', desc: 'configure git credentials', descEs: 'configurar credenciales git' },
+  { name: 'gmail', desc: 'connect Gmail account', descEs: 'conectar cuenta Gmail' },
   { name: 'persona', desc: 'set response tone/personality', descEs: 'definir tono/persona' },
   { name: 'lang', desc: 'change language', descEs: 'cambiar idioma' },
   { name: 'language', desc: 'change language', descEs: 'cambiar idioma' },
@@ -121,6 +143,9 @@ function printHelp(state = {}) {
   console.log(`    ${b('/git set <provider> <token> [user] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:X]')}`);
   console.log(`    ${b('/git list')}                    List configured git profiles`);
   console.log(`    ${b('/git remove <provider> [name]')} Remove git credentials`);
+  console.log(`    ${b('/gmail connect')}               Connect Gmail with Google OAuth + PKCE`);
+  console.log(`    ${b('/gmail status')}                Show Gmail connection status`);
+  console.log(`    ${b('/gmail disconnect')}            Remove saved Gmail tokens`);
   console.log(`    ${b('/cwd')}                         Show current working directory`);
   console.log(`    ${b('/cwd <path>')}                  Change working directory`);
   console.log('');
@@ -261,7 +286,7 @@ async function handleLocalCommand(input, state, deps) {
 
     state.language = nextLanguage;
     await saveState(state);
-    console.log(`${t(state.language, 'langChanged')}: ${languageLabel(nextLanguage)} (${nextLanguage})`);
+    printLanguageChanged(nextLanguage);
     return true;
   }
 
@@ -401,7 +426,7 @@ async function handleLocalCommand(input, state, deps) {
       }
       state.language = nextLanguage;
       await saveState(state);
-      console.log(`${t(state.language, 'langChanged')}: ${languageLabel(nextLanguage)} (${nextLanguage})`);
+      printLanguageChanged(nextLanguage);
       return true;
     }
 
@@ -416,9 +441,9 @@ async function handleLocalCommand(input, state, deps) {
       await saveState(state);
       await appendTranscriptEntry(state.sessionId, {
         type: 'system',
-        content: `Model switched to: ${MODELS[key].label}`,
+        content: `Model switched to: ${MODELS[key].label}${getModelWarning(key) ? `\nWarning: ${getModelWarning(key)}` : ''}`,
       });
-      console.log(`Model: ${MODELS[key].label}`);
+      printModelChanged(key);
       return true;
     }
 
@@ -479,9 +504,9 @@ async function handleLocalCommand(input, state, deps) {
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',
-      content: `Model switched to: ${MODELS[key].label}`,
+      content: `Model switched to: ${MODELS[key].label}${getModelWarning(key) ? `\nWarning: ${getModelWarning(key)}` : ''}`,
     });
-    console.log(`Model: ${MODELS[key].label}`);
+    printModelChanged(key);
     return true;
   }
 
@@ -539,6 +564,46 @@ async function handleLocalCommand(input, state, deps) {
       console.log('Group mode disabled.');
     }
     return true;
+  }
+
+
+  if (commandName === 'gmail') {
+    const [subRaw, ...rest] = String(args || 'status').trim().split(/\s+/).filter(Boolean);
+    const sub = (subRaw || 'status').toLowerCase();
+
+    if (sub === 'connect' || sub === 'login') {
+      const portArg = rest.find(part => /^\d{2,5}$/.test(part));
+      const flow = await startGmailOAuthFlow({ port: portArg ? Number(portArg) : 0 });
+      console.log(flow.authUrl);
+      console.log('Abre el link, inicia sesión y vuelve aquí.');
+      flow.done
+        .then(auth => {
+          const email = auth?.profile?.email || 'cuenta conectada';
+          console.error(`Gmail conectado: ${email}`);
+        })
+        .catch(err => console.error(`Gmail OAuth fallo: ${err.message}`));
+      return true;
+    }
+
+    if (sub === 'status') {
+      const status = await getGmailAuthStatus();
+      if (!status.connected) {
+        console.log('Gmail: no conectado. Usa /gmail connect.');
+      } else {
+        console.log(`Gmail: conectado${status.email ? ` (${status.email})` : ''}`);
+        console.log(`Scopes: ${status.scopes.join(', ') || '-'}`);
+        console.log(`Expira: ${status.expiryDate ? new Date(status.expiryDate).toISOString() : '-'}`);
+      }
+      return true;
+    }
+
+    if (sub === 'disconnect' || sub === 'logout' || sub === 'remove') {
+      await clearGmailAuth();
+      console.log('Gmail desconectado.');
+      return true;
+    }
+
+    throw new Error('Use /gmail connect|status|disconnect');
   }
 
   if (commandName === 'web') {

@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const store = require('./store');
 const githubApi = require('./githubApi');
 const { runWebAgent } = require('./webAgent');
-const { MODELS, DEFAULT_MODEL_KEY, listProvidersFromModels, DEFAULT_LANGUAGE } = require('../config');
+const { MODELS, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, listProvidersFromModels, DEFAULT_LANGUAGE } = require('../config');
 
 const app = express();
 const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '127.0.0.1';
@@ -225,11 +225,18 @@ app.put('/api/chats/:id/settings', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'Chat not found' });
   }
   const { activeModel, concuerdo, language } = req.body;
-  if (activeModel !== undefined) chat.activeModel = activeModel;
+  let warning = '';
+  if (activeModel !== undefined) {
+    if (!MODELS[activeModel]) {
+      return res.status(400).json({ error: 'Invalid model' });
+    }
+    chat.activeModel = activeModel;
+    if (MODELS[activeModel]?.provider === 'gemini') warning = GEMINI_MODEL_WARNING;
+  }
   if (concuerdo !== undefined) chat.concuerdo = Boolean(concuerdo);
   if (language !== undefined) chat.language = String(language || DEFAULT_LANGUAGE).toLowerCase().startsWith('es') ? 'es' : 'en';
   store.saveChat(chat);
-  res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo, language: chat.language || DEFAULT_LANGUAGE });
+  res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo, language: chat.language || DEFAULT_LANGUAGE, warning });
 });
 
 app.delete('/api/chats/:id', requireAuth, (req, res) => {

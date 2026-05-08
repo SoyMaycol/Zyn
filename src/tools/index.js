@@ -18,6 +18,7 @@ const {
   upsertGitSecret,
 } = require('../utils/secretStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
+const { getGmailAuthStatus, gmailApiRequest } = require('../utils/gmailAuth');
 const {
   formatLineRange,
   shortText,
@@ -42,6 +43,8 @@ const TOOL_DEFINITIONS = [
   { name: 'scrape_site', usage: '{ url, selectors, limit?, headers? }' },
   { name: 'web_search', usage: '{ query, lang?, limit? }' },
   { name: 'web_read', usage: '{ url }' },
+  { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
+  { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
@@ -133,6 +136,19 @@ function getToolPromptText() {
     '  Descarga una pagina web y la convierte a texto legible (sin HTML).',
     '  Ideal para leer articulos, documentacion o contenido de paginas.',
     '  Ejemplo: {"type":"tool","tool":"web_read","args":{"url":"https://docs.example.com/guide"}}',
+    '',
+    'upload_file { path, field?, name?, type? }',
+    '  Sube un archivo local a https://cdn.soymaycol.icu/upload por POST multipart/form-data y devuelve el link directo.',
+    '  Limite estricto: maximo 5 MB. field por defecto: "file". name/type son opcionales.',
+    '  Usa esta tool cuando necesites entregar un archivo como enlace directo al agente o al usuario.',
+    '  Ejemplo: {"type":"tool","tool":"upload_file","args":{"path":"dist/116.zip"}}',
+    '',
+    'gmail { action, query?, maxResults?, id?, to?, subject?, body? }',
+    '  Usa Gmail conectado con /gmail connect. Acciones: status, list, read, send.',
+    '  list: query usa la sintaxis de busqueda de Gmail; maxResults default 10, max 20.',
+    '  read: requiere id de mensaje. send: requiere to, subject y body; pide confirmacion antes de enviar.',
+    '  Ejemplo listar: {"type":"tool","tool":"gmail","args":{"action":"list","query":"is:unread newer_than:7d","maxResults":5}}',
+    '  Ejemplo leer: {"type":"tool","tool":"gmail","args":{"action":"read","id":"MESSAGE_ID"}}',
     '',
     '## Imagen profesional con Jimp',
     '',
@@ -256,6 +272,10 @@ function describeToolCall(call) {
       const readUrl = cleanUrl(call.args.url || '');
       return `Leyendo ${shortText(readUrl, 60)}`;
     }
+    case 'upload_file':
+      return `Subiendo ${call.args.path}`;
+    case 'gmail':
+      return `Gmail ${call.args.action || 'status'}`;
     case 'create_canvas_image':
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     case 'git':
@@ -903,6 +923,210 @@ async function fetchHttpTool(args, state, paint) {
   return truncateText(`Status: ${res.status}\nContent-Type: ${res.headers.get('content-type') || '-'}\n\n${text}`);
 }
 
+
+function guessContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.zip': 'application/zip',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.json': 'application/json',
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
+    '.csv': 'text/csv',
+  };
+  return types[ext] || 'application/octet-stream';
+}
+
+async function uploadFileTool(args, state, paint) {
+  if (!args.path || typeof args.path !== 'string') throw new Error('upload_file requiere path');
+  const filePath = resolveInputPath(args.path, state.cwd);
+  const stats = await fsp.stat(filePath).catch(() => null);
+  if (!stats?.isFile()) throw new Error(`Archivo no encontrado: ${filePath}`);
+
+  const maxBytes = 5 * 1024 * 1024;
+  if (stats.size > maxBytes) {
+    throw new Error(`El archivo supera el limite de 5 MB (${stats.size} bytes)`);
+  }
+
+  const endpoint = 'https://cdn.soymaycol.icu/upload';
+  const displayName = args.name || path.basename(filePath);
+  const allowed = await askConfirmation(state.rl, 'Subir archivo a CDN', `${displayName} (${stats.size} bytes) -> ${endpoint}`, paint, state);
+  if (!allowed) return 'Subida cancelada.';
+
+  const buffer = await fsp.readFile(filePath);
+  const type = args.type || guessContentType(filePath);
+  const form = new FormData();
+  form.append(String(args.field || 'file'), new Blob([buffer], { type }), displayName);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await res.text();
+  let payload = null;
+  try { payload = JSON.parse(text); } catch {}
+  if (!res.ok) {
+    throw new Error(`Upload fallo (${res.status}): ${shortText(text, 500)}`);
+  }
+  if (!payload || typeof payload.link !== 'string' || !payload.link.trim()) {
+    throw new Error(`Respuesta de upload invalida: ${shortText(text, 500)}`);
+  }
+
+  return [
+    'Archivo subido correctamente.',
+    `Nombre: ${payload.name || displayName}`,
+    `Tamano: ${payload.size ?? stats.size}`,
+    `Tipo: ${payload.type || type}`,
+    `Link directo: ${payload.link}`,
+    '',
+    JSON.stringify(payload, null, 2),
+  ].join('\n');
+}
+
+
+function decodeBase64UrlText(value = '') {
+  if (!value) return '';
+  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function encodeBase64UrlText(value = '') {
+  return Buffer.from(String(value), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function getHeader(headers = [], name) {
+  const found = headers.find(header => String(header.name || '').toLowerCase() === String(name).toLowerCase());
+  return found?.value || '';
+}
+
+function collectMessageText(payload, out = []) {
+  if (!payload) return out;
+  if (payload.mimeType === 'text/plain' && payload.body?.data) {
+    out.push(decodeBase64UrlText(payload.body.data));
+  }
+  for (const part of payload.parts || []) collectMessageText(part, out);
+  if (out.length === 0 && payload.body?.data) out.push(decodeBase64UrlText(payload.body.data));
+  return out;
+}
+
+function formatMessageSummary(message) {
+  const headers = message.payload?.headers || [];
+  return [
+    `ID: ${message.id}`,
+    `From: ${getHeader(headers, 'From') || '-'}`,
+    `To: ${getHeader(headers, 'To') || '-'}`,
+    `Subject: ${getHeader(headers, 'Subject') || '-'}`,
+    `Date: ${getHeader(headers, 'Date') || '-'}`,
+    `Snippet: ${message.snippet || '-'}`,
+  ].join('\n');
+}
+
+function encodeSubject(subject) {
+  const text = String(subject || '');
+  return /^[\x00-\x7F]*$/.test(text)
+    ? text
+    : `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
+}
+
+function buildRawEmail({ to, subject, body }) {
+  return encodeBase64UrlText([
+    `To: ${String(to || '').trim()}`,
+    `Subject: ${encodeSubject(subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    String(body || ''),
+  ].join('\r\n'));
+}
+
+async function gmailTool(args = {}, state, paint) {
+  const action = String(args.action || 'status').toLowerCase().trim();
+
+  if (action === 'status') {
+    const status = await getGmailAuthStatus();
+    if (!status.connected) return 'Gmail no conectado. Usa /gmail connect para iniciar sesion.';
+    return [
+      'Gmail conectado.',
+      `Cuenta: ${status.email || 'desconocida'}`,
+      `Scopes: ${status.scopes.join(', ') || '-'}`,
+      `Expira: ${status.expiryDate ? new Date(status.expiryDate).toISOString() : '-'}`,
+    ].join('\n');
+  }
+
+  if (action === 'list') {
+    const maxResults = Math.max(1, Math.min(20, Number(args.maxResults || 10)));
+    const data = await gmailApiRequest('GET', '/users/me/messages', {
+      query: {
+        q: args.query || '',
+        maxResults,
+      },
+    });
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    if (messages.length === 0) return 'No se encontraron correos.';
+    const details = [];
+    for (const message of messages) {
+      const full = await gmailApiRequest('GET', `/users/me/messages/${encodeURIComponent(message.id)}`, {
+        query: { format: 'metadata' },
+      });
+      details.push(formatMessageSummary(full));
+    }
+    return [`Correos encontrados: ${details.length}`, '', details.join('\n\n---\n\n')].join('\n');
+  }
+
+  if (action === 'read') {
+    if (!args.id || typeof args.id !== 'string') throw new Error('gmail read requiere id');
+    const message = await gmailApiRequest('GET', `/users/me/messages/${encodeURIComponent(args.id)}`, {
+      query: { format: 'full' },
+    });
+    const text = collectMessageText(message.payload).join('\n').trim();
+    return [
+      formatMessageSummary(message),
+      '',
+      'Contenido:',
+      truncateText(text || message.snippet || '(sin texto legible)', 8000),
+    ].join('\n');
+  }
+
+  if (action === 'send') {
+    if (!args.to || !args.subject || !args.body) throw new Error('gmail send requiere to, subject y body');
+    const allowed = await askConfirmation(
+      state.rl,
+      'Enviar correo por Gmail',
+      `Para: ${args.to}\nAsunto: ${args.subject}\n${shortText(String(args.body), 300)}`,
+      paint,
+      state,
+    );
+    if (!allowed) return 'Envio de Gmail cancelado.';
+    const data = await gmailApiRequest('POST', '/users/me/messages/send', {
+      body: { raw: buildRawEmail(args) },
+    });
+    return [`Correo enviado.`, `ID: ${data.id || '-'}`, `Thread: ${data.threadId || '-'}`].join('\n');
+  }
+
+  throw new Error('gmail action invalida. Usa status, list, read o send.');
+}
+
 async function scrapeSiteTool(args, state, paint) {
   if (!args.url || typeof args.url !== 'string') throw new Error('scrape_site requiere url');
   if (!args.selectors || typeof args.selectors !== 'object') throw new Error('scrape_site requiere selectors objeto');
@@ -1154,6 +1378,12 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'web_read':
       result = await webReadTool(call.args, state, ui.paint);
+      break;
+    case 'upload_file':
+      result = await uploadFileTool(call.args, state, ui.paint);
+      break;
+    case 'gmail':
+      result = await gmailTool(call.args, state, ui.paint);
       break;
     case 'create_canvas_image':
       result = await createCanvasImageTool(call.args, state, ui.paint);

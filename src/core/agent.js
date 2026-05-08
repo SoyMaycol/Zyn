@@ -4,6 +4,8 @@ const {
   MAX_HISTORY_CHARS,
   MAX_TOOL_STEPS,
   MODELS,
+  PROVIDER_TIMEOUT_MAX_ATTEMPTS,
+  PROVIDER_TIMEOUT_RETRY_DELAY_MS,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
 const { chat, chatSilent } = require('../providers/scraperClient');
@@ -25,6 +27,29 @@ const { normalizeText, shortText } = require('../utils/text');
 const { detectLanguage } = require('../i18n');
 
 
+
+function waitForRetry(ms, signal) {
+  if (!ms || ms <= 0) return Promise.resolve();
+  if (signal?.aborted) return Promise.reject(new Error('aborted'));
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(cleanupAndResolve, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      cleanup();
+      reject(new Error('aborted'));
+    };
+    function cleanup() {
+      if (signal) signal.removeEventListener('abort', onAbort);
+    }
+    function cleanupAndResolve() {
+      cleanup();
+      resolve();
+    }
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function looksLikeActionRequest(text) {
   const sample = normalizeText(String(text || '')).toLowerCase();
   if (!sample) return false;
@@ -38,7 +63,7 @@ async function requestModel(messages, state, ui, options = {}) {
     signal,
   } = options;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS; attempt += 1) {
     if (signal?.aborted) {
       throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
     }
@@ -96,8 +121,21 @@ async function requestModel(messages, state, ui, options = {}) {
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
-      if (aborted && timedOut && !externalAbort && attempt === 0) {
-        ui.logEvent(state, 'warn', state.language === 'es' ? 'Proveedor lento, reenviando mensaje' : 'Provider stalled, resending message');
+      if (aborted && timedOut && !externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) {
+        const waitMinutes = Math.round(PROVIDER_TIMEOUT_RETRY_DELAY_MS / 60000);
+        ui.logEvent(
+          state,
+          'warn',
+          state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout',
+          state.language === 'es'
+            ? `Esperando ${waitMinutes} minutos antes de reenviar (${attempt + 2}/${PROVIDER_TIMEOUT_MAX_ATTEMPTS})`
+            : `Waiting ${waitMinutes} minutes before resending (${attempt + 2}/${PROVIDER_TIMEOUT_MAX_ATTEMPTS})`,
+        );
+        try {
+          await waitForRetry(PROVIDER_TIMEOUT_RETRY_DELAY_MS, signal);
+        } catch {
+          throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
+        }
         continue;
       }
       if (aborted) {
@@ -106,7 +144,7 @@ async function requestModel(messages, state, ui, options = {}) {
         }
         throw new Error(state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout exceeded');
       }
-      if (!externalAbort && attempt === 0) {
+      if (!externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) {
         ui.logEvent(state, 'warn', state.language === 'es' ? 'Error transitorio, reenviando contexto y skills' : 'Transient error, resending context and skills');
         continue;
       }
@@ -131,10 +169,13 @@ async function summarizeMessages(state, ui, messages) {
     {
       role: 'system',
       content: [
-        state.language === 'es' ? 'Resume la conversacion para memoria persistente.' : 'Summarize the conversation for persistent memory.',
-        state.language === 'es' ? 'Escribe en espanol.' : 'Write in English.',
-        state.language === 'es' ? 'Incluye objetivos, decisiones, archivos, comandos, restricciones y pendientes importantes.' : 'Include goals, decisions, files, commands, constraints, and important pending items.',
-        'Max 12 lines.',
+        state.language === 'es' ? 'Compacta la conversacion para memoria persistente del agente.' : 'Compact the conversation for the agent persistent memory.',
+        state.language === 'es' ? 'Escribe en español y conserva los idiomas/preferencias indicados por el usuario.' : 'Write in English and preserve any languages/preferences requested by the user.',
+        state.language === 'es'
+          ? 'Resume sin perder detalles críticos: objetivo del proyecto, progreso exacto, decisiones, archivos/rutas tocadas, comandos ejecutados, resultados, errores, credenciales/configuraciones no secretas, restricciones, próximos pasos y preferencias de idioma.'
+          : 'Summarize without losing critical details: project goal, exact progress, decisions, touched files/paths, executed commands, results, errors, non-secret credentials/configuration, constraints, next steps, and language preferences.',
+        state.language === 'es' ? 'No inventes; si algo está pendiente márcalo como Pendiente. Mantén nombres propios, rutas, APIs, límites y valores numéricos intactos.' : 'Do not invent; if something is pending mark it as Pending. Keep proper nouns, paths, APIs, limits, and numeric values intact.',
+        'Format: compact bullet list with sections Contexto/Progreso/Archivos/Comandos/Pendiente/Preferencias. Max 20 lines.',
       ].join('\n'),
     },
     {
@@ -205,9 +246,9 @@ async function answerFromToolResult(input, call, result, state, ui) {
 
   const output = await requestModel(messages, state, ui, {
     label: state.language === 'es' ? 'Resumiendo resultado' : 'Summarizing result',
-    streamOutput: true,
   });
-  return normalizeText(output);
+  const parsed = parseAgentResponse(output);
+  return parsed.type === 'final' ? normalizeText(parsed.content) : normalizeText(output);
 }
 
 async function runAgentTurn(input, state, ui, options = {}) {
@@ -241,7 +282,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     });
     ui.logEvent(state, 'ok', state.language === 'es' ? 'Respuesta lista' : 'Response ready');
     await persistSessionState(state, ui);
-    return { content: finalAnswer, rendered: true };
+    return { content: finalAnswer, rendered: false };
   }
 
   const turnMessages = [{ role: 'user', content: input }];
