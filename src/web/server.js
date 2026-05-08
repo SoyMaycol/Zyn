@@ -114,7 +114,6 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
     hasGithub: !!user.githubToken,
     githubEmail: user.githubEmail || '',
     githubUsername: user.githubUsername || '',
-    zynSettings: store.getUserSettings(req.session.userId),
   });
 });
 
@@ -226,23 +225,10 @@ app.put('/api/chats/:id/settings', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'Chat not found' });
   }
   const { activeModel, concuerdo, language } = req.body;
-  const userSettings = {};
-  if (activeModel !== undefined) {
-    chat.activeModel = activeModel;
-    userSettings.activeModel = activeModel;
-  }
-  if (concuerdo !== undefined) {
-    chat.concuerdo = Boolean(concuerdo);
-    userSettings.concuerdo = chat.concuerdo;
-  }
-  if (language !== undefined) {
-    chat.language = String(language || DEFAULT_LANGUAGE).toLowerCase().startsWith('es') ? 'es' : 'en';
-    userSettings.language = chat.language;
-  }
+  if (activeModel !== undefined) chat.activeModel = activeModel;
+  if (concuerdo !== undefined) chat.concuerdo = Boolean(concuerdo);
+  if (language !== undefined) chat.language = String(language || DEFAULT_LANGUAGE).toLowerCase().startsWith('es') ? 'es' : 'en';
   store.saveChat(chat);
-  if (Object.keys(userSettings).length > 0) {
-    store.updateUserSettings(req.session.userId, userSettings);
-  }
   res.json({ success: true, activeModel: chat.activeModel, concuerdo: chat.concuerdo, language: chat.language || DEFAULT_LANGUAGE });
 });
 

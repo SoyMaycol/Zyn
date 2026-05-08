@@ -1,13 +1,7 @@
 const { chat, chatSilent } = require('../providers/scraperClient');
 const { parseAgentResponse } = require('../core/prompts');
 const { buildSkillsPrompt } = require('../core/skills');
-const {
-  DEFAULT_MODEL_KEY,
-  MODELS,
-  PROVIDER_TIMEOUT_RETRIES,
-  PROVIDER_TIMEOUT_RETRY_DELAY_MS,
-  REQUEST_TIMEOUT_MS,
-} = require('../config');
+const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 const { normalizeLanguage, languageLabel } = require('../i18n');
 const githubApi = require('./githubApi');
 const store = require('./store');
@@ -15,83 +9,14 @@ const store = require('./store');
 const MAX_STEPS = Number.POSITIVE_INFINITY;
 const CONCUERDO_TIMEOUT = 30000;
 const BUFFER_CHECK = 72;
-const CDN_UPLOAD_URL = 'https://cdn.soymaycol.icu/upload';
-const CDN_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 const WEB_SKILLS = ['core', 'tools', 'web-agent', 'code-style', 'reasoning', 'methodology'];
-const TOOL_HINT_RE = /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read|upload_file)"/i;
+const TOOL_HINT_RE = /"tool"\s*:\s*"(list_dir|read_file|search_text|glob_files|file_info|write_file|append_file|replace_in_file|run_command|make_dir|fetch_url|web_search|web_read)"/i;
 const XML_TOOL_RE = /<invoke\s+name=|<\w+:tool_call>/i;
 const INTERNAL_PLAN_START_RE = /^(el usuario|the user|necesito|i need|primero|first|voy a|i will|debo|i should|tengo que|let me|para hacer esto|to do this|mi siguiente paso|my next step|entendido|okay|ok|perfecto|now|ahora)\b/i;
 const INTERNAL_PLAN_ACTION_RE = /(read_file|write_file|leer el archivo|read the file|leer primero|read it first|editar el archivo|edit the file|modificar el archivo|hacer el cambio|quitar el comentario|analizar|analyze|inspeccionar|inspect|usar la herramienta|use the tool|ver el archivo|continuar|continue|resolver|fix the issue|importar|getname|corregir)/i;
 const DEFERAL_RE = /(¿(quieres|necesitas|prefieres).*(vea|revise|aplique|cambie|lea)|si (quieres|necesitas) puedo|puedo ver el codigo exacto|puedo revisar el archivo exacto|voy a leer (ambos|estos|esos) archivos|do you want me to|would you like me to|i can check the exact file|let me read the file first)/i;
 const PENDING_EDIT_RE = /(perfecto, ya tengo todo el codigo|now i can see the full code|veo el problema|i see the problem|el problema esta en|the problem is in|esto muestra|this shows|voy a (agregar|cambiar|modificar|reemplazar|quitar|usar|incorporar|corregir|escribir|aplicar)|i will (add|change|modify|replace|remove|use|fix|write|apply)|necesito (cambiar|modificar|agregar|quitar|usar|corregir|ver|leer)|i need to (change|modify|add|remove|use|fix|see|read)|aqui esta el archivo corregido|here is the corrected file|lo que necesito cambiar|debo cambiar|tengo que cambiar|voy a aplicar el fix|i'm going to apply the fix|voy a incorporar|getname del resolver|corregir la logica|ya tengo|ahora veo|ah, ?getname|ah ya|necesito ver|voy a leer|voy a escribir|archivo corregido|el fix es|la solucion es)/i;
 const USER_WRITE_INTENT_RE = /(agrega|añade|anade|pon(?:er|e|lo|la)?|importa|corrige|arregla|edita|cambia|quita|elimina|reemplaza|modifica|actualiza|sube|commit|aplica|termina|soluciona|hazlo|fix|add|change|edit|replace|import|modify|update|remove|apply)/i;
-
-function sleep(ms, isAborted) {
-  if (ms <= 0 || isAborted?.()) return Promise.resolve();
-  return new Promise(resolve => {
-    const start = Date.now();
-    const tick = () => {
-      if (isAborted?.() || Date.now() - start >= ms) {
-        resolve();
-        return;
-      }
-      setTimeout(tick, Math.min(1000, ms - (Date.now() - start)));
-    };
-    tick();
-  });
-}
-
-async function chatWithTimeoutRetry({ messages, modelKey, onChunk, onEvent, isAborted, language = 'en' }) {
-  const maxAttempts = Math.max(1, PROVIDER_TIMEOUT_RETRIES + 1);
-
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (isAborted?.()) return { answer: '' };
-
-    const controller = new AbortController();
-    let timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    const refreshTimeout = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    };
-
-    try {
-      const result = await chat({
-        messages,
-        modelKey,
-        signal: controller.signal,
-        onChunk: (delta, phase) => {
-          refreshTimeout();
-          onChunk?.(delta, phase);
-        },
-      });
-      clearTimeout(timeout);
-      return result;
-    } catch (err) {
-      clearTimeout(timeout);
-      const timedOut = controller.signal.aborted || err?.name === 'AbortError';
-      if (timedOut && !isAborted?.() && attempt < maxAttempts - 1) {
-        const waitMinutes = Math.round(PROVIDER_TIMEOUT_RETRY_DELAY_MS / 60000);
-        onEvent?.({
-          type: 'status',
-          content: language === 'es'
-            ? `Tiempo agotado del proveedor. Esperando ${waitMinutes} minutos antes de reenviar (${attempt + 1}/${PROVIDER_TIMEOUT_RETRIES})...`
-            : `Provider timeout. Waiting ${waitMinutes} minutes before resending (${attempt + 1}/${PROVIDER_TIMEOUT_RETRIES})...`,
-        });
-        await sleep(PROVIDER_TIMEOUT_RETRY_DELAY_MS, isAborted);
-        if (isAborted?.()) return { answer: '' };
-        onEvent?.({
-          type: 'status',
-          content: language === 'es' ? 'Reenviando mensaje al proveedor...' : 'Resending message to provider...',
-        });
-        continue;
-      }
-      throw err;
-    }
-  }
-
-  throw new Error(language === 'es' ? 'Tiempo agotado del proveedor tras 3 reintentos' : 'Provider timeout after 3 retries');
-}
-
 const TEXT_FILE_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.md', '.txt',
   '.html', '.css', '.scss', '.sass', '.less', '.yml', '.yaml', '.xml',
@@ -123,15 +48,8 @@ function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
     '- Do not ask "do you want" questions when you can investigate yourself.',
     '- Do not narrate plans instead of acting.',
     '- Use tools immediately when a file must be read, changed, or verified.',
-    '- Learn from each tool result and switch strategy instead of repeating an unhelpful tool.',
-    '- Preserve useful procedural facts: inspected files, commands, errors, selected language, decisions, and pending work.',
     '- Do not give a conclusion unless you have actually used a tool or verified the result.',
     '- If you have not tested anything, say that clearly and keep investigating.',
-    '',
-    '# Tools',
-    'Respond with JSON only when using a tool: {"type":"tool","tool":"tool_name","args":{}}',
-    'Available tools: read_file, write_file, list_dir, search_text, glob_files, file_info, upload_file.',
-    'upload_file { path }: uploads a repository file to https://cdn.soymaycol.icu/upload as multipart/form-data field "file" and returns the direct CDN link. Strict max size: 5 MB.',
     '',
     'Repository files:',
     treeLines,
@@ -554,79 +472,6 @@ async function readRepoFile(ctx, path) {
   return ctx.fileCache.get(path);
 }
 
-function guessMimeType(filePath) {
-  const ext = String(filePath || '').toLowerCase().match(/\.[^.\/]+$/)?.[0] || '';
-  const types = {
-    '.txt': 'text/plain',
-    '.md': 'text/markdown',
-    '.json': 'application/json',
-    '.js': 'text/javascript',
-    '.css': 'text/css',
-    '.html': 'text/html',
-    '.zip': 'application/zip',
-    '.pdf': 'application/pdf',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-  };
-  return types[ext] || 'application/octet-stream';
-}
-
-async function uploadRepoFileToCdn(ctx, args = {}) {
-  const repoPath = normalizeRepoPath(args.path || '');
-  if (!repoPath) return 'Error: upload_file requiere path.';
-
-  const info = ctx.fileTree.find(f => f.path === repoPath);
-  if (!info) return 'Error: file not found en el repo.';
-  if (info.size > CDN_UPLOAD_MAX_BYTES) {
-    return `Error: el archivo supera el limite de 5 MB (${info.size} bytes).`;
-  }
-
-  const file = await githubApi.readFileBuffer(ctx.token, ctx.owner, ctx.repo, repoPath);
-  if (file.buffer.length > CDN_UPLOAD_MAX_BYTES) {
-    return `Error: el archivo supera el limite de 5 MB (${file.buffer.length} bytes).`;
-  }
-
-  const form = new FormData();
-  const mimeType = args.type || guessMimeType(repoPath);
-  form.append('file', new Blob([file.buffer], { type: mimeType }), file.name || repoPath.split('/').pop());
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(args.timeoutMs || 30000)));
-  let res;
-  try {
-    res = await fetch(CDN_UPLOAD_URL, { method: 'POST', body: form, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const text = await res.text();
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    return `Error: respuesta invalida del CDN (${res.status}): ${text.slice(0, 200)}`;
-  }
-
-  if (!res.ok) return `Error: CDN respondio ${res.status}: ${text.slice(0, 200)}`;
-  if (!payload?.link || typeof payload.link !== 'string') {
-    return `Error: el CDN no devolvio un link directo valido: ${text.slice(0, 200)}`;
-  }
-
-  return [
-    'Archivo subido correctamente al CDN.',
-    `Repositorio: ${ctx.owner}/${ctx.repo}`,
-    `Archivo: ${repoPath}`,
-    `Nombre: ${payload.name || file.name || repoPath.split('/').pop()}`,
-    `Tamano: ${payload.size ?? file.buffer.length} bytes`,
-    `Tipo: ${payload.type || mimeType}`,
-    `Link directo: ${payload.link}`,
-  ].join('\n');
-}
-
 async function applyToolCall(parsed, answer, toolCtx, loopState, modelMessages) {
   if (parsed.tool === 'read_file' && parsed.args?.path) {
     loopState.lastReadPath = parsed.args.path;
@@ -741,16 +586,6 @@ async function executeTool(tool, args, ctx) {
         ctx.onEvent({ type: 'tool_done', content: args.path });
         return `path: ${info.path}\nsize: ${info.size} bytes`;
       }
-      case 'upload_file': {
-        const result = await uploadRepoFileToCdn(ctx, args);
-        if (result.startsWith('Error:')) {
-          ctx.onEvent({ type: 'tool_error', content: result });
-        } else {
-          const link = result.match(/Link directo: (\S+)/)?.[1] || args.path;
-          ctx.onEvent({ type: 'tool_done', content: `Link directo: ${link}` });
-        }
-        return result;
-      }
       default: {
         const msg = `Herramienta "${tool}" no disponible en modo web.`;
         ctx.onEvent({ type: 'tool_done', content: msg });
@@ -820,12 +655,9 @@ async function runConcuerdo(primaryContent, primaryKey, modelMessages, onEvent, 
   ];
   try {
     let synthAnswer = '';
-    await chatWithTimeoutRetry({
+    await chat({
       messages: synthMessages,
       modelKey: primaryKey,
-      onEvent,
-      isAborted,
-      language,
       onChunk: (delta, phase) => {
         if (isAborted?.()) return;
         if (phase !== 'thinking') {
@@ -844,7 +676,6 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const { repoOwner, repoName, messages: history } = chatData;
   const modelKey = chatData.activeModel || DEFAULT_MODEL_KEY;
   const group = Boolean(chatData.concuerdo || chatData.group);
-  const language = normalizeLanguage(chatData.language || 'en');
 
   const modelLabel = MODELS[modelKey]?.label || modelKey;
   onEvent({ type: 'model_info', model: modelKey, label: modelLabel, group });
@@ -861,7 +692,7 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
   const systemPrompt = buildSystemPrompt(repoOwner, repoName, fileTree, {
     group,
     activeModel: modelKey,
-    language,
+    language: chatData.language || 'en',
   });
 
   const modelMessages = [
@@ -910,12 +741,9 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     let isPlanBuf = false;
 
     try {
-      const result = await chatWithTimeoutRetry({
+      const result = await chat({
         messages: modelMessages,
         modelKey,
-        onEvent,
-        isAborted,
-        language,
         onChunk: (delta, phase) => {
           if (isAborted?.()) return;
 

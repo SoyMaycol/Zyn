@@ -1,6 +1,7 @@
 const { qwen } = require('./qwen/index');
 const { zen } = require('./zen/index');
-const { gemini } = require('./gemini/index');
+const { ollama } = require('./ollama/index');
+const { openaiCompatible } = require('./openaiCompatible/index');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 
 function buildPromptFromMessages(messages) {
@@ -28,10 +29,10 @@ async function runProvider(provider, messages, model, onChunk, options = {}) {
   switch (provider) {
     case 'zen':
       return zen(messages, model.zenModel, onChunk, options);
-    case 'gemini': {
-      const prompt = buildPromptFromMessages(messages);
-      return gemini(prompt, onChunk, options);
-    }
+    case 'ollama':
+      return ollama(messages, model.ollamaModel || model.model || model.label, onChunk, options);
+    case 'openai-compatible':
+      return openaiCompatible(messages, model.openaiModel || model.model || model.label, onChunk, options);
     case 'qwen':
     default: {
       const prompt = buildPromptFromMessages(messages);
