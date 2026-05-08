@@ -37,8 +37,7 @@ function createState(rl = null) {
   };
 }
 
-async function loadPersistentConfig() {
-  const data = await readJson(PERSISTENT_CONFIG_FILE);
+function normalizePersistentConfig(data) {
   if (!data || typeof data !== 'object') return {};
   return {
     cwd: typeof data.cwd === 'string' && data.cwd.trim() ? data.cwd : undefined,
@@ -46,7 +45,22 @@ async function loadPersistentConfig() {
     activeModel: typeof data.activeModel === 'string' && data.activeModel.trim() ? data.activeModel : undefined,
     language: normalizeLanguage(data.language || DEFAULT_LANGUAGE),
     concuerdo: Boolean(data.concuerdo),
+    personaPrompt: typeof data.personaPrompt === 'string' ? data.personaPrompt : '',
   };
+}
+
+function applyPersistentConfig(state, persisted = {}) {
+  if (!persisted || Object.keys(persisted).length === 0) return;
+  state.cwd = persisted.cwd || state.cwd;
+  state.autoApprove = Boolean(persisted.autoApprove);
+  state.activeModel = persisted.activeModel || state.activeModel;
+  state.language = persisted.language || state.language;
+  state.concuerdo = Boolean(persisted.concuerdo);
+  state.personaPrompt = persisted.personaPrompt || '';
+}
+
+async function loadPersistentConfig() {
+  return normalizePersistentConfig(await readJson(PERSISTENT_CONFIG_FILE));
 }
 
 async function savePersistentConfig(state) {
@@ -56,6 +70,7 @@ async function savePersistentConfig(state) {
     activeModel: state.activeModel || DEFAULT_MODEL_KEY,
     language: state.language || DEFAULT_LANGUAGE,
     concuerdo: Boolean(state.concuerdo),
+    personaPrompt: state.personaPrompt || '',
   });
 }
 
@@ -116,7 +131,7 @@ function applyLoadedState(state, loaded) {
   state.autoApprove = Boolean(loaded.autoApprove);
   state.concuerdo = Boolean(loaded.concuerdo);
   state.activeModel = loaded.activeModel || DEFAULT_MODEL_KEY;
-  state.language = loaded.language || DEFAULT_LANGUAGE;
+  state.language = normalizeLanguage(loaded.language || DEFAULT_LANGUAGE);
   state.personaPrompt = loaded.personaPrompt || '';
   if (state.actionLog.length > ACTION_LOG_LIMIT) {
     state.actionLog = state.actionLog.slice(-ACTION_LOG_LIMIT);
@@ -151,9 +166,13 @@ async function saveState(state) {
   await savePersistentConfig(state);
 }
 
-async function createNewSessionState(rl) {
+async function createNewSessionState(rl, options = {}) {
+  const { inheritPersistentConfig = true } = options;
   await ensureSessionStorage();
   const state = createState(rl);
+  if (inheritPersistentConfig) {
+    applyPersistentConfig(state, await loadPersistentConfig());
+  }
   state.sessionId = createSessionId();
   state.sessionPath = getSessionPath(state.sessionId);
   state.transcriptPath = getTranscriptPath(state.sessionId);
@@ -201,15 +220,6 @@ async function loadOrCreateSessionState(rl, options = {}) {
   }
 
   const created = await createNewSessionState(rl);
-  const persisted = await loadPersistentConfig();
-  if (persisted && Object.keys(persisted).length > 0) {
-    created.cwd = persisted.cwd || created.cwd;
-    created.autoApprove = Boolean(persisted.autoApprove);
-    created.activeModel = persisted.activeModel || created.activeModel;
-    created.language = persisted.language || created.language;
-    created.concuerdo = Boolean(persisted.concuerdo);
-    await saveState(created);
-  }
   return { state: created, resumed: false };
 }
 

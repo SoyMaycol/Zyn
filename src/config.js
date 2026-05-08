@@ -9,6 +9,7 @@ const DATA_ROOT = path.join(APP_ROOT, 'data');
 const HOME_DIR = os.homedir() || '/root';
 
 const MODELS_FILE = path.join(DATA_ROOT, 'models.json');
+const SUPPORTED_MODEL_PROVIDERS = new Set(['qwen', 'zen', 'gemini']);
 
 const BUILTIN_MODELS = {
   'qwen': {
@@ -34,20 +35,10 @@ const BUILTIN_MODELS = {
     provider: 'zen',
     zenModel: 'trinity-large-preview-free',
   },
-  'ollama-qwen': {
-    label: 'Ollama Qwen 2.5',
-    provider: 'ollama',
-    ollamaModel: 'qwen2.5:latest',
-  },
-  'ollama-gemma': {
-    label: 'Ollama Gemma 3',
-    provider: 'ollama',
-    ollamaModel: 'gemma3:latest',
-  },
-  'openai-mini': {
-    label: 'OpenAI Compatible Mini',
-    provider: 'openai-compatible',
-    openaiModel: 'gpt-4o-mini',
+  'gemini-flash': {
+    label: 'Gemini Flash',
+    provider: 'gemini',
+    geminiModel: 'gemini-flash',
   },
 };
 
@@ -66,7 +57,7 @@ function loadExternalModels() {
   if (Array.isArray(raw)) {
     const output = {};
     for (const item of raw) {
-      if (!item?.key || !item?.provider) continue;
+      if (!item?.key || !item?.provider || !SUPPORTED_MODEL_PROVIDERS.has(item.provider)) continue;
       output[item.key] = {
         label: item.label || item.key,
         provider: item.provider,
@@ -76,11 +67,13 @@ function loadExternalModels() {
     return output;
   }
 
-  if (raw && typeof raw === 'object' && raw.models && typeof raw.models === 'object') {
-    return raw.models;
-  }
+  const modelMap = raw && typeof raw === 'object' && raw.models && typeof raw.models === 'object'
+    ? raw.models
+    : raw && typeof raw === 'object' ? raw : {};
 
-  return raw && typeof raw === 'object' ? raw : {};
+  return Object.fromEntries(
+    Object.entries(modelMap).filter(([, model]) => SUPPORTED_MODEL_PROVIDERS.has(model?.provider)),
+  );
 }
 
 const MODELS = {
@@ -99,8 +92,10 @@ const MAX_OUTPUT_CHARS = 12000;
 const MAX_FILE_LINES = 5000;
 const ACTION_LOG_LIMIT = 40;
 const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 180000);
-const MAX_HISTORY_CHARS = 24000;
-const KEEP_RECENT_MESSAGES = 12;
+const PROVIDER_TIMEOUT_RETRY_DELAY_MS = Number(process.env.ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS || 10 * 60 * 1000);
+const PROVIDER_TIMEOUT_RETRIES = Number(process.env.ZYN_PROVIDER_TIMEOUT_RETRIES || 3);
+const MAX_HISTORY_CHARS = 60000;
+const KEEP_RECENT_MESSAGES = 50;
 const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
 const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
 const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
@@ -152,11 +147,14 @@ module.exports = {
   MODELS,
   MODELS_FILE,
   PROVIDERS_FILE,
+  PROVIDER_TIMEOUT_RETRIES,
+  PROVIDER_TIMEOUT_RETRY_DELAY_MS,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,
   SESSION_ROOT,
   SESSIONS_DIR,
+  SUPPORTED_MODEL_PROVIDERS,
   TASKS_FILE,
   THINK_FRAMES,
   TRANSCRIPTS_DIR,

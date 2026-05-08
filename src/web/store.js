@@ -29,6 +29,11 @@ function createUser(data) {
     githubEmail: '',
     githubUsername: '',
     githubName: '',
+    zynSettings: {
+      activeModel: '',
+      concuerdo: false,
+      language: 'en',
+    },
     createdAt: Date.now(),
   });
   writeUsers(users);
@@ -43,8 +48,33 @@ function updateUser(username, updates) {
   }
 }
 
+function getUserSettings(userId) {
+  const user = getUser(userId);
+  const settings = user?.zynSettings && typeof user.zynSettings === 'object' ? user.zynSettings : {};
+  return {
+    activeModel: typeof settings.activeModel === 'string' ? settings.activeModel : '',
+    concuerdo: Boolean(settings.concuerdo),
+    language: String(settings.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en',
+  };
+}
+
+function updateUserSettings(username, updates = {}) {
+  const current = getUserSettings(username);
+  updateUser(username, {
+    zynSettings: {
+      ...current,
+      ...updates,
+      concuerdo: updates.concuerdo !== undefined ? Boolean(updates.concuerdo) : current.concuerdo,
+      language: updates.language !== undefined
+        ? (String(updates.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en')
+        : current.language,
+    },
+  });
+}
+
 function createChat(userId, repoOwner, repoName) {
   const id = crypto.randomUUID();
+  const defaults = getUserSettings(userId);
   const chat = {
     id,
     userId,
@@ -53,9 +83,9 @@ function createChat(userId, repoOwner, repoName) {
     title: `${repoOwner}/${repoName}`,
     messages: [],
     createdAt: Date.now(),
-    activeModel: '',
-    concuerdo: false,
-    language: 'en',
+    activeModel: defaults.activeModel,
+    concuerdo: defaults.concuerdo,
+    language: defaults.language,
   };
   fs.writeFileSync(path.join(CHATS_DIR, `${id}.json`), JSON.stringify(chat, null, 2));
   return chat;
@@ -103,5 +133,7 @@ module.exports = {
   getChat,
   saveChat,
   getUserChats,
+  getUserSettings,
+  updateUserSettings,
   deleteChat,
 };
