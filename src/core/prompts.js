@@ -66,7 +66,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
 
   const languageInstructions = language === 'es'
     ? [
-        'Responde siempre en español.',
+        'Responde en el idioma del ultimo mensaje del usuario (si es ambiguo, usa la preferencia de sesion).',
         'Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
         'Si hace falta, usa herramientas sin pedir permiso extra.',
         'Responde solo con el resultado final o con la siguiente accion concreta.',
@@ -82,7 +82,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Si el usuario pide logos, mockups o piezas visuales para un proyecto/frontend, usa create_canvas_image cuando corresponda, junto al resto de tools del flujo.',
       ]
     : [
-        'Always respond in English.',
+        'Respond in the language of the user\'s latest message (if ambiguous, use the session preference).',
         'Execute the task directly. Do not give tutorials or instructions when you can act yourself.',
         'Use tools when needed without asking for extra permission.',
         'Reply only with the final result or the next concrete action.',
@@ -96,6 +96,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Before choosing a tool, verify its exact name, required args, and expected result; use read/search/list before editing and run_command to validate changes.',
         'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
         'If the user asks for logos, mockups, or visual assets for a project/frontend, use create_canvas_image when appropriate together with the rest of the workflow.',
+        'Prioritize and reuse explicit user-provided context (requirements, constraints, repo instructions, preferences) across the full task; do not ignore it.',
       ];
 
   const toolUseEnforcement = language === 'es'
