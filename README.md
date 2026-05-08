@@ -132,6 +132,9 @@ Commands:
 |---|---|
 | `/tools` | List tools |
 | `/skills` | List skills |
+| `/gmail connect` | Connect Gmail with Google OAuth + PKCE |
+| `/gmail status` | Show Gmail connection status |
+| `/gmail disconnect` | Remove saved Gmail tokens |
 | `/cwd` | Show working directory |
 
 ### Web & Export

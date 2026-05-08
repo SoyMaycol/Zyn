@@ -42,6 +42,7 @@ const BUILTIN_MODELS = {
 };
 
 const SUPPORTED_MODEL_PROVIDERS = new Set(['qwen', 'zen', 'gemini']);
+const GEMINI_MODEL_WARNING = 'It is not recommended for use in production; it is unstable and ineffective.';
 
 function readJsonFile(filePath) {
   try {
@@ -106,6 +107,8 @@ const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const USER_DATA_ROOT = path.join(os.homedir(), '.zyn');
 const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
+const GMAIL_CLIENT_ID = '871944347395-rnpsjsqgbnvlfb05hqk4dc9283olgnh2.apps.googleusercontent.com';
+const GMAIL_AUTH_FILE = path.join(USER_DATA_ROOT, 'gmail-auth.json');
 const PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
 
 function listProvidersFromModels(models = MODELS) {
@@ -138,6 +141,9 @@ module.exports = {
   DATA_ROOT,
   DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
+  GEMINI_MODEL_WARNING,
+  GMAIL_AUTH_FILE,
+  GMAIL_CLIENT_ID,
   EXPORTS_DIR,
   HOME_DIR,
   KEEP_RECENT_MESSAGES,

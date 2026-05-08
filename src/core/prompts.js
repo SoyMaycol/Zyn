@@ -286,6 +286,7 @@ const TOOL_ARG_KEYS = {
   web_search: ['query', 'lang', 'limit'],
   web_read: ['url'],
   upload_file: ['path', 'field', 'name', 'type'],
+  gmail: ['action', 'query', 'maxResults', 'id', 'to', 'subject', 'body'],
   create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
   git: ['provider', 'action', 'method', 'path', 'body', 'headers', 'name', 'repoUrl', 'destination', 'branch', 'timeoutMs'],
 };

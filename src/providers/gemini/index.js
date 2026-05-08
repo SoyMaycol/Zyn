@@ -1,5 +1,6 @@
 const { Buffer } = require('buffer');
 const { REQUEST_TIMEOUT_MS } = require('../../config');
+const { parseAgentResponse } = require('../../core/prompts');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
 const GEMINI_BASE = 'https://gemini.google.com';
@@ -112,6 +113,60 @@ async function getXsrfToken(cookieHeader, signal) {
   return null;
 }
 
+
+function extractLooseFinalContent(text) {
+  const raw = String(text || '').trim();
+  if (!/(?:["'])type(?:["'])\s*:\s*(?:["'])final(?:["'])/i.test(raw)) return null;
+
+  const contentMatch = raw.match(/(?:["'])content(?:["'])\s*:\s*(["'])/i);
+  if (!contentMatch) return null;
+
+  const quote = contentMatch[1];
+  const start = contentMatch.index + contentMatch[0].length;
+  let escaped = false;
+
+  for (let i = start; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch !== quote) continue;
+
+    const tail = raw.slice(i + 1).trim();
+    if (!tail || /^}\s*$/.test(tail) || /^,\s*["']\w+["']\s*:/.test(tail)) {
+      return raw.slice(start, i);
+    }
+  }
+
+  return raw.slice(start).replace(/"?\s*}\s*$/, '');
+}
+
+function unescapeLooseJsonString(text) {
+  return String(text || '')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\r/g, '\r')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+    .trim();
+}
+
+function cleanGeminiResponseText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+
+  const unfenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const parsed = parseAgentResponse(unfenced);
+  if (parsed?.type === 'final' && typeof parsed.content === 'string' && parsed.content.trim()) {
+    return parsed.content.trim();
+  }
+  if (parsed?.type === 'tool') return unfenced;
+
+  const looseFinal = extractLooseFinalContent(unfenced);
+  if (looseFinal !== null) return unescapeLooseJsonString(looseFinal);
+
+  return unfenced;
+}
+
 function isLikelyText(value) {
   if (typeof value !== 'string') return false;
   const text = value.trim();
@@ -129,7 +184,9 @@ function isLikelyText(value) {
 function pickBestTextFromAny(parsed) {
   const found = [];
   walkDeep(parsed, (node) => {
-    if (typeof node === 'string' && isLikelyText(node)) found.push(node.trim());
+    if (typeof node !== 'string' || !isLikelyText(node)) return;
+    const cleaned = cleanGeminiResponseText(node);
+    if (cleaned) found.push(cleaned);
   });
   found.sort((a, b) => b.length - a.length);
   return found[0] || '';
@@ -202,10 +259,10 @@ function parseStream(data) {
 
   if (!best.parsed) throw new Error('Error de parseo');
 
-  let cleanText = (best.text || '').replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
+  let cleanText = cleanGeminiResponseText(best.text).replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
   if (!cleanText) {
     const accept = text => !/^https?:\/\/|^\/\/www\.|maps\/vt\/data/i.test(text);
-    cleanText = (pickFirstString(best.parsed, accept) || pickFirstString(best.parsed)).replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
+    cleanText = cleanGeminiResponseText(pickFirstString(best.parsed, accept) || pickFirstString(best.parsed)).replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
   }
 
   return { text: cleanText, resumeArray: best.resumeArray };
@@ -247,7 +304,7 @@ async function geminiScraper(prompt, previousId = null, options = {}) {
       if (!response.ok) throw new Error(`Gemini fallo (${response.status}): ${data.slice(0, 200)}`);
       const parsed = parseStream(data);
       const id = btoa2(JSON.stringify({ resumeArray: parsed.resumeArray }));
-      return { status: true, response: parsed.text, id };
+      return { status: true, response: cleanGeminiResponseText(parsed.text), id };
     } catch (err) {
       lastErr = err;
       if (options.signal?.aborted) break;
@@ -276,5 +333,6 @@ async function gemini(messages, _modelId, onChunk = null, options = {}) {
 module.exports = {
   gemini,
   geminiScraper,
+  cleanGeminiResponseText,
   parseStream,
 };
