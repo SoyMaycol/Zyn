@@ -31,6 +31,7 @@ Zyn is a local AI agent designed for terminal and web usage. It supports persist
 - Node.js 18+
 - npm
 - Internet connection for remote providers
+- Optional: Ollama for local models
 
 ---
 
@@ -163,15 +164,16 @@ Example:
 ```json
 {
   "models": {
-    "gemini-flash": {
-      "label": "Gemini Flash",
-      "provider": "gemini",
-      "geminiModel": "gemini-flash"
+    "my-local-model": {
+      "label": "My local model",
+      "provider": "ollama",
+      "ollamaModel": "llama3.1:8b"
     },
-    "qwen-custom": {
-      "label": "Qwen Custom",
-      "provider": "qwen",
-      "qwenModel": "qwen3.6-plus"
+    "my-remote-model": {
+      "label": "My remote model",
+      "provider": "openai-compatible",
+      "openaiModel": "gpt-4o-mini",
+      "baseUrl": "https://api.example.com/v1"
     }
   }
 }

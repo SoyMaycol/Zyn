@@ -141,17 +141,6 @@ async function readFile(token, owner, repo, filePath) {
   };
 }
 
-async function readFileBuffer(token, owner, repo, filePath) {
-  const data = await ghFetch(`/repos/${owner}/${repo}/contents/${encodePath(filePath)}`, token);
-  const buffer = Buffer.from(data.content || '', 'base64');
-  return {
-    buffer,
-    name: data.name || filePath.split('/').pop(),
-    size: typeof data.size === 'number' ? data.size : buffer.length,
-    sha: data.sha,
-  };
-}
-
 async function writeFile(token, owner, repo, filePath, content, author = {}) {
   let sha;
   let previousContent = '';
@@ -198,7 +187,6 @@ module.exports = {
   listRepos,
   getTree,
   readFile,
-  readFileBuffer,
   writeFile,
   validateToken,
   getViewer,

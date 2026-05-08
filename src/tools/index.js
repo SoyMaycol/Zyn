@@ -4,9 +4,6 @@ const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 
-const CDN_UPLOAD_URL = 'https://cdn.soymaycol.icu/upload';
-const CDN_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
-
 const {
   MAX_FILE_LINES,
 } = require('../config');
@@ -41,7 +38,6 @@ const TOOL_DEFINITIONS = [
   { name: 'fetch_url', usage: '{ url, selector?, attribute?, limit?, headers? }' },
   { name: 'fetch', usage: '{ url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }' },
   { name: 'fetch_http', usage: '{ url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }' },
-  { name: 'upload_file', usage: '{ path }' },
   { name: 'webfetch', usage: '{ url, headers?, timeoutMs? }' },
   { name: 'scrape_site', usage: '{ url, selectors, limit?, headers? }' },
   { name: 'web_search', usage: '{ query, lang?, limit? }' },
@@ -116,13 +112,6 @@ function getToolPromptText() {
     '  Ejemplo GET: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.github.com/users/octocat","method":"GET"}}',
     '  Ejemplo POST JSON: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/items","method":"POST","json":true,"data":{"name":"test","value":42},"headers":{"Authorization":"Bearer token123"}}}',
     '  Ejemplo con query params: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/search","query":{"q":"hello","page":1}}}',
-    '  Ejemplo POST multipart: {"type":"tool","tool":"fetch_http","args":{"url":"https://example.com/upload","method":"POST","files":[{"path":"./archivo.zip","field":"file"}]}}',
-    '',
-    'upload_file { path }',
-    '  Sube un archivo local al CDN oficial (POST https://cdn.soymaycol.icu/upload) y devuelve el link directo.',
-    '  Limite estricto: 5 MB. El archivo se envia como multipart/form-data en el campo "file".',
-    '  Usa esta tool cuando el usuario pida subir un archivo, convertirlo a link directo o compartir un archivo generado.',
-    '  Ejemplo: {"type":"tool","tool":"upload_file","args":{"path":"./dist/app.zip"}}',
     '',
     'fetch { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
     '  Alias profesional recomendado para solicitudes HTTP avanzadas.',
@@ -255,8 +244,6 @@ function describeToolCall(call) {
     }
     case 'fetch_http':
       return `HTTP ${String(call.args.method || 'GET').toUpperCase()} ${shortText(cleanUrl(call.args.url || ''), 50)}`;
-    case 'upload_file':
-      return `Subiendo ${shortText(call.args.path || '', 60)} al CDN`;
     case 'fetch':
       return `Fetch ${String(call.args.method || 'GET').toUpperCase()} ${shortText(cleanUrl(call.args.url || ''), 50)}`;
     case 'webfetch':
@@ -715,71 +702,6 @@ function stripHtmlToText(html) {
     .trim();
 }
 
-function guessMimeType(filePath) {
-  const ext = path.extname(filePath || '').toLowerCase();
-  const types = {
-    '.txt': 'text/plain',
-    '.md': 'text/markdown',
-    '.json': 'application/json',
-    '.js': 'text/javascript',
-    '.mjs': 'text/javascript',
-    '.cjs': 'text/javascript',
-    '.css': 'text/css',
-    '.html': 'text/html',
-    '.xml': 'application/xml',
-    '.csv': 'text/csv',
-    '.zip': 'application/zip',
-    '.pdf': 'application/pdf',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.mp3': 'audio/mpeg',
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-  };
-  return types[ext] || 'application/octet-stream';
-}
-
-async function postCdnUpload({ buffer, filename, mimeType, timeoutMs = 30000 }) {
-  const form = new FormData();
-  const blob = new Blob([buffer], { type: mimeType || 'application/octet-stream' });
-  form.append('file', blob, filename);
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 30000));
-  let res;
-  try {
-    res = await fetch(CDN_UPLOAD_URL, {
-      method: 'POST',
-      body: form,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const text = await res.text();
-  let payload;
-  try {
-    payload = JSON.parse(text);
-  } catch {
-    throw new Error(`Respuesta invalida del CDN (${res.status}): ${shortText(text, 200)}`);
-  }
-
-  if (!res.ok) {
-    throw new Error(`CDN respondio ${res.status}: ${shortText(text, 200)}`);
-  }
-
-  if (!payload || typeof payload.link !== 'string' || !/^https?:\/\//i.test(payload.link)) {
-    throw new Error(`El CDN no devolvio un link directo valido: ${shortText(text, 200)}`);
-  }
-
-  return payload;
-}
-
 function cleanCommand(raw) {
   let cmd = raw.trim();
   if (/^`[^`]+`$/.test(cmd)) {
@@ -903,49 +825,6 @@ async function fetchUrlTool(args, state, paint) {
   }
 
   return truncateText(parts.join('\n'));
-}
-
-async function uploadFileTool(args, state, paint) {
-  if (!args.path || typeof args.path !== 'string') {
-    throw new Error('upload_file requiere path');
-  }
-
-  const targetPath = resolveInputPath(args.path, state.cwd);
-  const stats = await fsp.stat(targetPath);
-  if (!stats.isFile()) {
-    throw new Error('upload_file solo puede subir archivos');
-  }
-  if (stats.size > CDN_UPLOAD_MAX_BYTES) {
-    throw new Error(`El archivo supera el limite de 5 MB (${stats.size} bytes)`);
-  }
-
-  const allowed = await askConfirmation(
-    state.rl,
-    'Subir archivo al CDN',
-    [`POST ${CDN_UPLOAD_URL}`, `Archivo: ${targetPath}`, `Tamano: ${stats.size} bytes`].join('\n'),
-    paint,
-    state,
-  );
-
-  if (!allowed) {
-    return 'Subida cancelada por el usuario.';
-  }
-
-  const buffer = await fsp.readFile(targetPath);
-  const payload = await postCdnUpload({
-    buffer,
-    filename: path.basename(targetPath),
-    mimeType: args.type || guessMimeType(targetPath),
-    timeoutMs: args.timeoutMs,
-  });
-
-  return [
-    'Archivo subido correctamente al CDN.',
-    `Nombre: ${payload.name || path.basename(targetPath)}`,
-    `Tamano: ${payload.size ?? stats.size} bytes`,
-    `Tipo: ${payload.type || args.type || guessMimeType(targetPath)}`,
-    `Link directo: ${payload.link}`,
-  ].join('\n');
 }
 
 async function fetchHttpTool(args, state, paint) {
@@ -1261,9 +1140,6 @@ async function executeToolCall(call, state, ui) {
     case 'fetch_http':
       result = await fetchHttpTool(call.args, state, ui.paint);
       break;
-    case 'upload_file':
-      result = await uploadFileTool(call.args, state, ui.paint);
-      break;
     case 'fetch':
       result = await fetchHttpTool(call.args, state, ui.paint);
       break;
@@ -1298,14 +1174,6 @@ function parseDirectAction(input) {
   const text = input.trim();
   if (/^(git|npm|node|pnpm|yarn)\s+/.test(text)) {
     return { tool: 'run_command', args: { command: text } };
-  }
-
-  const uploadMatch = text.match(/^(?:sube|subir|upload)\s+(?:el\s+)?(?:archivo\s+)?([^\s]+)(?:\s+(?:al\s+)?cdn)?$/i);
-  if (uploadMatch) {
-    return {
-      tool: 'upload_file',
-      args: { path: uploadMatch[1].trim() },
-    };
   }
 
   const runMatch = text.match(/^(?:ejecuta|corre)\s+(?:el\s+)?comando\s+([\s\S]+)$/i);
