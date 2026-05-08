@@ -282,7 +282,7 @@ async function startGmailOAuthFlow(options = {}) {
   const state = base64Url(crypto.randomBytes(24));
   const host = options.host || '127.0.0.1';
   const preferredPort = Number(options.port || process.env.ZYN_GMAIL_OAUTH_PORT || 0);
-  const flow = GMAIL_CLIENT_SECRET ? 'code' : 'token';
+  const flow = 'code';
   let redirectUri = '';
 
   let resolveDone;
@@ -295,17 +295,6 @@ async function startGmailOAuthFlow(options = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       const currentUrl = new URL(req.url, redirectUri || `http://${host}`);
-      if (req.method === 'POST' && currentUrl.pathname === TOKEN_CALLBACK_PATH) {
-        const payload = await readRequestJson(req);
-        if (payload.state !== state || payload.stateExpected !== state) throw new Error('OAuth state invalido');
-        if (payload.error) throw new Error(payload.error_description || payload.error);
-        const stored = await saveTokenFromImplicit(payload);
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, email: stored.profile?.email || '' }));
-        resolveDone(stored);
-        setTimeout(() => closeServer(server).catch(() => {}), 250);
-        return;
-      }
       if (currentUrl.pathname !== CALLBACK_PATH) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('Not found');

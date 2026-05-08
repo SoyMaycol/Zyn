@@ -2,7 +2,7 @@ const { chat, chatSilent } = require('../providers/scraperClient');
 const { parseAgentResponse } = require('../core/prompts');
 const { buildSkillsPrompt } = require('../core/skills');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
-const { normalizeLanguage, languageLabel } = require('../i18n');
+const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const githubApi = require('./githubApi');
 const store = require('./store');
 
@@ -25,7 +25,7 @@ const TEXT_FILE_EXTENSIONS = new Set([
 ]);
 
 function buildSystemPrompt(repoOwner, repoName, fileTree, state = {}) {
-  const language = normalizeLanguage(state.language);
+  const language = detectLanguage(state.input || '', normalizeLanguage(state.language));
   const skills = buildSkillsPrompt({ include: WEB_SKILLS });
   const treeLines = fileTree
     .filter(f => !f.path.includes('node_modules/') && !f.path.includes('.git/'))
@@ -689,10 +689,13 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     return;
   }
 
+  const userLatest = [...history].reverse().find(m => m.role === 'user')?.content || '';
+
   const systemPrompt = buildSystemPrompt(repoOwner, repoName, fileTree, {
     group,
     activeModel: modelKey,
     language: chatData.language || 'en',
+    input: userLatest,
   });
 
   const modelMessages = [
@@ -710,7 +713,6 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
     fileCache: new Map(),
     onEvent,
   };
-  const userLatest = [...history].reverse().find(m => m.role === 'user')?.content || '';
   const userWantsEdit = USER_WRITE_INTENT_RE.test(normalizeClassifierText(userLatest));
 
   const loopState = {
