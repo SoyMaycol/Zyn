@@ -32,7 +32,7 @@ let pendingFlow = null;
 
 function buildMissingClientSecretError() {
   return new Error(
-    'Google OAuth rechazó el intercambio de code porque falta client_secret. Si tu credencial es Desktop App, configura ZYN_GMAIL_CLIENT_ID con ese client_id y usa flujo code/PKCE. Si es Web App, define ZYN_GMAIL_CLIENT_SECRET del mismo OAuth Client ID y reintenta /gmail connect.',
+    'Google OAuth rechazó el intercambio de code porque falta client_secret. Esta integración usa el client_id público oficial del proyecto. Si Google exige secret para tu configuración OAuth, agrega ZYN_GMAIL_CLIENT_SECRET del mismo OAuth Client ID y reintenta /gmail connect.',
   );
 }
 
@@ -346,9 +346,7 @@ async function startGmailOAuthFlow(options = {}) {
   const state = base64Url(crypto.randomBytes(24));
   const host = options.host || '127.0.0.1';
   const preferredPort = Number(options.port || process.env.ZYN_GMAIL_OAUTH_PORT || 0);
-  const requestedFlow = String(options.flow || process.env.ZYN_GMAIL_OAUTH_FLOW || '').toLowerCase();
-  const allowDeviceFlow = requestedFlow === 'device' && options.allowDeviceFlow !== false;
-  const flow = allowDeviceFlow ? 'device' : 'code';
+  const flow = 'code';
   let redirectUri = '';
 
   let resolveDone;
