@@ -575,7 +575,12 @@ async function handleLocalCommand(input, state, deps) {
       const portArg = rest.find(part => /^\d{2,5}$/.test(part));
       const flow = await startGmailOAuthFlow({ port: portArg ? Number(portArg) : 0 });
       console.log(flow.authUrl);
-      console.log('Abre el link, inicia sesión y vuelve aquí.');
+      if (flow.flow === 'device') {
+        console.log(`Código: ${flow.userCode}`);
+        console.log('Abre el link, ingresa el código y autoriza Gmail.');
+      } else {
+        console.log('Abre el link, inicia sesión y vuelve aquí.');
+      }
       flow.done
         .then(auth => {
           const email = auth?.profile?.email || 'cuenta conectada';
