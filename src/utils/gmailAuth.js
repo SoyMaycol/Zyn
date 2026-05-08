@@ -8,6 +8,7 @@ const fsp = fs.promises;
 const {
   GMAIL_AUTH_FILE,
   GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
 
@@ -23,6 +24,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1';
 const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const CALLBACK_PATH = '/oauth/gmail/callback';
+const TOKEN_CALLBACK_PATH = '/oauth/gmail/token';
 
 let pendingFlow = null;
 
@@ -97,13 +99,15 @@ async function fetchJson(url, options = {}) {
 }
 
 async function exchangeCodeForToken({ code, codeVerifier, redirectUri }) {
-  const body = new URLSearchParams({
+  const params = {
     client_id: GMAIL_CLIENT_ID,
     code,
     code_verifier: codeVerifier,
     grant_type: 'authorization_code',
     redirect_uri: redirectUri,
-  });
+  };
+  if (GMAIL_CLIENT_SECRET) params.client_secret = GMAIL_CLIENT_SECRET;
+  const body = new URLSearchParams(params);
   return fetchJson(TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
@@ -112,16 +116,17 @@ async function exchangeCodeForToken({ code, codeVerifier, redirectUri }) {
 }
 
 async function refreshAccessToken(auth) {
-  if (!auth?.refresh_token) throw new Error('Gmail no está conectado. Usa /gmail connect primero.');
-  const body = new URLSearchParams({
+  if (!auth?.refresh_token) throw new Error('Gmail no está conectado o el token expiró. Usa /gmail connect otra vez.');
+  const params = {
     client_id: GMAIL_CLIENT_ID,
     grant_type: 'refresh_token',
     refresh_token: auth.refresh_token,
-  });
+  };
+  if (GMAIL_CLIENT_SECRET) params.client_secret = GMAIL_CLIENT_SECRET;
   const token = await fetchJson(TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body,
+    body: new URLSearchParams(params),
   });
   const next = buildStoredToken({ ...token, refresh_token: auth.refresh_token }, auth.profile || null);
   await writeAuthFile(next);
@@ -132,7 +137,7 @@ function buildStoredToken(token, profile = null) {
   const expiresIn = Number(token.expires_in || 3600);
   return {
     access_token: token.access_token,
-    refresh_token: token.refresh_token,
+    refresh_token: token.refresh_token || '',
     token_type: token.token_type || 'Bearer',
     scope: token.scope || GMAIL_SCOPES.join(' '),
     expiry_date: Date.now() + Math.max(1, expiresIn - 60) * 1000,
@@ -156,6 +161,14 @@ async function saveTokenFromCode({ code, codeVerifier, redirectUri }) {
   return stored;
 }
 
+async function saveTokenFromImplicit(token) {
+  if (!token?.access_token) throw new Error('Google no devolvió access_token');
+  const profile = await getUserProfile(token.access_token);
+  const stored = buildStoredToken(token, profile);
+  await writeAuthFile(stored);
+  return stored;
+}
+
 async function getGmailAuthStatus() {
   const auth = await readAuthFile();
   if (!auth?.access_token && !auth?.refresh_token) {
@@ -167,6 +180,7 @@ async function getGmailAuthStatus() {
     scopes: String(auth.scope || '').split(/\s+/).filter(Boolean),
     expiryDate: auth.expiry_date || 0,
     connectedAt: auth.connectedAt || '',
+    refreshable: Boolean(auth.refresh_token),
   };
 }
 
@@ -199,22 +213,63 @@ async function gmailApiRequest(method, apiPath, options = {}) {
   });
 }
 
-function buildAuthUrl({ redirectUri, codeChallenge, state }) {
+function buildAuthUrl({ redirectUri, codeChallenge, state, flow }) {
   const url = new URL(AUTH_BASE);
   url.searchParams.set('client_id', GMAIL_CLIENT_ID);
   url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', GMAIL_SCOPES.join(' '));
-  url.searchParams.set('access_type', 'offline');
   url.searchParams.set('prompt', 'consent');
-  url.searchParams.set('code_challenge', codeChallenge);
-  url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('state', state);
+  if (flow === 'code') {
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('access_type', 'offline');
+    url.searchParams.set('code_challenge', codeChallenge);
+    url.searchParams.set('code_challenge_method', 'S256');
+  } else {
+    url.searchParams.set('response_type', 'token');
+    url.searchParams.set('include_granted_scopes', 'true');
+  }
   return url.toString();
+}
+
+function callbackPage(expectedState) {
+  return `<!doctype html><meta charset="utf-8"><title>Zyn Gmail</title>
+<h1>Conectando Gmail...</h1><p>Espera un momento.</p>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+  const payload = Object.fromEntries(params.entries());
+  payload.stateExpected = ${JSON.stringify(expectedState)};
+  const res = await fetch(${JSON.stringify(TOKEN_CALLBACK_PATH)}, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Error conectando Gmail');
+  document.body.innerHTML = '<h1>Gmail conectado con Zyn</h1><p>Ya puedes cerrar esta pestaña.</p>';
+})().catch(err => {
+  document.body.innerHTML = '<h1>Error conectando Gmail</h1><pre>' + String(err.message || err).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])) + '</pre>';
+});
+</script>`;
 }
 
 function closeServer(server) {
   return new Promise(resolve => server.close(() => resolve()));
+}
+
+function readRequestJson(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', chunk => {
+      raw += chunk;
+      if (raw.length > 100000) req.destroy(new Error('Payload demasiado grande'));
+    });
+    req.on('end', () => {
+      try { resolve(raw ? JSON.parse(raw) : {}); } catch (err) { reject(err); }
+    });
+    req.on('error', reject);
+  });
 }
 
 async function startGmailOAuthFlow(options = {}) {
@@ -227,6 +282,7 @@ async function startGmailOAuthFlow(options = {}) {
   const state = base64Url(crypto.randomBytes(24));
   const host = options.host || '127.0.0.1';
   const preferredPort = Number(options.port || process.env.ZYN_GMAIL_OAUTH_PORT || 0);
+  const flow = GMAIL_CLIENT_SECRET ? 'code' : 'token';
   let redirectUri = '';
 
   let resolveDone;
@@ -239,9 +295,25 @@ async function startGmailOAuthFlow(options = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       const currentUrl = new URL(req.url, redirectUri || `http://${host}`);
+      if (req.method === 'POST' && currentUrl.pathname === TOKEN_CALLBACK_PATH) {
+        const payload = await readRequestJson(req);
+        if (payload.state !== state || payload.stateExpected !== state) throw new Error('OAuth state invalido');
+        if (payload.error) throw new Error(payload.error_description || payload.error);
+        const stored = await saveTokenFromImplicit(payload);
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, email: stored.profile?.email || '' }));
+        resolveDone(stored);
+        setTimeout(() => closeServer(server).catch(() => {}), 250);
+        return;
+      }
       if (currentUrl.pathname !== CALLBACK_PATH) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('Not found');
+        return;
+      }
+      if (flow !== 'code') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(callbackPage(state));
         return;
       }
       const error = currentUrl.searchParams.get('error');
@@ -252,7 +324,7 @@ async function startGmailOAuthFlow(options = {}) {
       if (!code) throw new Error('Google no devolvio code');
       const stored = await saveTokenFromCode({ code, codeVerifier: verifier, redirectUri });
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      res.end('<!doctype html><meta charset="utf-8"><title>Zyn Gmail conectado</title><h1>Gmail conectado con Zyn</h1><p>Ya puedes cerrar esta pestaña y volver al agente.</p>');
+      res.end('<!doctype html><meta charset="utf-8"><title>Zyn Gmail conectado</title><h1>Gmail conectado con Zyn</h1><p>Ya puedes cerrar esta pestaña.</p>');
       resolveDone(stored);
       setTimeout(() => closeServer(server).catch(() => {}), 250);
     } catch (err) {
@@ -274,7 +346,7 @@ async function startGmailOAuthFlow(options = {}) {
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : preferredPort;
   redirectUri = `http://${host}:${port}${CALLBACK_PATH}`;
-  const authUrl = buildAuthUrl({ redirectUri, codeChallenge: challenge, state });
+  const authUrl = buildAuthUrl({ redirectUri, codeChallenge: challenge, state, flow });
 
   const timeout = setTimeout(() => {
     rejectDone(new Error('Tiempo agotado esperando login de Gmail'));
@@ -286,8 +358,8 @@ async function startGmailOAuthFlow(options = {}) {
     if (pendingFlow?.server === server) pendingFlow = null;
   }).catch(() => {});
 
-  pendingFlow = { server, done, authUrl, redirectUri };
-  return { authUrl, redirectUri, done };
+  pendingFlow = { server, done, authUrl, redirectUri, flow };
+  return { authUrl, redirectUri, done, flow };
 }
 
 module.exports = {

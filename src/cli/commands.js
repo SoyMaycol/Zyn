@@ -25,6 +25,14 @@ function printModelChanged(key) {
   if (warning) console.log(`Warning: ${warning}`);
 }
 
+function printLanguageChanged(language) {
+  const normalized = normalizeLanguage(language);
+  const label = languageLabel(normalized);
+  console.log(normalized === 'es'
+    ? `Actualizado al idioma ${label} (${normalized})`
+    : `Updated to language ${label} (${normalized})`);
+}
+
 const SLASH_COMMANDS = [
   { name: 'help', desc: 'full help', descEs: 'ayuda completa' },
   { name: 'status', desc: 'current status', descEs: 'estado actual' },
@@ -278,7 +286,7 @@ async function handleLocalCommand(input, state, deps) {
 
     state.language = nextLanguage;
     await saveState(state);
-    console.log(`${t(state.language, 'langChanged')}: ${languageLabel(nextLanguage)} (${nextLanguage})`);
+    printLanguageChanged(nextLanguage);
     return true;
   }
 
@@ -418,7 +426,7 @@ async function handleLocalCommand(input, state, deps) {
       }
       state.language = nextLanguage;
       await saveState(state);
-      console.log(`${t(state.language, 'langChanged')}: ${languageLabel(nextLanguage)} (${nextLanguage})`);
+      printLanguageChanged(nextLanguage);
       return true;
     }
 
@@ -566,11 +574,8 @@ async function handleLocalCommand(input, state, deps) {
     if (sub === 'connect' || sub === 'login') {
       const portArg = rest.find(part => /^\d{2,5}$/.test(part));
       const flow = await startGmailOAuthFlow({ port: portArg ? Number(portArg) : 0 });
-      console.log('Gmail OAuth iniciado.');
-      console.log(`Backend local: ${flow.redirectUri}`);
-      console.log('Abre este link para conectar tu cuenta:');
       console.log(flow.authUrl);
-      console.log('Cuando completes el login, Google volvera al backend local y Zyn guardara la sesion.');
+      console.log('Abre el link, inicia sesión y vuelve aquí.');
       flow.done
         .then(auth => {
           const email = auth?.profile?.email || 'cuenta conectada';

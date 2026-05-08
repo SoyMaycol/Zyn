@@ -108,6 +108,7 @@ const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '�
 const USER_DATA_ROOT = path.join(os.homedir(), '.zyn');
 const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
 const GMAIL_CLIENT_ID = '871944347395-rnpsjsqgbnvlfb05hqk4dc9283olgnh2.apps.googleusercontent.com';
+const GMAIL_CLIENT_SECRET = process.env.ZYN_GMAIL_CLIENT_SECRET || '';
 const GMAIL_AUTH_FILE = path.join(USER_DATA_ROOT, 'gmail-auth.json');
 const PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
 
@@ -144,6 +145,7 @@ module.exports = {
   GEMINI_MODEL_WARNING,
   GMAIL_AUTH_FILE,
   GMAIL_CLIENT_ID,
+  GMAIL_CLIENT_SECRET,
   EXPORTS_DIR,
   HOME_DIR,
   KEEP_RECENT_MESSAGES,
