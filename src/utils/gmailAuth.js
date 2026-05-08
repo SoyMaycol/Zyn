@@ -32,7 +32,7 @@ let pendingFlow = null;
 
 function buildMissingClientSecretError() {
   return new Error(
-    'Google OAuth rechazó el intercambio de code porque falta client_secret. Configura ZYN_GMAIL_CLIENT_SECRET con el secret del mismo OAuth Client ID y vuelve a ejecutar /gmail connect.',
+    'Google OAuth rechazó el intercambio de code porque falta client_secret. Esta integración usa el client_id público oficial del proyecto. Si Google exige secret para tu configuración OAuth, agrega ZYN_GMAIL_CLIENT_SECRET del mismo OAuth Client ID y reintenta /gmail connect.',
   );
 }
 
@@ -98,6 +98,7 @@ async function fetchJson(url, options = {}) {
       const err = new Error(`Gmail API fallo (${res.status}): ${String(detail || '').slice(0, 300)}`);
       err.status = res.status;
       err.body = json;
+      if (code === 'invalid_client') throw new Error('Invalid client type para device flow. Usa OAuth Desktop App con flujo code/PKCE o cambia ZYN_GMAIL_OAUTH_FLOW=code.');
       throw err;
     }
     return json;
@@ -328,6 +329,7 @@ async function pollDeviceToken(device) {
       if (code === 'authorization_pending') continue;
       if (code === 'slow_down') continue;
       if (code === 'access_denied') throw new Error('Autorización cancelada por el usuario.');
+      if (code === 'invalid_client') throw new Error('Invalid client type para device flow. Usa OAuth Desktop App con flujo code/PKCE o cambia ZYN_GMAIL_OAUTH_FLOW=code.');
       throw err;
     }
   }
@@ -344,7 +346,7 @@ async function startGmailOAuthFlow(options = {}) {
   const state = base64Url(crypto.randomBytes(24));
   const host = options.host || '127.0.0.1';
   const preferredPort = Number(options.port || process.env.ZYN_GMAIL_OAUTH_PORT || 0);
-  const flow = (!GMAIL_CLIENT_SECRET && options.allowDeviceFlow !== false) ? 'device' : 'code';
+  const flow = 'code';
   let redirectUri = '';
 
   let resolveDone;
