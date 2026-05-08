@@ -76,7 +76,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'No cierres con una conclusion si todavia no has probado nada.',
         'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
         'Para operaciones de Git usa la herramienta git con action="api" o action="clone".',
-        'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), documentar (final).',
+        'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), subir artefactos si hace falta (upload_file), documentar (final).',
+        'Antes de elegir una herramienta revisa su nombre exacto, argumentos requeridos y resultado esperado; usa read/search/list antes de editar y run_command para validar cambios.',
         'No te limites a una sola tool por costumbre; elige la mejor secuencia técnica para el objetivo.',
         'Si el usuario pide logos, mockups o piezas visuales para un proyecto/frontend, usa create_canvas_image cuando corresponda, junto al resto de tools del flujo.',
       ]
@@ -91,7 +92,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Do not end with a conclusion if you have not tested anything yet.',
         'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
         'For Git operations use the git tool with action="api" or action="clone".',
-        'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), then report.',
+        'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), upload artifacts if needed (upload_file), then report.',
+        'Before choosing a tool, verify its exact name, required args, and expected result; use read/search/list before editing and run_command to validate changes.',
         'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
         'If the user asks for logos, mockups, or visual assets for a project/frontend, use create_canvas_image when appropriate together with the rest of the workflow.',
       ];
@@ -283,6 +285,7 @@ const TOOL_ARG_KEYS = {
   scrape_site: ['url', 'selectors', 'limit', 'headers'],
   web_search: ['query', 'lang', 'limit'],
   web_read: ['url'],
+  upload_file: ['path', 'field', 'name', 'type'],
   create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
   git: ['provider', 'action', 'method', 'path', 'body', 'headers', 'name', 'repoUrl', 'destination', 'branch', 'timeoutMs'],
 };
@@ -293,6 +296,38 @@ const LONG_VALUE_ARG = {
   append_file: 'content',
   replace_in_file: 'replace',
 };
+
+
+function extractMalformedFinalContent(text) {
+  const typeMatch = text.match(/(?:["'])type(?:["'])\s*:\s*(?:["'])final(?:["'])/i);
+  if (!typeMatch) return null;
+
+  const contentMatch = text.match(/(?:["'])content(?:["'])\s*:\s*(["'])/i);
+  if (!contentMatch) return null;
+
+  const quote = contentMatch[1];
+  const start = contentMatch.index + contentMatch[0].length;
+  let esc = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch !== quote) continue;
+
+    const tail = text.slice(i + 1).trim();
+    if (!tail || /^}\s*$/.test(tail) || /^,\s*(["']\w+["']\s*:|})/.test(tail)) {
+      return unescapeJsonString(text.slice(start, i)).trim();
+    }
+  }
+
+  const lastQuote = text.lastIndexOf(quote);
+  if (lastQuote > start) {
+    return unescapeJsonString(text.slice(start, lastQuote)).trim();
+  }
+
+  return null;
+}
 
 function fuzzyExtractTool(text) {
   const toolMatch = text.match(/(?:"|')?tool(?:"|')?\s*:\s*"(\w+)"/i);
@@ -421,6 +456,13 @@ function parseAgentResponse(raw) {
 
   const tool = extractToolJson(text);
   if (tool) return { type: 'tool', tool: tool.tool, args: tool.args ?? {} };
+
+  const malformedFinalContent = extractMalformedFinalContent(text);
+  if (malformedFinalContent !== null) {
+    const embedded = extractToolJson(malformedFinalContent);
+    if (embedded) return { type: 'tool', tool: embedded.tool, args: embedded.args ?? {} };
+    return { type: 'final', content: malformedFinalContent };
+  }
 
   const xmlTool = extractXmlTool(text);
   if (xmlTool) return xmlTool;
