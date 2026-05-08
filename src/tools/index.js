@@ -42,6 +42,7 @@ const TOOL_DEFINITIONS = [
   { name: 'scrape_site', usage: '{ url, selectors, limit?, headers? }' },
   { name: 'web_search', usage: '{ query, lang?, limit? }' },
   { name: 'web_read', usage: '{ url }' },
+  { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
@@ -133,6 +134,12 @@ function getToolPromptText() {
     '  Descarga una pagina web y la convierte a texto legible (sin HTML).',
     '  Ideal para leer articulos, documentacion o contenido de paginas.',
     '  Ejemplo: {"type":"tool","tool":"web_read","args":{"url":"https://docs.example.com/guide"}}',
+    '',
+    'upload_file { path, field?, name?, type? }',
+    '  Sube un archivo local a https://cdn.soymaycol.icu/upload por POST multipart/form-data y devuelve el link directo.',
+    '  Limite estricto: maximo 5 MB. field por defecto: "file". name/type son opcionales.',
+    '  Usa esta tool cuando necesites entregar un archivo como enlace directo al agente o al usuario.',
+    '  Ejemplo: {"type":"tool","tool":"upload_file","args":{"path":"dist/116.zip"}}',
     '',
     '## Imagen profesional con Jimp',
     '',
@@ -256,6 +263,8 @@ function describeToolCall(call) {
       const readUrl = cleanUrl(call.args.url || '');
       return `Leyendo ${shortText(readUrl, 60)}`;
     }
+    case 'upload_file':
+      return `Subiendo ${call.args.path}`;
     case 'create_canvas_image':
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     case 'git':
@@ -903,6 +912,81 @@ async function fetchHttpTool(args, state, paint) {
   return truncateText(`Status: ${res.status}\nContent-Type: ${res.headers.get('content-type') || '-'}\n\n${text}`);
 }
 
+
+function guessContentType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    '.zip': 'application/zip',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.json': 'application/json',
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
+    '.csv': 'text/csv',
+  };
+  return types[ext] || 'application/octet-stream';
+}
+
+async function uploadFileTool(args, state, paint) {
+  if (!args.path || typeof args.path !== 'string') throw new Error('upload_file requiere path');
+  const filePath = resolveInputPath(args.path, state.cwd);
+  const stats = await fsp.stat(filePath).catch(() => null);
+  if (!stats?.isFile()) throw new Error(`Archivo no encontrado: ${filePath}`);
+
+  const maxBytes = 5 * 1024 * 1024;
+  if (stats.size > maxBytes) {
+    throw new Error(`El archivo supera el limite de 5 MB (${stats.size} bytes)`);
+  }
+
+  const endpoint = 'https://cdn.soymaycol.icu/upload';
+  const displayName = args.name || path.basename(filePath);
+  const allowed = await askConfirmation(state.rl, 'Subir archivo a CDN', `${displayName} (${stats.size} bytes) -> ${endpoint}`, paint, state);
+  if (!allowed) return 'Subida cancelada.';
+
+  const buffer = await fsp.readFile(filePath);
+  const type = args.type || guessContentType(filePath);
+  const form = new FormData();
+  form.append(String(args.field || 'file'), new Blob([buffer], { type }), displayName);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      body: form,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const text = await res.text();
+  let payload = null;
+  try { payload = JSON.parse(text); } catch {}
+  if (!res.ok) {
+    throw new Error(`Upload fallo (${res.status}): ${shortText(text, 500)}`);
+  }
+  if (!payload || typeof payload.link !== 'string' || !payload.link.trim()) {
+    throw new Error(`Respuesta de upload invalida: ${shortText(text, 500)}`);
+  }
+
+  return [
+    'Archivo subido correctamente.',
+    `Nombre: ${payload.name || displayName}`,
+    `Tamano: ${payload.size ?? stats.size}`,
+    `Tipo: ${payload.type || type}`,
+    `Link directo: ${payload.link}`,
+    '',
+    JSON.stringify(payload, null, 2),
+  ].join('\n');
+}
+
 async function scrapeSiteTool(args, state, paint) {
   if (!args.url || typeof args.url !== 'string') throw new Error('scrape_site requiere url');
   if (!args.selectors || typeof args.selectors !== 'object') throw new Error('scrape_site requiere selectors objeto');
@@ -1154,6 +1238,9 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'web_read':
       result = await webReadTool(call.args, state, ui.paint);
+      break;
+    case 'upload_file':
+      result = await uploadFileTool(call.args, state, ui.paint);
       break;
     case 'create_canvas_image':
       result = await createCanvasImageTool(call.args, state, ui.paint);
