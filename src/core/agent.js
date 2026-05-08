@@ -4,6 +4,8 @@ const {
   MAX_HISTORY_CHARS,
   MAX_TOOL_STEPS,
   MODELS,
+  PROVIDER_TIMEOUT_RETRIES,
+  PROVIDER_TIMEOUT_RETRY_DELAY_MS,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
 const { chat, chatSilent } = require('../providers/scraperClient');
@@ -25,6 +27,31 @@ const { normalizeText, shortText } = require('../utils/text');
 const { detectLanguage } = require('../i18n');
 
 
+
+function wait(ms, signal) {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
+    let timer = null;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new Error('aborted'));
+    };
+    timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function looksLikeActionRequest(text) {
   const sample = normalizeText(String(text || '')).toLowerCase();
   if (!sample) return false;
@@ -38,11 +65,13 @@ async function requestModel(messages, state, ui, options = {}) {
     signal,
   } = options;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  const maxAttempts = Math.max(1, PROVIDER_TIMEOUT_RETRIES + 1);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (signal?.aborted) {
       throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
     }
-    const stopThinking = ui.startThinkingIndicator(state, attempt === 0 ? label : `${label} (${state.language === 'es' ? 'reintento' : 'retry'})`);
+    const stopThinking = ui.startThinkingIndicator(state, attempt === 0 ? label : `${label} (${state.language === 'es' ? 'reintento' : 'retry'} ${attempt}/${PROVIDER_TIMEOUT_RETRIES})`);
     let answerStarted = false;
     let thinkingStarted = false;
     let timedOut = false;
@@ -96,8 +125,22 @@ async function requestModel(messages, state, ui, options = {}) {
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
-      if (aborted && timedOut && !externalAbort && attempt === 0) {
-        ui.logEvent(state, 'warn', state.language === 'es' ? 'Proveedor lento, reenviando mensaje' : 'Provider stalled, resending message');
+      if (aborted && timedOut && !externalAbort && attempt < maxAttempts - 1) {
+        const waitMinutes = Math.round(PROVIDER_TIMEOUT_RETRY_DELAY_MS / 60000);
+        ui.logEvent(
+          state,
+          'warn',
+          state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout',
+          state.language === 'es'
+            ? `Esperando ${waitMinutes} minutos antes de reenviar (${attempt + 1}/${PROVIDER_TIMEOUT_RETRIES})`
+            : `Waiting ${waitMinutes} minutes before resending (${attempt + 1}/${PROVIDER_TIMEOUT_RETRIES})`,
+        );
+        try {
+          await wait(PROVIDER_TIMEOUT_RETRY_DELAY_MS, signal);
+        } catch {
+          throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
+        }
+        ui.logEvent(state, 'warn', state.language === 'es' ? 'Reenviando mensaje al proveedor' : 'Resending message to provider');
         continue;
       }
       if (aborted) {
@@ -106,7 +149,7 @@ async function requestModel(messages, state, ui, options = {}) {
         }
         throw new Error(state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout exceeded');
       }
-      if (!externalAbort && attempt === 0) {
+      if (!externalAbort && attempt < maxAttempts - 1) {
         ui.logEvent(state, 'warn', state.language === 'es' ? 'Error transitorio, reenviando contexto y skills' : 'Transient error, resending context and skills');
         continue;
       }
@@ -122,6 +165,34 @@ async function requestModel(messages, state, ui, options = {}) {
   throw new Error(state.language === 'es' ? 'No se pudo obtener respuesta del proveedor' : 'Could not get provider response');
 }
 
+function buildMemorySummaryInstructions(language) {
+  if (language === 'es') {
+    return [
+      'Eres el compactador de memoria persistente de Zyn.',
+      'Tu unica tarea es RESUMIR para que el agente pueda continuar el trabajo despues; no respondas al usuario, no des consejos nuevos y no inventes datos.',
+      'Fusiona la memoria previa con la conversacion antigua. Si algo sigue vigente, conservalo aunque no se repita en la conversacion nueva.',
+      'Prioriza detalles del proyecto y progreso real: objetivo actual, estado de avance, archivos tocados o leidos, cambios aplicados, comandos ejecutados, resultados, errores, decisiones, restricciones, idioma/preferencias y pendientes.',
+      'Conserva literalmente nombres de archivos, rutas, comandos, IDs, modelos, URLs, variables, limites, errores y valores de configuracion cuando aparezcan.',
+      'Elimina charla social, repeticiones, razonamiento interno y texto que no ayude a continuar.',
+      'Si una tarea quedo incompleta, especifica el siguiente paso concreto y que evidencia falta.',
+      'Formato obligatorio: viñetas cortas bajo estos encabezados exactos: Proyecto/objetivo, Progreso, Archivos/cambios, Comandos/resultados, Decisiones/restricciones, Pendientes, Idioma/configuracion.',
+      'Maximo 28 lineas. Solo resumen de memoria.',
+    ];
+  }
+
+  return [
+    'You are Zyn\'s persistent memory compactor.',
+    'Your only job is to SUMMARIZE so the agent can continue later; do not answer the user, add new advice, or invent facts.',
+    'Merge previous memory with the old conversation. If something is still active, keep it even if the new conversation does not repeat it.',
+    'Prioritize project details and real progress: current goal, progress state, files touched/read, applied changes, commands run, results, errors, decisions, constraints, language/preferences, and pending work.',
+    'Preserve exact file names, paths, commands, IDs, models, URLs, variables, limits, errors, and configuration values when present.',
+    'Remove social chatter, repetition, internal reasoning, and text that does not help continuation.',
+    'If a task is incomplete, state the concrete next step and what evidence is missing.',
+    'Required format: short bullets under these exact headings: Project/goal, Progress, Files/changes, Commands/results, Decisions/constraints, Pending, Language/configuration.',
+    'Maximum 28 lines. Memory summary only.',
+  ];
+}
+
 async function summarizeMessages(state, ui, messages) {
   const transcript = messages
     .map(message => `${message.role.toUpperCase()}:\n${message.content}`)
@@ -130,20 +201,21 @@ async function summarizeMessages(state, ui, messages) {
   const prompt = [
     {
       role: 'system',
-      content: [
-        state.language === 'es' ? 'Resume la conversacion para memoria persistente.' : 'Summarize the conversation for persistent memory.',
-        state.language === 'es' ? 'Escribe en espanol.' : 'Write in English.',
-        state.language === 'es' ? 'Incluye objetivos, decisiones, archivos, comandos, restricciones y pendientes importantes.' : 'Include goals, decisions, files, commands, constraints, and important pending items.',
-        'Max 12 lines.',
-      ].join('\n'),
+      content: buildMemorySummaryInstructions(state.language).join('\n'),
     },
     {
       role: 'user',
       content: [
-        state.memorySummary ? `Memoria previa:\n${state.memorySummary}\n` : '',
-        'Conversacion a compactar:',
+        `Directorio actual: ${state.cwd}`,
+        `Modelo activo: ${state.activeModel || DEFAULT_MODEL_KEY}`,
+        `Idioma de respuesta configurado: ${state.language}`,
+        `Modo concuerdo: ${state.concuerdo ? 'on' : 'off'}`,
+        state.personaPrompt ? `Persona/estilo configurado: ${state.personaPrompt}` : '',
+        '',
+        state.memorySummary ? `Memoria previa vigente:\n${state.memorySummary}\n` : 'Memoria previa vigente: (ninguna)\n',
+        'Conversacion antigua a compactar:',
         transcript,
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
     },
   ];
 

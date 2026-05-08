@@ -277,6 +277,7 @@ async function runTest() {
     ['providers/scraperClient', '../providers/scraperClient'],
     ['providers/zen', '../providers/zen/index'],
     ['providers/qwen', '../providers/qwen/index'],
+    ['providers/gemini', '../providers/gemini/index'],
   ];
   for (const [name, modPath] of modules) {
     try {

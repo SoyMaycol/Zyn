@@ -77,6 +77,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
         'Para operaciones de Git usa la herramienta git con action="api" o action="clone".',
         'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), documentar (final).',
+        'Aprende del resultado de cada herramienta en el turno: si una no sirve, ajusta la siguiente acción en vez de repetirla.',
+        'No olvides datos útiles del procedimiento (archivos vistos, comandos ejecutados, errores, idioma del usuario, decisiones y pendientes); apóyate en la memoria compactada cuando exista.',
         'No te limites a una sola tool por costumbre; elige la mejor secuencia técnica para el objetivo.',
         'Si el usuario pide logos, mockups o piezas visuales para un proyecto/frontend, usa create_canvas_image cuando corresponda, junto al resto de tools del flujo.',
       ]
@@ -92,6 +94,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
         'For Git operations use the git tool with action="api" or action="clone".',
         'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), then report.',
+        'Learn from every tool result during the turn: if a tool is not useful, adjust the next action instead of repeating it.',
+        'Do not forget useful procedural facts (files inspected, commands run, errors, user language, decisions, and pending work); rely on compacted memory when available.',
         'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
         'If the user asks for logos, mockups, or visual assets for a project/frontend, use create_canvas_image when appropriate together with the rest of the workflow.',
       ];
@@ -279,6 +283,7 @@ const TOOL_ARG_KEYS = {
   fetch_url: ['url', 'selector', 'attribute', 'limit'],
   fetch: ['url', 'method', 'headers', 'query', 'json', 'data', 'form', 'files', 'timeoutMs'],
   fetch_http: ['url', 'method', 'headers', 'query', 'json', 'data', 'form', 'files', 'timeoutMs'],
+  upload_file: ['path', 'type', 'timeoutMs'],
   webfetch: ['url', 'headers', 'timeoutMs'],
   scrape_site: ['url', 'selectors', 'limit', 'headers'],
   web_search: ['query', 'lang', 'limit'],
@@ -454,9 +459,12 @@ function buildConversationMessages(state, turnMessages, systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
   }
   if (state.memorySummary) {
+    const language = normalizeLanguage(state.language || 'en');
     messages.push({
       role: 'system',
-      content: `Memoria resumida anterior:\n${state.memorySummary}`,
+      content: language === 'es'
+        ? `Memoria persistente autoritativa (usala para continuar sin olvidar progreso, archivos, comandos, decisiones, idioma/configuracion y pendientes):\n${state.memorySummary}`
+        : `Authoritative persistent memory (use it to continue without forgetting progress, files, commands, decisions, language/configuration, and pending work):\n${state.memorySummary}`,
     });
   }
   if (Array.isArray(state.history) && state.history.length > 0) {
