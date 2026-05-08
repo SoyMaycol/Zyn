@@ -21,12 +21,21 @@ const GMAIL_SCOPES = [
 ];
 const AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const DEVICE_CODE_URL = 'https://oauth2.googleapis.com/device/code';
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1';
 const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const CALLBACK_PATH = '/oauth/gmail/callback';
 const TOKEN_CALLBACK_PATH = '/oauth/gmail/token';
 
 let pendingFlow = null;
+
+
+function buildMissingClientSecretError() {
+  return new Error(
+    'Google OAuth rechazó el intercambio de code porque falta client_secret. Si tu credencial es Desktop App, configura ZYN_GMAIL_CLIENT_ID con ese client_id y usa flujo code/PKCE. Si es Web App, define ZYN_GMAIL_CLIENT_SECRET del mismo OAuth Client ID y reintenta /gmail connect.',
+  );
+}
+
 
 function base64Url(buffer) {
   return Buffer.from(buffer)
@@ -89,6 +98,7 @@ async function fetchJson(url, options = {}) {
       const err = new Error(`Gmail API fallo (${res.status}): ${String(detail || '').slice(0, 300)}`);
       err.status = res.status;
       err.body = json;
+      if (code === 'invalid_client') throw new Error('Invalid client type para device flow. Usa OAuth Desktop App con flujo code/PKCE o cambia ZYN_GMAIL_OAUTH_FLOW=code.');
       throw err;
     }
     return json;
@@ -108,11 +118,19 @@ async function exchangeCodeForToken({ code, codeVerifier, redirectUri }) {
   };
   if (GMAIL_CLIENT_SECRET) params.client_secret = GMAIL_CLIENT_SECRET;
   const body = new URLSearchParams(params);
-  return fetchJson(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body,
-  });
+  try {
+    return await fetchJson(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body,
+    });
+  } catch (err) {
+    const detail = String(err?.message || '').toLowerCase();
+    if (err?.status === 400 && detail.includes('client_secret') && detail.includes('missing')) {
+      throw buildMissingClientSecretError();
+    }
+    throw err;
+  }
 }
 
 async function refreshAccessToken(auth) {
@@ -272,6 +290,52 @@ function readRequestJson(req) {
   });
 }
 
+
+async function requestDeviceCode() {
+  const body = new URLSearchParams({
+    client_id: GMAIL_CLIENT_ID,
+    scope: GMAIL_SCOPES.join(' '),
+  });
+  return fetchJson(DEVICE_CODE_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body,
+  });
+}
+
+async function pollDeviceToken(device) {
+  const intervalMs = Math.max(1000, Number(device.interval || 5) * 1000);
+  const expiresAt = Date.now() + Math.max(60, Number(device.expires_in || 600)) * 1000;
+
+  while (Date.now() < expiresAt) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    const params = new URLSearchParams({
+      client_id: GMAIL_CLIENT_ID,
+      device_code: device.device_code,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    });
+    if (GMAIL_CLIENT_SECRET) params.set('client_secret', GMAIL_CLIENT_SECRET);
+
+    try {
+      const token = await fetchJson(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: params,
+        timeoutMs: 30000,
+      });
+      return token;
+    } catch (err) {
+      const code = err?.body?.error || '';
+      if (code === 'authorization_pending') continue;
+      if (code === 'slow_down') continue;
+      if (code === 'access_denied') throw new Error('Autorización cancelada por el usuario.');
+      if (code === 'invalid_client') throw new Error('Invalid client type para device flow. Usa OAuth Desktop App con flujo code/PKCE o cambia ZYN_GMAIL_OAUTH_FLOW=code.');
+      throw err;
+    }
+  }
+  throw new Error('Tiempo agotado esperando autorización de Gmail en flujo device code.');
+}
+
 async function startGmailOAuthFlow(options = {}) {
   if (pendingFlow?.server) {
     await closeServer(pendingFlow.server).catch(() => {});
@@ -282,7 +346,9 @@ async function startGmailOAuthFlow(options = {}) {
   const state = base64Url(crypto.randomBytes(24));
   const host = options.host || '127.0.0.1';
   const preferredPort = Number(options.port || process.env.ZYN_GMAIL_OAUTH_PORT || 0);
-  const flow = GMAIL_CLIENT_SECRET ? 'code' : 'token';
+  const requestedFlow = String(options.flow || process.env.ZYN_GMAIL_OAUTH_FLOW || '').toLowerCase();
+  const allowDeviceFlow = requestedFlow === 'device' && options.allowDeviceFlow !== false;
+  const flow = allowDeviceFlow ? 'device' : 'code';
   let redirectUri = '';
 
   let resolveDone;
@@ -292,20 +358,26 @@ async function startGmailOAuthFlow(options = {}) {
     rejectDone = reject;
   });
 
+  if (flow === 'device') {
+    const device = await requestDeviceCode();
+    const authUrl = String(device.verification_url || device.verification_uri || '').trim();
+    const userCode = String(device.user_code || '').trim();
+
+    const deviceDone = (async () => {
+      const token = await pollDeviceToken(device);
+      const profile = await getUserProfile(token.access_token);
+      const stored = buildStoredToken(token, profile);
+      await writeAuthFile(stored);
+      return stored;
+    })();
+
+    pendingFlow = { server: null, done: deviceDone, authUrl, redirectUri: '', flow, userCode };
+    return { authUrl, redirectUri: '', done: deviceDone, flow, userCode };
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       const currentUrl = new URL(req.url, redirectUri || `http://${host}`);
-      if (req.method === 'POST' && currentUrl.pathname === TOKEN_CALLBACK_PATH) {
-        const payload = await readRequestJson(req);
-        if (payload.state !== state || payload.stateExpected !== state) throw new Error('OAuth state invalido');
-        if (payload.error) throw new Error(payload.error_description || payload.error);
-        const stored = await saveTokenFromImplicit(payload);
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, email: stored.profile?.email || '' }));
-        resolveDone(stored);
-        setTimeout(() => closeServer(server).catch(() => {}), 250);
-        return;
-      }
       if (currentUrl.pathname !== CALLBACK_PATH) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('Not found');
