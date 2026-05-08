@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { MODELS_FILE, PROVIDERS_FILE, REQUEST_TIMEOUT_MS } = require('../config');
+const { MODELS_FILE, PROVIDERS_FILE, REQUEST_TIMEOUT_MS, SUPPORTED_MODEL_PROVIDERS } = require('../config');
 
 const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
@@ -108,13 +108,17 @@ function loadExternalModels() {
   if (Array.isArray(raw)) {
     const output = {};
     for (const item of raw) {
-      if (!item?.key) continue;
+      if (!item?.key || !SUPPORTED_MODEL_PROVIDERS.has(item.provider)) continue;
       output[item.key] = item;
     }
     return output;
   }
-  if (raw.models && typeof raw.models === 'object') return raw.models;
-  return raw && typeof raw === 'object' ? raw : {};
+  const rawModels = raw.models && typeof raw.models === 'object'
+    ? raw.models
+    : (raw && typeof raw === 'object' ? raw : {});
+  return Object.fromEntries(
+    Object.entries(rawModels).filter(([, model]) => SUPPORTED_MODEL_PROVIDERS.has(model?.provider)),
+  );
 }
 
 function saveExternalModels(models) {
@@ -165,43 +169,6 @@ function buildModelRecord(providerKey, config, modelId, label, extra = {}) {
   return record;
 }
 
-async function fetchOllamaModels(config) {
-  const baseUrl = normalizeBaseUrl(config.baseUrl || 'http://127.0.0.1:11434');
-  const data = await fetchJson(`${baseUrl}/api/tags`, {
-    headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
-  });
-  const models = Array.isArray(data?.models) ? data.models : [];
-  return models.map(model => buildModelRecord(
-    'ollama',
-    { ...config, baseUrl },
-    model.name || model.model || model.id,
-    model.name || model.model || model.id,
-    {
-      ollamaModel: model.name || model.model || model.id,
-      raw: model,
-    },
-  )).filter(item => item.modelId);
-}
-
-async function fetchOpenAICompatibleModels(config) {
-  const baseUrl = normalizeBaseUrl(config.baseUrl);
-  if (!baseUrl) throw new Error('Falta baseUrl para openai-compatible');
-  const data = await fetchJson(`${baseUrl}/v1/models`, {
-    headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
-  });
-  const models = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
-  return models.map(model => buildModelRecord(
-    'openai-compatible',
-    { ...config, baseUrl },
-    model.id || model.name,
-    model.id || model.name,
-    {
-      openaiModel: model.id || model.name,
-      raw: model,
-    },
-  )).filter(item => item.modelId);
-}
-
 async function fetchZenModels(config) {
   const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://opencode.ai/zen');
   const data = await fetchJson(`${baseUrl}/v1/models`, {
@@ -238,10 +205,27 @@ async function fetchQwenModels(config) {
   ));
 }
 
+
+async function fetchGeminiModels(config) {
+  const models = [
+    { id: 'gemini-flash', label: 'Gemini Flash' },
+  ];
+  return models.map(model => buildModelRecord(
+    'gemini',
+    config,
+    model.id,
+    model.label,
+    {
+      geminiModel: model.id,
+      static: true,
+    },
+  ));
+}
+
 async function fetchProviderModels(providerKey, config = {}) {
   const key = String(providerKey || '').trim();
-  if (key === 'ollama') return fetchOllamaModels(config);
-  if (key === 'openai-compatible') return fetchOpenAICompatibleModels(config);
+  if (!SUPPORTED_MODEL_PROVIDERS.has(key)) throw new Error(`Proveedor no soportado: ${key}`);
+  if (key === 'gemini') return fetchGeminiModels(config);
   if (key === 'zen') return fetchZenModels(config);
   if (key === 'qwen') return fetchQwenModels(config);
   throw new Error(`Proveedor no soportado: ${key}`);

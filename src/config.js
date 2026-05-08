@@ -34,22 +34,15 @@ const BUILTIN_MODELS = {
     provider: 'zen',
     zenModel: 'trinity-large-preview-free',
   },
-  'ollama-qwen': {
-    label: 'Ollama Qwen 2.5',
-    provider: 'ollama',
-    ollamaModel: 'qwen2.5:latest',
-  },
-  'ollama-gemma': {
-    label: 'Ollama Gemma 3',
-    provider: 'ollama',
-    ollamaModel: 'gemma3:latest',
-  },
-  'openai-mini': {
-    label: 'OpenAI Compatible Mini',
-    provider: 'openai-compatible',
-    openaiModel: 'gpt-4o-mini',
+  'gemini-flash': {
+    label: 'Gemini Flash',
+    provider: 'gemini',
+    geminiModel: 'gemini-flash',
   },
 };
+
+const SUPPORTED_MODEL_PROVIDERS = new Set(['qwen', 'zen', 'gemini']);
+const GEMINI_MODEL_WARNING = 'It is not recommended for use in production; it is unstable and ineffective.';
 
 function readJsonFile(filePath) {
   try {
@@ -66,7 +59,7 @@ function loadExternalModels() {
   if (Array.isArray(raw)) {
     const output = {};
     for (const item of raw) {
-      if (!item?.key || !item?.provider) continue;
+      if (!item?.key || !item?.provider || !SUPPORTED_MODEL_PROVIDERS.has(item.provider)) continue;
       output[item.key] = {
         label: item.label || item.key,
         provider: item.provider,
@@ -76,11 +69,13 @@ function loadExternalModels() {
     return output;
   }
 
-  if (raw && typeof raw === 'object' && raw.models && typeof raw.models === 'object') {
-    return raw.models;
-  }
+  const rawModels = raw && typeof raw === 'object' && raw.models && typeof raw.models === 'object'
+    ? raw.models
+    : (raw && typeof raw === 'object' ? raw : {});
 
-  return raw && typeof raw === 'object' ? raw : {};
+  return Object.fromEntries(
+    Object.entries(rawModels).filter(([, model]) => SUPPORTED_MODEL_PROVIDERS.has(model?.provider)),
+  );
 }
 
 const MODELS = {
@@ -99,8 +94,10 @@ const MAX_OUTPUT_CHARS = 12000;
 const MAX_FILE_LINES = 5000;
 const ACTION_LOG_LIMIT = 40;
 const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 180000);
-const MAX_HISTORY_CHARS = 24000;
-const KEEP_RECENT_MESSAGES = 12;
+const MAX_HISTORY_CHARS = 60000;
+const KEEP_RECENT_MESSAGES = 50;
+const PROVIDER_TIMEOUT_RETRY_DELAY_MS = Number(process.env.ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS || 600000);
+const PROVIDER_TIMEOUT_MAX_ATTEMPTS = 3;
 const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
 const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
 const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
@@ -110,6 +107,8 @@ const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const USER_DATA_ROOT = path.join(os.homedir(), '.zyn');
 const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
+const GMAIL_CLIENT_ID = '871944347395-rnpsjsqgbnvlfb05hqk4dc9283olgnh2.apps.googleusercontent.com';
+const GMAIL_AUTH_FILE = path.join(USER_DATA_ROOT, 'gmail-auth.json');
 const PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
 
 function listProvidersFromModels(models = MODELS) {
@@ -142,6 +141,9 @@ module.exports = {
   DATA_ROOT,
   DEFAULT_LANGUAGE,
   DEFAULT_MODEL_KEY,
+  GEMINI_MODEL_WARNING,
+  GMAIL_AUTH_FILE,
+  GMAIL_CLIENT_ID,
   EXPORTS_DIR,
   HOME_DIR,
   KEEP_RECENT_MESSAGES,
@@ -152,6 +154,9 @@ module.exports = {
   MODELS,
   MODELS_FILE,
   PROVIDERS_FILE,
+  SUPPORTED_MODEL_PROVIDERS,
+  PROVIDER_TIMEOUT_MAX_ATTEMPTS,
+  PROVIDER_TIMEOUT_RETRY_DELAY_MS,
   QWEN_EMAIL,
   QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,

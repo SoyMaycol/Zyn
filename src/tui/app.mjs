@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
 
 const require = createRequire(import.meta.url);
 const { runAgentTurn } = require('../core/agent');
+const { parseAgentResponse } = require('../core/prompts');
 const { handleLocalCommand, SLASH_COMMANDS } = require('../cli/commands');
 const {
   loadOrCreateSessionState,
@@ -227,6 +228,20 @@ function parseInline(text) {
   }
   if (parts.length === 0) parts.push({ t: 'text', v: text });
   return parts;
+}
+
+
+function normalizeAssistantDisplayText(text) {
+  const raw = String(text || '');
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+
+  const parsed = parseAgentResponse(trimmed);
+  if (parsed?.type === 'final' && typeof parsed.content === 'string' && parsed.content.trim()) {
+    return parsed.content.trim();
+  }
+
+  return raw;
 }
 
 function InlineLine({ text, color }) {
@@ -514,13 +529,14 @@ function ThinkingBlock({ text, elapsed, live, width }) {
 
 function AnswerBlock({ text, live, width }) {
   if (!text) return null;
+  const displayText = normalizeAssistantDisplayText(text);
   return h(Box, { flexDirection: 'column', paddingLeft: 3, paddingRight: 3, marginTop: 1 },
     h(Box, { gap: 1, marginBottom: 0 },
       h(Text, { color: T.accentSoft, bold: true }, '\u25c9'),
       h(Text, { color: T.textDim, bold: true }, APP_NAME),
     ),
     h(Box, { flexDirection: 'column', paddingLeft: 2 },
-      h(MarkdownContent, { text, width: Math.max(40, (width || 80) - 8) }),
+      h(MarkdownContent, { text: displayText, width: Math.max(40, (width || 80) - 8) }),
       live ? h(Text, { color: T.accent }, '\u258e') : null,
     ),
   );

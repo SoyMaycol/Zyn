@@ -492,8 +492,10 @@
       chatSettings.activeModel = key;
       updateModelUI();
       try {
-        await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ activeModel: key }) });
+        const res = await api(`/api/chats/${currentChatId}/settings`, { method: 'PUT', body: JSON.stringify({ activeModel: key }) });
+        const data = await res.json().catch(() => ({}));
         showToast(`Modelo: ${models.find(m => m.key === key)?.label || key}`);
+        if (data.warning) showToast(data.warning);
       } catch {}
     }
 
