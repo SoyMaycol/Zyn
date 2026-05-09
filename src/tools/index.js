@@ -46,7 +46,7 @@ const TOOL_DEFINITIONS = [
   { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
-  { name: 'video_studio', usage: '{ action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }' },
+  { name: 'ffmpeg', usage: '{ action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
@@ -151,15 +151,15 @@ function getToolPromptText() {
     '  Ejemplo listar: {"type":"tool","tool":"gmail","args":{"action":"list","query":"is:unread newer_than:7d","maxResults":5}}',
     '  Ejemplo leer: {"type":"tool","tool":"gmail","args":{"action":"read","id":"MESSAGE_ID"}}',
     '',
-    '## Video automation studio',
+    '## FFmpeg studio',
     '',
-    'video_studio { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }',
-    '  Control total de FFmpeg/FFprobe para cualquier flujo multimedia (audio, video, conversión, extracción, remux, transcode).',
+    'ffmpeg { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }',
+    '  Control total real de FFmpeg/FFprobe para audio, sonido, video, conversión, remux, transcode, extracción y generación multimedia.',
     '  actions: probe | run | run_profile.',
     '  probe: inspecciona metadatos con ffprobe-static.',
     '  run: ejecuta ffmpeg con args libres y binario portable ffmpeg-static.',
     '  run_profile: ejecuta un JSON con array de argumentos FFmpeg para flujos reutilizables.',
-    '  Ejemplo: {"type":"tool","tool":"video_studio","args":{"action":"run","args":["-i","input.mp4","-vn","out.mp3"]}}',
+    '  Ejemplo: {"type":"tool","tool":"ffmpeg","args":{"action":"run","args":["-i","input.mp4","-vn","out.mp3"]}}',
     '',
   '## Imagen profesional con Jimp',
     '',
@@ -289,8 +289,8 @@ function describeToolCall(call) {
       return `Gmail ${call.args.action || 'status'}`;
     case 'create_canvas_image':
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
-    case 'video_studio':
-      return `Video studio ${call.args.action || 'scaffold'}`;
+    case 'ffmpeg':
+      return `FFmpeg ${call.args.action || 'scaffold'}`;
     case 'git':
       return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
     default:
@@ -1241,14 +1241,14 @@ async function webfetchTool(args, state, paint) {
   return truncateText(markdown || '[sin contenido markdown]');
 }
 
-async function videoStudioTool(args, state, paint) {
+async function ffmpegTool(args, state, paint) {
   const action = String(args.action || 'probe').toLowerCase().trim();
   const ffmpegStatic = require('ffmpeg-static');
   const ffprobeStatic = require('ffprobe-static');
 
   if (action === 'probe') {
     const input = args.input || args.path;
-    if (!input || typeof input !== 'string') throw new Error('video_studio probe requiere input/path');
+    if (!input || typeof input !== 'string') throw new Error('ffmpeg probe requiere input/path');
     const target = resolveInputPath(input, state.cwd);
     const probeArgs = ['-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', target];
     const result = await runProcess(ffprobeStatic.path, probeArgs, { cwd: state.cwd, timeoutMs: Math.max(1000, Number(args.timeoutMs || 30000)) });
@@ -1257,12 +1257,12 @@ async function videoStudioTool(args, state, paint) {
   }
 
   if (action === 'run') {
-    if (!Array.isArray(args.args) || args.args.length === 0) throw new Error('video_studio run requiere args: array de argumentos FFmpeg');
+    if (!Array.isArray(args.args) || args.args.length === 0) throw new Error('ffmpeg run requiere args: array de argumentos FFmpeg');
     const ffmpegArgs = [...args.args.map(v => String(v))];
     if (args.overwrite !== false && !ffmpegArgs.includes('-y') && !ffmpegArgs.includes('-n')) ffmpegArgs.unshift('-y');
     const cwd = args.workingDir ? resolveInputPath(String(args.workingDir), state.cwd) : state.cwd;
     const detail = [ffmpegStatic, ...ffmpegArgs].join(' ');
-    const allowed = await askConfirmation(state.rl, 'Ejecutar FFmpeg libre (control total)', detail, paint, state);
+    const allowed = await askConfirmation(state.rl, 'Ejecutar FFmpeg (control total)', detail, paint, state);
     if (!allowed) return 'Ejecución cancelada por el usuario.';
     const result = await runProcess(ffmpegStatic, ffmpegArgs, { cwd, timeoutMs: Math.max(1000, Number(args.timeoutMs || 120000)) });
     if (result.code !== 0) throw new Error(`ffmpeg fallo (${result.code}): ${shortText(result.stderr || result.stdout || '', 3000)}`);
@@ -1279,13 +1279,13 @@ async function videoStudioTool(args, state, paint) {
 
   if (action === 'run_profile') {
     const profilePath = resolveInputPath(String(args.profilePath || ''), state.cwd);
-    if (!args.profilePath) throw new Error('video_studio run_profile requiere profilePath');
+    if (!args.profilePath) throw new Error('ffmpeg run_profile requiere profilePath');
     const profile = JSON.parse(await fsp.readFile(profilePath, 'utf8'));
     if (!Array.isArray(profile.args) || profile.args.length === 0) throw new Error('El perfil debe incluir { "args": [ ... ] }');
-    return await videoStudioTool({ action: 'run', args: profile.args, overwrite: profile.overwrite, timeoutMs: profile.timeoutMs, workingDir: profile.workingDir }, state, paint);
+    return await ffmpegTool({ action: 'run', args: profile.args, overwrite: profile.overwrite, timeoutMs: profile.timeoutMs, workingDir: profile.workingDir }, state, paint);
   }
 
-  throw new Error('video_studio action inválida. Usa: probe | run | run_profile');
+  throw new Error('ffmpeg action inválida. Usa: probe | run | run_profile');
 }
 
 async function webSearchTool(args, state, paint) {
@@ -1448,8 +1448,8 @@ async function executeToolCall(call, state, ui) {
     case 'create_canvas_image':
       result = await createCanvasImageTool(call.args, state, ui.paint);
       break;
-    case 'video_studio':
-      result = await videoStudioTool(call.args, state, ui.paint);
+    case 'ffmpeg':
+      result = await ffmpegTool(call.args, state, ui.paint);
       break;
     case 'git':
       result = await gitUnifiedTool(call.args, state, ui.paint);
