@@ -144,21 +144,24 @@ Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametr
 
 ## FFmpeg (control total real)
 
-ffmpeg { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }
-  Tool profesional para automatizar audio/video con control total de FFmpeg y FFprobe.
+ffmpeg { action, input?, inputs?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }
+  Tool profesional para automatizar audio, video y conversiones con control total de FFmpeg y FFprobe.
 
   Acciones:
-  - probe: inspección técnica JSON del archivo (codec, streams, duración, bitrate, fps).
+  - probe / inspect: inspección técnica JSON del archivo (streams, codec, duración, bitrate, fps, metadata).
   - run: ejecución libre de FFmpeg usando `args` (array exacto de CLI).
   - run_profile: carga un perfil JSON reusable con `{ "args": [...] }`.
+  - concat: une varios archivos en una sola salida usando `inputs[]` y `output`.
 
   Flujo recomendado:
   1) probe
   2) run
-  3) run_profile si el proceso se repetirá
+  3) concat cuando se trate de unir piezas
+  4) run_profile si el proceso se repite
 
   Reglas de uso:
-  - Siempre hacer `probe` antes de convertir/editar.
+  - El skill no limita el tipo de salida: sirve para convertir, extraer, mezclar, unir, recortar, normalizar o generar archivos multimedia.
+  - Si el archivo debe conservarse intacto, preferir `-c copy`.
   - Para máxima compatibilidad web: `libx264 + yuv420p + +faststart`.
   - Para audio profesional: `loudnorm`.
-  - Para operaciones sin recodificar: `-c copy`.
+  - Antes de concluir, valida que la salida exista y que el comando terminó sin error.
