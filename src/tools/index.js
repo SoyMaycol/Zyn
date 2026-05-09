@@ -46,7 +46,7 @@ const TOOL_DEFINITIONS = [
   { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
-  { name: 'video_studio', usage: '{ action, projectDir?, profile?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }' },
+  { name: 'video_studio', usage: '{ action, projectDir?, profile?, profilePath?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
@@ -1358,23 +1358,51 @@ Scaffold para edición programática de **cualquier tipo** (Phonk, YouTube, game
 
   if (action === 'render') {
     const profile = await readProfile();
-    const clip = resolveInputPath(profile.clips?.[0], path.dirname(profilePath));
-    const audio = resolveInputPath(profile.audioPath, path.dirname(profilePath));
-    const output = resolveInputPath(profile.outputPath, path.dirname(profilePath));
+    const rootDir = path.dirname(profilePath);
+    const clips = (profile.clips || []).map(c => resolveInputPath(c, rootDir));
+    const audio = resolveInputPath(profile.audioPath, rootDir);
+    const output = resolveInputPath(profile.outputPath, rootDir);
     const vf = [`scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`, `crop=${profile.width}:${profile.height}`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', `fps=${profile.fps || 30}`].join(',');
 
-    const allowed = await askConfirmation(state.rl, 'Renderizar video con FFmpeg', `Input: ${clip}
-Audio: ${audio}
-Output: ${output}`, paint, state);
+    const allowed = await askConfirmation(state.rl, 'Renderizar video con módulos Node + FFmpeg', `Clips: ${clips.length}\nAudio: ${audio}\nOutput: ${output}`, paint, state);
     if (!allowed) return 'Render cancelado por el usuario.';
 
+    const ffmpeg = require('fluent-ffmpeg');
+    const ffmpegStatic = require('ffmpeg-static');
+    const ffprobeStatic = require('ffprobe-static');
+    ffmpeg.setFfmpegPath(ffmpegStatic);
+    ffmpeg.setFfprobePath(ffprobeStatic.path);
+
     await fsp.mkdir(path.dirname(output), { recursive: true });
-    const cmd = ['-y','-i', clip, '-i', audio, '-filter:v', vf, '-map', '0:v:0', '-map', '1:a:0', '-c:v', profile.encode?.videoCodec || 'libx264', '-preset', profile.encode?.preset || 'fast', '-crf', String(profile.encode?.crf || 19), '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-shortest', output];
-    const result = await runProcess('ffmpeg', cmd, { cwd: state.cwd, timeoutMs: 120000 });
-    if (result.code !== 0) {
-      throw new Error(`FFmpeg fallo (${result.code}): ${shortText(result.stderr || result.stdout || '', 2000)}`);
+
+    const canConcat = clips.length > 1 && profile.transitions?.enabled && String(profile.transitions?.style || 'cut') !== 'cut';
+    if (canConcat) {
+      const concatModule = require('node-ffmpeg-concat');
+      const concatFn = typeof concatModule === 'function' ? concatModule : concatModule.concat;
+      if (typeof concatFn !== 'function') throw new Error('node-ffmpeg-concat no exporta una función válida');
+      await concatFn({
+        output,
+        videos: clips,
+        audio,
+        transitions: [{ name: String(profile.transitions.style || 'directionalWarp'), duration: 500 }],
+        concurrency: 4,
+        cleanupFrames: true,
+        frameFormat: 'raw',
+        args: ['-c:v', profile.encode?.videoCodec || 'libx264', '-preset', profile.encode?.preset || 'fast', '-crf', String(profile.encode?.crf || 19), '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-movflags', profile.encode?.movflags || 'faststart']
+      });
+      return `Render completado con node-ffmpeg-concat: ${output}`;
     }
-    return `Render completado: ${output}`;
+
+    const sourceClip = clips[0];
+    await new Promise((resolve, reject) => {
+      ffmpeg(sourceClip)
+        .input(audio)
+        .outputOptions(['-filter:v', vf, '-map', '0:v:0', '-map', '1:a:0', '-c:v', profile.encode?.videoCodec || 'libx264', '-preset', profile.encode?.preset || 'fast', '-crf', String(profile.encode?.crf || 19), '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', profile.encode?.movflags || 'faststart'])
+        .on('end', resolve)
+        .on('error', reject)
+        .save(output);
+    });
+    return `Render completado con fluent-ffmpeg: ${output}`;
   }
 
   throw new Error('video_studio action inválida. Usa: scaffold | validate_profile | plan | render');
