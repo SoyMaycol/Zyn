@@ -112,11 +112,11 @@ function pushAction(state, kind, title, detail = '') {
 }
 
 const EVENT_SYMBOLS = {
-  info:  { sym: '·', color: C.gray },
+  info:  { sym: 'ⓘ', color: C.gray },
   think: { sym: '○', color: C.gray },
-  tool:  { sym: '⤳', color: C.purple },
+  tool:  { sym: '⚒', color: C.purple },
   ok:    { sym: '✓', color: C.green },
-  warn:  { sym: '▲', color: C.yellow },
+  warn:  { sym: '⚠', color: C.yellow },
   error: { sym: '✗', color: C.red },
 };
 
