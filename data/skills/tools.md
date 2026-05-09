@@ -141,3 +141,24 @@ Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametr
 3) Ejecutar cambios: `write_file` / `replace_in_file` / `run_command`
 4) Validar resultados: `run_command` (tests/checks)
 5) Entregar resumen: cambios, riesgos, siguientes pasos
+
+## FFmpeg (control total real)
+
+ffmpeg { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }
+  Tool profesional para automatizar audio/video con control total de FFmpeg y FFprobe.
+
+  Acciones:
+  - probe: inspección técnica JSON del archivo (codec, streams, duración, bitrate, fps).
+  - run: ejecución libre de FFmpeg usando `args` (array exacto de CLI).
+  - run_profile: carga un perfil JSON reusable con `{ "args": [...] }`.
+
+  Flujo recomendado:
+  1) probe
+  2) run
+  3) run_profile si el proceso se repetirá
+
+  Reglas de uso:
+  - Siempre hacer `probe` antes de convertir/editar.
+  - Para máxima compatibilidad web: `libx264 + yuv420p + +faststart`.
+  - Para audio profesional: `loudnorm`.
+  - Para operaciones sin recodificar: `-c copy`.
