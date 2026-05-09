@@ -141,3 +141,22 @@ Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametr
 3) Ejecutar cambios: `write_file` / `replace_in_file` / `run_command`
 4) Validar resultados: `run_command` (tests/checks)
 5) Entregar resumen: cambios, riesgos, siguientes pasos
+
+## Video Studio (edición de video programática)
+
+video_studio { action, projectDir?, profile?, profilePath?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }
+  Tool especializada para crear y operar pipelines de video con control total.
+  Soporta perfiles tipo: phonk, youtube, gameplay, podcast, cinematic y custom.
+
+  Acciones:
+  - scaffold: crea estructura de proyecto Node.js + FFmpeg con profile.json editable.
+  - validate_profile: valida que el profile tenga clips/audio/salida/resolución.
+  - plan: devuelve plan de render y filtergraph calculado.
+  - render: ejecuta ffmpeg con mezcla video+audio y encode configurable.
+
+  Flujo recomendado:
+  1) scaffold
+  2) editar profile.json
+  3) validate_profile
+  4) plan
+  5) render

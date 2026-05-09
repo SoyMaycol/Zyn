@@ -46,6 +46,7 @@ const TOOL_DEFINITIONS = [
   { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
+  { name: 'video_studio', usage: '{ action, projectDir?, profile?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
@@ -150,7 +151,15 @@ function getToolPromptText() {
     '  Ejemplo listar: {"type":"tool","tool":"gmail","args":{"action":"list","query":"is:unread newer_than:7d","maxResults":5}}',
     '  Ejemplo leer: {"type":"tool","tool":"gmail","args":{"action":"read","id":"MESSAGE_ID"}}',
     '',
-    '## Imagen profesional con Jimp',
+    '## Video automation studio',
+    '',
+    'video_studio { action, projectDir?, profile?, profilePath?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }',
+    '  Studio de video programatico con control total para Phonk, YouTube, gameplay, podcast y cualquier formato.',
+    '  actions: scaffold | validate_profile | plan | render.',
+    '  scaffold: crea proyecto editable. validate_profile: valida requerimientos. plan: genera plan técnico. render: ejecuta FFmpeg.',
+    '  Ejemplo: {"type":"tool","tool":"video_studio","args":{"action":"scaffold","projectDir":"video-studio-phonk"}}',
+    '',
+  '## Imagen profesional con Jimp',
     '',
     'create_canvas_image { width, height, background?, elements?, format?, outputPath? }',
     '  Crea imagenes desde cero usando Jimp con composicion por elementos.',
@@ -278,6 +287,8 @@ function describeToolCall(call) {
       return `Gmail ${call.args.action || 'status'}`;
     case 'create_canvas_image':
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
+    case 'video_studio':
+      return `Video studio ${call.args.action || 'scaffold'}`;
     case 'git':
       return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
     default:
@@ -1228,6 +1239,147 @@ async function webfetchTool(args, state, paint) {
   return truncateText(markdown || '[sin contenido markdown]');
 }
 
+async function videoStudioTool(args, state, paint) {
+  const action = String(args.action || 'scaffold').toLowerCase().trim();
+  const projectDir = resolveInputPath(args.projectDir || 'video-studio', state.cwd);
+  const profilePath = resolveInputPath(args.profilePath || path.join(projectDir, 'profile.json'), state.cwd);
+
+  const presets = {
+    phonk: { fps: 60, width: 1080, height: 1920, colorEq: 'contrast=1.20:brightness=-0.03:saturation=1.08', zoomAmount: 0.18, shakeAmount: 20 },
+    youtube: { fps: 30, width: 1920, height: 1080, colorEq: 'contrast=1.05:brightness=0.00:saturation=1.00', zoomAmount: 0.04, shakeAmount: 2 },
+    gameplay: { fps: 60, width: 1920, height: 1080, colorEq: 'contrast=1.06:brightness=0.00:saturation=1.02', zoomAmount: 0.03, shakeAmount: 1 },
+    podcast: { fps: 30, width: 1920, height: 1080, colorEq: 'contrast=1.03:brightness=0.01:saturation=0.98', zoomAmount: 0.02, shakeAmount: 0 },
+    cinematic: { fps: 24, width: 1920, height: 816, colorEq: 'contrast=1.12:brightness=-0.01:saturation=0.95', zoomAmount: 0.05, shakeAmount: 1 },
+  };
+
+  const pickPreset = String(args.profile || 'phonk').toLowerCase().trim();
+  const preset = presets[pickPreset] || presets.phonk;
+
+  if (action === 'scaffold') {
+    const allowed = await askConfirmation(state.rl, 'Crear módulo de edición de video', `${projectDir}
+Perfil base: ${pickPreset}`, paint, state);
+    if (!allowed) return 'Operacion cancelada por el usuario.';
+
+    await fsp.mkdir(projectDir, { recursive: true });
+    for (const dir of ['src', 'assets/clips', 'assets/audio', 'assets/overlays', 'assets/subtitles', 'renders', 'temp']) {
+      await fsp.mkdir(path.join(projectDir, dir), { recursive: true });
+    }
+
+    const profile = {
+      profile: pickPreset,
+      ...preset,
+      audioPath: './assets/audio/track.mp3',
+      clips: ['./assets/clips/clip1.mp4'],
+      overlays: ['./assets/overlays/film-grain.mp4'],
+      subtitles: null,
+      outputPath: './renders/final.mp4',
+      transitions: { enabled: true, style: 'cut' },
+      beatSync: { enabled: pickPreset === 'phonk', sensitivity: 1.35, minGapMs: 110 },
+      audioMix: { bgmGain: 1, voiceGain: 1, limiter: true },
+      encode: { videoCodec: 'libx264', crf: 19, preset: 'fast', pixFmt: 'yuv420p', movflags: 'faststart' }
+    };
+
+    const packageJson = {
+      name: 'zyn-video-studio', private: true, type: 'commonjs', scripts: { build: 'node src/build.js', 'build:profile': 'node src/build.js profile.json' },
+      dependencies: { 'fluent-ffmpeg': '^2.1.3', 'ffmpeg-static': '^5.2.0', 'ffprobe-static': '^3.1.0', 'node-ffmpeg-concat': '^1.0.3', 'node-wav': '^0.0.2' }
+    };
+
+    const buildJs = `const fs = require('fs');
+const path = require('path');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegStatic = require('ffmpeg-static');
+const ffprobeStatic = require('ffprobe-static');
+ffmpeg.setFfmpegPath(ffmpegStatic);
+ffmpeg.setFfprobePath(ffprobeStatic.path);
+
+const profilePath = process.argv[2] || path.join(__dirname, '..', 'profile.json');
+const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+const root = path.dirname(profilePath);
+const out = path.resolve(root, profile.outputPath || './renders/final.mp4');
+const clip = path.resolve(root, profile.clips[0]);
+
+function run(cmd){return new Promise((res,rej)=>cmd.on('end',res).on('error',rej).run());}
+
+(async()=>{
+  await fs.promises.mkdir(path.dirname(out), { recursive: true });
+  const vf = [\`scale=\${profile.width}:\${profile.height}:force_original_aspect_ratio=increase\`,\`crop=\${profile.width}:\${profile.height}\`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', \`fps=\${profile.fps || 30}\`].join(',');
+  await run(ffmpeg(clip).outputOptions(['-vf', vf, '-c:v', profile.encode?.videoCodec || 'libx264', '-crf', String(profile.encode?.crf || 20), '-preset', profile.encode?.preset || 'fast', '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-movflags', profile.encode?.movflags || 'faststart']).output(out));
+  console.log('Render listo:', out);
+})();
+`;
+
+    const readme = `# Video Studio
+
+Scaffold para edición programática de **cualquier tipo** (Phonk, YouTube, gameplay, podcast, cinematic).
+
+## Flujo recomendado
+1. Edita \`profile.json\` con tus paths y parámetros.
+2. Instala dependencias: \`npm install\`.
+3. Render: \`npm run build\`.
+
+## Notas
+- Para transiciones GLSL avanzadas, usa \`node-ffmpeg-concat\`.
+- Para sincronía de beats, añade detección de onsets (FFT/Spectral Flux) en \`src/build.js\`.
+`;
+
+    await fsp.writeFile(path.join(projectDir, 'package.json'), JSON.stringify(packageJson, null, 2));
+    await fsp.writeFile(path.join(projectDir, 'profile.json'), JSON.stringify(profile, null, 2));
+    await fsp.writeFile(path.join(projectDir, 'src', 'build.js'), buildJs);
+    await fsp.writeFile(path.join(projectDir, 'README.md'), readme);
+    return `Scaffold creado en ${projectDir} con perfil ${pickPreset}.`;
+  }
+
+  const readProfile = async () => JSON.parse(await fsp.readFile(profilePath, 'utf8'));
+
+  if (action === 'validate_profile') {
+    const profile = await readProfile();
+    const issues = [];
+    if (!Array.isArray(profile.clips) || profile.clips.length === 0) issues.push('clips debe tener al menos 1 video');
+    if (!profile.outputPath) issues.push('outputPath es requerido');
+    if (!profile.audioPath) issues.push('audioPath es requerido');
+    if (!profile.width || !profile.height) issues.push('width y height son requeridos');
+    return issues.length ? `Perfil inválido:\n- ${issues.join('\n- ')}` : `Perfil válido: ${profilePath}`;
+  }
+
+  if (action === 'plan') {
+    const profile = await readProfile();
+    const vf = [`scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`, `crop=${profile.width}:${profile.height}`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', `fps=${profile.fps || 30}`].join(',');
+    return [
+      `Plan para ${profile.profile || 'custom'}:`,
+      `- Clips: ${(profile.clips || []).length}`,
+      `- Audio: ${profile.audioPath || 'sin audio'}`,
+      `- Resolución: ${profile.width}x${profile.height}`,
+      `- FPS: ${profile.fps || 30}`,
+      `- Filtergraph base: ${vf}`,
+      `- Output: ${profile.outputPath}`,
+      '- Próximo paso: action="render" para ejecutar FFmpeg desde esta tool.'
+    ].join('\n');
+  }
+
+  if (action === 'render') {
+    const profile = await readProfile();
+    const clip = resolveInputPath(profile.clips?.[0], path.dirname(profilePath));
+    const audio = resolveInputPath(profile.audioPath, path.dirname(profilePath));
+    const output = resolveInputPath(profile.outputPath, path.dirname(profilePath));
+    const vf = [`scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`, `crop=${profile.width}:${profile.height}`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', `fps=${profile.fps || 30}`].join(',');
+
+    const allowed = await askConfirmation(state.rl, 'Renderizar video con FFmpeg', `Input: ${clip}
+Audio: ${audio}
+Output: ${output}`, paint, state);
+    if (!allowed) return 'Render cancelado por el usuario.';
+
+    await fsp.mkdir(path.dirname(output), { recursive: true });
+    const cmd = ['-y','-i', clip, '-i', audio, '-filter:v', vf, '-map', '0:v:0', '-map', '1:a:0', '-c:v', profile.encode?.videoCodec || 'libx264', '-preset', profile.encode?.preset || 'fast', '-crf', String(profile.encode?.crf || 19), '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-shortest', output];
+    const result = await runProcess('ffmpeg', cmd, { cwd: state.cwd, timeoutMs: 120000 });
+    if (result.code !== 0) {
+      throw new Error(`FFmpeg fallo (${result.code}): ${shortText(result.stderr || result.stdout || '', 2000)}`);
+    }
+    return `Render completado: ${output}`;
+  }
+
+  throw new Error('video_studio action inválida. Usa: scaffold | validate_profile | plan | render');
+}
+
 async function webSearchTool(args, state, paint) {
   const query = (args.query || '').trim();
   if (!query) throw new Error('web_search requiere query');
@@ -1387,6 +1539,9 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'create_canvas_image':
       result = await createCanvasImageTool(call.args, state, ui.paint);
+      break;
+    case 'video_studio':
+      result = await videoStudioTool(call.args, state, ui.paint);
       break;
     case 'git':
       result = await gitUnifiedTool(call.args, state, ui.paint);
