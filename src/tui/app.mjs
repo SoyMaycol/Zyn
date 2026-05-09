@@ -684,31 +684,6 @@ function StaticItem({ item, width }) {
   }
 }
 
-
-function isBackspaceInput(input, key = {}) {
-  return Boolean(
-    key.backspace ||
-    key.name === 'backspace' ||
-    key.sequence === '\u0008' ||
-    key.sequence === '\u007f' ||
-    input === '\u0008' ||
-    input === '\u007f' ||
-    (key.ctrl && input === 'h')
-  );
-}
-
-function isDeleteInput(input, key = {}) {
-  return Boolean(
-    key.delete ||
-    key.deleteForward ||
-    key.name === 'delete' ||
-    key.name === 'deleteForward' ||
-    key.sequence === '\u001b[3~' ||
-    input === '\u001b[3~' ||
-    (key.ctrl && input === 'd')
-  );
-}
-
 function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange }) {
   const [value, setValue] = useState(draft || '');
   const [cursor, setCursor] = useState((draft || '').length);
@@ -847,7 +822,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
-    if (isBackspaceInput(input, key)) {
+    if (key.backspace) {
       if (cursor === 0) return;
       updateValue(value.slice(0, cursor - 1) + value.slice(cursor));
       setCursor(c => Math.max(0, c - 1));
@@ -855,7 +830,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
-    if (isDeleteInput(input, key)) {
+    if (key.delete) {
       if (cursor >= value.length) return;
       updateValue(value.slice(0, cursor) + value.slice(cursor + 1));
       setSuggestIdx(0);
@@ -866,9 +841,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       const normalizedInput = input
         .replace(/\u001b\[200~/g, '')
         .replace(/\u001b\[201~/g, '')
-        .replace(/\r\n/g, '\n')
-        .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
-      if (!normalizedInput) return;
+        .replace(/\r\n/g, '\n');
       const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
       updateValue(value.slice(0, cursor) + safeInput + value.slice(cursor));
       setCursor(c => c + safeInput.length);

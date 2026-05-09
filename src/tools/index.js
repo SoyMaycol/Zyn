@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { spawn } = require('child_process');
 
 const fsp = fs.promises;
@@ -47,7 +46,6 @@ const TOOL_DEFINITIONS = [
   { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
-  { name: 'ffmpeg', usage: '{ action, input?, inputs?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
@@ -152,18 +150,7 @@ function getToolPromptText() {
     '  Ejemplo listar: {"type":"tool","tool":"gmail","args":{"action":"list","query":"is:unread newer_than:7d","maxResults":5}}',
     '  Ejemplo leer: {"type":"tool","tool":"gmail","args":{"action":"read","id":"MESSAGE_ID"}}',
     '',
-    '## FFmpeg de control total',
-    '',
-    'ffmpeg { action, input?, inputs?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }',
-    '  Control total real de FFmpeg/FFprobe para convertir, inspeccionar, mezclar, recortar, concatenar, extraer audio/video, generar salidas y automatizar flujos multimedia.',
-    '  actions: probe | run | run_profile | concat.',
-    '  probe: inspecciona metadatos y streams con ffprobe.',
-    '  run: ejecuta FFmpeg con args libres y binario portable ffmpeg-static.',
-    '  run_profile: ejecuta un JSON con un array de argumentos FFmpeg para flujos reutilizables.',
-    '  concat: une varios archivos en una sola salida usando una lista temporal; acepta inputs[] y output.',
-    '  Ejemplo libre: {"type":"tool","tool":"ffmpeg","args":{"action":"run","args":["-i","input.mp4","-vn","out.mp3"]}}',
-    '',
-  '## Imagen profesional con Jimp',
+    '## Imagen profesional con Jimp',
     '',
     'create_canvas_image { width, height, background?, elements?, format?, outputPath? }',
     '  Crea imagenes desde cero usando Jimp con composicion por elementos.',
@@ -291,8 +278,6 @@ function describeToolCall(call) {
       return `Gmail ${call.args.action || 'status'}`;
     case 'create_canvas_image':
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
-    case 'ffmpeg':
-      return `FFmpeg ${call.args.action || 'scaffold'}`;
     case 'git':
       return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
     default:
@@ -1243,132 +1228,6 @@ async function webfetchTool(args, state, paint) {
   return truncateText(markdown || '[sin contenido markdown]');
 }
 
-
-
-async function ffmpegTool(args, state, paint) {
-  const action = String(args.action || 'probe').toLowerCase().trim();
-  const ffmpegStatic = require('ffmpeg-static');
-  const ffprobeStatic = require('ffprobe-static');
-  const fluentFfmpeg = require('fluent-ffmpeg');
-
-  if (!ffmpegStatic) {
-    throw new Error('No se encontro ffmpeg-static en la instalacion actual');
-  }
-
-  fluentFfmpeg.setFfmpegPath(ffmpegStatic);
-  if (ffprobeStatic?.path) fluentFfmpeg.setFfprobePath(ffprobeStatic.path);
-
-  const probeTarget = async targetPath => new Promise((resolve, reject) => {
-    fluentFfmpeg.ffprobe(targetPath, (err, data) => {
-      if (err) return reject(err);
-      return resolve(data);
-    });
-  });
-
-  const runConcat = async () => {
-    const inputs = Array.isArray(args.inputs)
-      ? args.inputs
-      : Array.isArray(args.files)
-        ? args.files
-        : [];
-    const output = args.output || args.target;
-    if (inputs.length < 2) throw new Error('ffmpeg concat requiere inputs[] con al menos 2 archivos');
-    if (!output || typeof output !== 'string') throw new Error('ffmpeg concat requiere output');
-
-    const cwd = args.workingDir ? resolveInputPath(String(args.workingDir), state.cwd) : state.cwd;
-    const resolvedInputs = inputs.map(item => resolveInputPath(String(item), cwd));
-    const outputPath = resolveInputPath(String(output), cwd);
-    await fsp.mkdir(path.dirname(outputPath), { recursive: true });
-
-    const tempBase = await fsp.mkdtemp(path.join(os.tmpdir(), 'zyn-ffconcat-'));
-    const listPath = path.join(tempBase, 'inputs.txt');
-    const escapeList = value => String(value).replace(/'/g, "'\''");
-    const listContent = resolvedInputs.map(file => `file '${escapeList(file)}'`).join('\n');
-    await fsp.writeFile(listPath, listContent, 'utf8');
-
-    const concatArgs = [
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', listPath,
-    ];
-
-    if (Array.isArray(args.args) && args.args.length > 0) {
-      concatArgs.push(...args.args.map(v => String(v)));
-    } else if (args.copy !== false) {
-      concatArgs.push('-c', 'copy');
-    }
-
-    if (args.overwrite !== false && !concatArgs.includes('-y') && !concatArgs.includes('-n')) concatArgs.unshift('-y');
-    concatArgs.push(outputPath);
-
-    const detail = [ffmpegStatic, ...concatArgs].join(' ');
-    const allowed = await askConfirmation(state.rl, 'Concatenar con FFmpeg', detail, paint, state);
-    if (!allowed) return 'Concat cancelado por el usuario.';
-
-    try {
-      const result = await runProcess(ffmpegStatic, concatArgs, { cwd, timeoutMs: Math.max(1000, Number(args.timeoutMs || 120000)) });
-      if (result.code !== 0) throw new Error(`ffmpeg concat fallo (${result.code}): ${shortText(result.stderr || result.stdout || '', 3000)}`);
-      return truncateText(
-        [
-          'FFmpeg concat ejecutado correctamente.',
-          `Salida: ${outputPath}`,
-          result.stdout?.trim() ? `STDOUT\n${result.stdout.trim()}` : '',
-          result.stderr?.trim() ? `STDERR\n${result.stderr.trim()}` : '',
-        ].filter(Boolean).join('\n\n'),
-        12000,
-      );
-    } finally {
-      try {
-        await fsp.rm(tempBase, { recursive: true, force: true });
-      } catch {
-      }
-    }
-  };
-
-  if (action === 'probe' || action === 'inspect') {
-    const input = args.input || args.path;
-    if (!input || typeof input !== 'string') throw new Error('ffmpeg probe requiere input/path');
-    const target = resolveInputPath(input, state.cwd);
-    const probeData = await probeTarget(target);
-    return truncateText(JSON.stringify({ input: target, probe: probeData }, null, 2), 12000);
-  }
-
-  if (action === 'run') {
-    if (!Array.isArray(args.args) || args.args.length === 0) throw new Error('ffmpeg run requiere args: array de argumentos FFmpeg');
-    const ffmpegArgs = [...args.args.map(v => String(v))];
-    if (args.overwrite !== false && !ffmpegArgs.includes('-y') && !ffmpegArgs.includes('-n')) ffmpegArgs.unshift('-y');
-    const cwd = args.workingDir ? resolveInputPath(String(args.workingDir), state.cwd) : state.cwd;
-    const detail = [ffmpegStatic, ...ffmpegArgs].join(' ');
-    const allowed = await askConfirmation(state.rl, 'Ejecutar FFmpeg (control total)', detail, paint, state);
-    if (!allowed) return 'Ejecución cancelada por el usuario.';
-    const result = await runProcess(ffmpegStatic, ffmpegArgs, { cwd, timeoutMs: Math.max(1000, Number(args.timeoutMs || 120000)) });
-    if (result.code !== 0) throw new Error(`ffmpeg fallo (${result.code}): ${shortText(result.stderr || result.stdout || '', 3000)}`);
-    return truncateText(
-      [
-        'FFmpeg ejecutado correctamente.',
-        `Exit code: ${result.code}`,
-        result.stdout?.trim() ? `STDOUT\n${result.stdout.trim()}` : '',
-        result.stderr?.trim() ? `STDERR\n${result.stderr.trim()}` : '',
-      ].filter(Boolean).join('\n\n'),
-      12000,
-    );
-  }
-
-  if (action === 'concat') {
-    return await runConcat();
-  }
-
-  if (action === 'run_profile') {
-    const profilePath = resolveInputPath(String(args.profilePath || ''), state.cwd);
-    if (!args.profilePath) throw new Error('ffmpeg run_profile requiere profilePath');
-    const profile = JSON.parse(await fsp.readFile(profilePath, 'utf8'));
-    if (!Array.isArray(profile.args) || profile.args.length === 0) throw new Error('El perfil debe incluir { "args": [ ... ] }');
-    return await ffmpegTool({ action: 'run', args: profile.args, overwrite: profile.overwrite, timeoutMs: profile.timeoutMs, workingDir: profile.workingDir }, state, paint);
-  }
-
-  throw new Error('ffmpeg action inválida. Usa: probe | inspect | run | concat | run_profile');
-}
-
 async function webSearchTool(args, state, paint) {
   const query = (args.query || '').trim();
   if (!query) throw new Error('web_search requiere query');
@@ -1528,9 +1387,6 @@ async function executeToolCall(call, state, ui) {
       break;
     case 'create_canvas_image':
       result = await createCanvasImageTool(call.args, state, ui.paint);
-      break;
-    case 'ffmpeg':
-      result = await ffmpegTool(call.args, state, ui.paint);
       break;
     case 'git':
       result = await gitUnifiedTool(call.args, state, ui.paint);

@@ -157,7 +157,6 @@ In the TUI, press `ESC` twice to stop the current task.
 
 ---
 
-
 ## Models
 
 Custom models can be added using `data/models.json`.

@@ -108,6 +108,12 @@ function looksLikePendingEdit(text) {
 }
 
 
+function looksLikeActionRequest(text) {
+  const sample = normalizeClassifierText(String(text || ''));
+  if (!sample) return false;
+  return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
+}
+
 function buildForcedWritePrompt(state) {
   const path = state.lastReadPath || 'archivo-leido';
   const content = state.lastReadContent || '';
@@ -967,6 +973,20 @@ async function runWebAgent({ chatData, user, onEvent, isAborted }) {
       continue;
     }
 
+    if (parsed.type === 'final' && looksLikeActionRequest(userLatest) && (loopState.toolCalls || 0) === 0) {
+      if (streamStarted) onEvent({ type: 'clear_stream' });
+      modelMessages.push({ role: 'assistant', content: answer });
+      modelMessages.push({
+        role: 'user',
+        content: [
+          'No has usado ninguna herramienta todavia.',
+          'No cierres con una conclusion ni con pasos teoricos.',
+          'Primero intenta una herramienta real adecuada para la tarea.',
+          'Si ninguna herramienta aplica, dilo de forma breve y honesta.',
+        ].join(' '),
+      });
+      continue;
+    }
 
     const fingerprint = normalizeReplyFingerprint(parsed.content || answer);
     if (fingerprint) {

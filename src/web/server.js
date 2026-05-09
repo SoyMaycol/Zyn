@@ -11,7 +11,7 @@ const { runWebAgent } = require('./webAgent');
 const { MODELS, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, listProvidersFromModels, DEFAULT_LANGUAGE } = require('../config');
 
 const app = express();
-const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '0.0.0.0';
+const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || process.env.ZYN_WEB_PORT || 3000);
 
 // Evitar crashes silenciosos
@@ -307,6 +307,5 @@ app.get('/{*splat}', (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
-  console.log(`\n  \u25cf Zyn Web \u2192 http://${displayHost}:${PORT}\n`);
+  console.log(`\n  \u25cf Zyn Web \u2192 http://${HOST}:${PORT}\n`);
 });
