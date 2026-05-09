@@ -145,14 +145,20 @@ Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametr
 ## FFmpeg (control total real)
 
 ffmpeg { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }
-  Tool para control total de FFmpeg/FFprobe: audio profesional, sonido, video, conversión y generación multimedia.
+  Tool profesional para automatizar audio/video con control total de FFmpeg y FFprobe.
 
   Acciones:
-  - probe: inspección técnica con ffprobe (streams/formato/metadatos).
-  - run: ejecución libre de FFmpeg con array de argumentos `args`.
-  - run_profile: ejecuta un perfil JSON con `{ "args": [...] }`.
+  - probe: inspección técnica JSON del archivo (codec, streams, duración, bitrate, fps).
+  - run: ejecución libre de FFmpeg usando `args` (array exacto de CLI).
+  - run_profile: carga un perfil JSON reusable con `{ "args": [...] }`.
 
   Flujo recomendado:
   1) probe
   2) run
-  3) run_profile para tareas repetitivas
+  3) run_profile si el proceso se repetirá
+
+  Reglas de uso:
+  - Siempre hacer `probe` antes de convertir/editar.
+  - Para máxima compatibilidad web: `libx264 + yuv420p + +faststart`.
+  - Para audio profesional: `loudnorm`.
+  - Para operaciones sin recodificar: `-c copy`.
