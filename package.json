@@ -19,14 +19,15 @@
   ],
   "bin": {
     "zyn": "./zyn.js",
-    "Zyn": "./zyn.js"
+    "Zyn": "./zyn.js",
+    "proot-manager": "./src/containers/cli.js"
   },
   "type": "commonjs",
   "scripts": {
     "start": "node zyn.js",
     "dev": "node zyn.js",
     "web": "node src/web/server.js",
-    "check": "node --check zyn.js && node --check src/cli/runtime.js"
+    "check": "node --check zyn.js && node --check src/cli/runtime.js && node --check src/containers/cli.js && node --check src/containers/prootManager.js && node --check src/containers/prootInstaller.js"
   },
   "dependencies": {
     "axios": "^1.7.9",
@@ -55,7 +56,8 @@
     "zyn.js",
     "src/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "src/containers/"
   ],
   "exports": {
     ".": "./zyn.js"
