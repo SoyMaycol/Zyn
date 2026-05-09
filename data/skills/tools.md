@@ -142,21 +142,17 @@ Pregunta: "crea imagen profesional" → create_canvas_image con capas y parametr
 4) Validar resultados: `run_command` (tests/checks)
 5) Entregar resumen: cambios, riesgos, siguientes pasos
 
-## Video Studio (edición de video programática)
+## Video Studio (control total de FFmpeg)
 
-video_studio { action, projectDir?, profile?, profilePath?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }
-  Tool especializada para crear y operar pipelines de video con control total.
-  Soporta perfiles tipo: phonk, youtube, gameplay, podcast, cinematic y custom.
+video_studio { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }
+  Tool para control total de FFmpeg/FFprobe en cualquier caso multimedia (audio/video/transcode/remux/extracción).
 
   Acciones:
-  - scaffold: crea estructura de proyecto Node.js + FFmpeg con profile.json editable.
-  - validate_profile: valida que el profile tenga clips/audio/salida/resolución.
-  - plan: devuelve plan de render y filtergraph calculado.
-  - render: ejecuta ffmpeg con mezcla video+audio y encode configurable.
+  - probe: inspección técnica con ffprobe (streams/formato/metadatos).
+  - run: ejecución libre de FFmpeg con array de argumentos `args`.
+  - run_profile: ejecuta un perfil JSON con `{ "args": [...] }`.
 
   Flujo recomendado:
-  1) scaffold
-  2) editar profile.json
-  3) validate_profile
-  4) plan
-  5) render
+  1) probe
+  2) run
+  3) run_profile para tareas repetitivas

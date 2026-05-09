@@ -46,7 +46,7 @@ const TOOL_DEFINITIONS = [
   { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
-  { name: 'video_studio', usage: '{ action, projectDir?, profile?, profilePath?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }' },
+  { name: 'video_studio', usage: '{ action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
@@ -153,11 +153,13 @@ function getToolPromptText() {
     '',
     '## Video automation studio',
     '',
-    'video_studio { action, projectDir?, profile?, profilePath?, audioPath?, clips?, overlays?, outputPath?, fps?, width?, height? }',
-    '  Studio de video programatico con control total para Phonk, YouTube, gameplay, podcast y cualquier formato.',
-    '  actions: scaffold | validate_profile | plan | render.',
-    '  scaffold: crea proyecto editable. validate_profile: valida requerimientos. plan: genera plan técnico. render: ejecuta FFmpeg.',
-    '  Ejemplo: {"type":"tool","tool":"video_studio","args":{"action":"scaffold","projectDir":"video-studio-phonk"}}',
+    'video_studio { action, input?, output?, args?, profilePath?, timeoutMs?, overwrite?, workingDir? }',
+    '  Control total de FFmpeg/FFprobe para cualquier flujo multimedia (audio, video, conversión, extracción, remux, transcode).',
+    '  actions: probe | run | run_profile.',
+    '  probe: inspecciona metadatos con ffprobe-static.',
+    '  run: ejecuta ffmpeg con args libres y binario portable ffmpeg-static.',
+    '  run_profile: ejecuta un JSON con array de argumentos FFmpeg para flujos reutilizables.',
+    '  Ejemplo: {"type":"tool","tool":"video_studio","args":{"action":"run","args":["-i","input.mp4","-vn","out.mp3"]}}',
     '',
   '## Imagen profesional con Jimp',
     '',
@@ -1240,172 +1242,50 @@ async function webfetchTool(args, state, paint) {
 }
 
 async function videoStudioTool(args, state, paint) {
-  const action = String(args.action || 'scaffold').toLowerCase().trim();
-  const projectDir = resolveInputPath(args.projectDir || 'video-studio', state.cwd);
-  const profilePath = resolveInputPath(args.profilePath || path.join(projectDir, 'profile.json'), state.cwd);
+  const action = String(args.action || 'probe').toLowerCase().trim();
+  const ffmpegStatic = require('ffmpeg-static');
+  const ffprobeStatic = require('ffprobe-static');
 
-  const presets = {
-    phonk: { fps: 60, width: 1080, height: 1920, colorEq: 'contrast=1.20:brightness=-0.03:saturation=1.08', zoomAmount: 0.18, shakeAmount: 20 },
-    youtube: { fps: 30, width: 1920, height: 1080, colorEq: 'contrast=1.05:brightness=0.00:saturation=1.00', zoomAmount: 0.04, shakeAmount: 2 },
-    gameplay: { fps: 60, width: 1920, height: 1080, colorEq: 'contrast=1.06:brightness=0.00:saturation=1.02', zoomAmount: 0.03, shakeAmount: 1 },
-    podcast: { fps: 30, width: 1920, height: 1080, colorEq: 'contrast=1.03:brightness=0.01:saturation=0.98', zoomAmount: 0.02, shakeAmount: 0 },
-    cinematic: { fps: 24, width: 1920, height: 816, colorEq: 'contrast=1.12:brightness=-0.01:saturation=0.95', zoomAmount: 0.05, shakeAmount: 1 },
-  };
-
-  const pickPreset = String(args.profile || 'phonk').toLowerCase().trim();
-  const preset = presets[pickPreset] || presets.phonk;
-
-  if (action === 'scaffold') {
-    const allowed = await askConfirmation(state.rl, 'Crear módulo de edición de video', `${projectDir}
-Perfil base: ${pickPreset}`, paint, state);
-    if (!allowed) return 'Operacion cancelada por el usuario.';
-
-    await fsp.mkdir(projectDir, { recursive: true });
-    for (const dir of ['src', 'assets/clips', 'assets/audio', 'assets/overlays', 'assets/subtitles', 'renders', 'temp']) {
-      await fsp.mkdir(path.join(projectDir, dir), { recursive: true });
-    }
-
-    const profile = {
-      profile: pickPreset,
-      ...preset,
-      audioPath: './assets/audio/track.mp3',
-      clips: ['./assets/clips/clip1.mp4'],
-      overlays: ['./assets/overlays/film-grain.mp4'],
-      subtitles: null,
-      outputPath: './renders/final.mp4',
-      transitions: { enabled: true, style: 'cut' },
-      beatSync: { enabled: pickPreset === 'phonk', sensitivity: 1.35, minGapMs: 110 },
-      audioMix: { bgmGain: 1, voiceGain: 1, limiter: true },
-      encode: { videoCodec: 'libx264', crf: 19, preset: 'fast', pixFmt: 'yuv420p', movflags: 'faststart' }
-    };
-
-    const packageJson = {
-      name: 'zyn-video-studio', private: true, type: 'commonjs', scripts: { build: 'node src/build.js', 'build:profile': 'node src/build.js profile.json' },
-      dependencies: { 'fluent-ffmpeg': '^2.1.3', 'ffmpeg-static': '^5.2.0', 'ffprobe-static': '^3.1.0', 'node-ffmpeg-concat': '^1.0.3', 'node-wav': '^0.0.2' }
-    };
-
-    const buildJs = `const fs = require('fs');
-const path = require('path');
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegStatic = require('ffmpeg-static');
-const ffprobeStatic = require('ffprobe-static');
-ffmpeg.setFfmpegPath(ffmpegStatic);
-ffmpeg.setFfprobePath(ffprobeStatic.path);
-
-const profilePath = process.argv[2] || path.join(__dirname, '..', 'profile.json');
-const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
-const root = path.dirname(profilePath);
-const out = path.resolve(root, profile.outputPath || './renders/final.mp4');
-const clip = path.resolve(root, profile.clips[0]);
-
-function run(cmd){return new Promise((res,rej)=>cmd.on('end',res).on('error',rej).run());}
-
-(async()=>{
-  await fs.promises.mkdir(path.dirname(out), { recursive: true });
-  const vf = [\`scale=\${profile.width}:\${profile.height}:force_original_aspect_ratio=increase\`,\`crop=\${profile.width}:\${profile.height}\`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', \`fps=\${profile.fps || 30}\`].join(',');
-  await run(ffmpeg(clip).outputOptions(['-vf', vf, '-c:v', profile.encode?.videoCodec || 'libx264', '-crf', String(profile.encode?.crf || 20), '-preset', profile.encode?.preset || 'fast', '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-movflags', profile.encode?.movflags || 'faststart']).output(out));
-  console.log('Render listo:', out);
-})();
-`;
-
-    const readme = `# Video Studio
-
-Scaffold para edición programática de **cualquier tipo** (Phonk, YouTube, gameplay, podcast, cinematic).
-
-## Flujo recomendado
-1. Edita \`profile.json\` con tus paths y parámetros.
-2. Instala dependencias: \`npm install\`.
-3. Render: \`npm run build\`.
-
-## Notas
-- Para transiciones GLSL avanzadas, usa \`node-ffmpeg-concat\`.
-- Para sincronía de beats, añade detección de onsets (FFT/Spectral Flux) en \`src/build.js\`.
-`;
-
-    await fsp.writeFile(path.join(projectDir, 'package.json'), JSON.stringify(packageJson, null, 2));
-    await fsp.writeFile(path.join(projectDir, 'profile.json'), JSON.stringify(profile, null, 2));
-    await fsp.writeFile(path.join(projectDir, 'src', 'build.js'), buildJs);
-    await fsp.writeFile(path.join(projectDir, 'README.md'), readme);
-    return `Scaffold creado en ${projectDir} con perfil ${pickPreset}.`;
+  if (action === 'probe') {
+    const input = args.input || args.path;
+    if (!input || typeof input !== 'string') throw new Error('video_studio probe requiere input/path');
+    const target = resolveInputPath(input, state.cwd);
+    const probeArgs = ['-v', 'error', '-show_format', '-show_streams', '-print_format', 'json', target];
+    const result = await runProcess(ffprobeStatic.path, probeArgs, { cwd: state.cwd, timeoutMs: Math.max(1000, Number(args.timeoutMs || 30000)) });
+    if (result.code !== 0) throw new Error(`ffprobe fallo (${result.code}): ${shortText(result.stderr || '', 1200)}`);
+    return truncateText(result.stdout || 'Sin salida de ffprobe', 12000);
   }
 
-  const readProfile = async () => JSON.parse(await fsp.readFile(profilePath, 'utf8'));
-
-  if (action === 'validate_profile') {
-    const profile = await readProfile();
-    const issues = [];
-    if (!Array.isArray(profile.clips) || profile.clips.length === 0) issues.push('clips debe tener al menos 1 video');
-    if (!profile.outputPath) issues.push('outputPath es requerido');
-    if (!profile.audioPath) issues.push('audioPath es requerido');
-    if (!profile.width || !profile.height) issues.push('width y height son requeridos');
-    return issues.length ? `Perfil inválido:\n- ${issues.join('\n- ')}` : `Perfil válido: ${profilePath}`;
+  if (action === 'run') {
+    if (!Array.isArray(args.args) || args.args.length === 0) throw new Error('video_studio run requiere args: array de argumentos FFmpeg');
+    const ffmpegArgs = [...args.args.map(v => String(v))];
+    if (args.overwrite !== false && !ffmpegArgs.includes('-y') && !ffmpegArgs.includes('-n')) ffmpegArgs.unshift('-y');
+    const cwd = args.workingDir ? resolveInputPath(String(args.workingDir), state.cwd) : state.cwd;
+    const detail = [ffmpegStatic, ...ffmpegArgs].join(' ');
+    const allowed = await askConfirmation(state.rl, 'Ejecutar FFmpeg libre (control total)', detail, paint, state);
+    if (!allowed) return 'Ejecución cancelada por el usuario.';
+    const result = await runProcess(ffmpegStatic, ffmpegArgs, { cwd, timeoutMs: Math.max(1000, Number(args.timeoutMs || 120000)) });
+    if (result.code !== 0) throw new Error(`ffmpeg fallo (${result.code}): ${shortText(result.stderr || result.stdout || '', 3000)}`);
+    return truncateText(
+      [
+        'FFmpeg ejecutado correctamente.',
+        `Exit code: ${result.code}`,
+        result.stdout?.trim() ? `STDOUT\n${result.stdout.trim()}` : '',
+        result.stderr?.trim() ? `STDERR\n${result.stderr.trim()}` : '',
+      ].filter(Boolean).join('\n\n'),
+      12000,
+    );
   }
 
-  if (action === 'plan') {
-    const profile = await readProfile();
-    const vf = [`scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`, `crop=${profile.width}:${profile.height}`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', `fps=${profile.fps || 30}`].join(',');
-    return [
-      `Plan para ${profile.profile || 'custom'}:`,
-      `- Clips: ${(profile.clips || []).length}`,
-      `- Audio: ${profile.audioPath || 'sin audio'}`,
-      `- Resolución: ${profile.width}x${profile.height}`,
-      `- FPS: ${profile.fps || 30}`,
-      `- Filtergraph base: ${vf}`,
-      `- Output: ${profile.outputPath}`,
-      '- Próximo paso: action="render" para ejecutar FFmpeg desde esta tool.'
-    ].join('\n');
+  if (action === 'run_profile') {
+    const profilePath = resolveInputPath(String(args.profilePath || ''), state.cwd);
+    if (!args.profilePath) throw new Error('video_studio run_profile requiere profilePath');
+    const profile = JSON.parse(await fsp.readFile(profilePath, 'utf8'));
+    if (!Array.isArray(profile.args) || profile.args.length === 0) throw new Error('El perfil debe incluir { "args": [ ... ] }');
+    return await videoStudioTool({ action: 'run', args: profile.args, overwrite: profile.overwrite, timeoutMs: profile.timeoutMs, workingDir: profile.workingDir }, state, paint);
   }
 
-  if (action === 'render') {
-    const profile = await readProfile();
-    const rootDir = path.dirname(profilePath);
-    const clips = (profile.clips || []).map(c => resolveInputPath(c, rootDir));
-    const audio = resolveInputPath(profile.audioPath, rootDir);
-    const output = resolveInputPath(profile.outputPath, rootDir);
-    const vf = [`scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase`, `crop=${profile.width}:${profile.height}`, profile.colorEq || 'eq=contrast=1.05:brightness=0:saturation=1', `fps=${profile.fps || 30}`].join(',');
-
-    const allowed = await askConfirmation(state.rl, 'Renderizar video con módulos Node + FFmpeg', `Clips: ${clips.length}\nAudio: ${audio}\nOutput: ${output}`, paint, state);
-    if (!allowed) return 'Render cancelado por el usuario.';
-
-    const ffmpeg = require('fluent-ffmpeg');
-    const ffmpegStatic = require('ffmpeg-static');
-    const ffprobeStatic = require('ffprobe-static');
-    ffmpeg.setFfmpegPath(ffmpegStatic);
-    ffmpeg.setFfprobePath(ffprobeStatic.path);
-
-    await fsp.mkdir(path.dirname(output), { recursive: true });
-
-    const canConcat = clips.length > 1 && profile.transitions?.enabled && String(profile.transitions?.style || 'cut') !== 'cut';
-    if (canConcat) {
-      const concatModule = require('node-ffmpeg-concat');
-      const concatFn = typeof concatModule === 'function' ? concatModule : concatModule.concat;
-      if (typeof concatFn !== 'function') throw new Error('node-ffmpeg-concat no exporta una función válida');
-      await concatFn({
-        output,
-        videos: clips,
-        audio,
-        transitions: [{ name: String(profile.transitions.style || 'directionalWarp'), duration: 500 }],
-        concurrency: 4,
-        cleanupFrames: true,
-        frameFormat: 'raw',
-        args: ['-c:v', profile.encode?.videoCodec || 'libx264', '-preset', profile.encode?.preset || 'fast', '-crf', String(profile.encode?.crf || 19), '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-movflags', profile.encode?.movflags || 'faststart']
-      });
-      return `Render completado con node-ffmpeg-concat: ${output}`;
-    }
-
-    const sourceClip = clips[0];
-    await new Promise((resolve, reject) => {
-      ffmpeg(sourceClip)
-        .input(audio)
-        .outputOptions(['-filter:v', vf, '-map', '0:v:0', '-map', '1:a:0', '-c:v', profile.encode?.videoCodec || 'libx264', '-preset', profile.encode?.preset || 'fast', '-crf', String(profile.encode?.crf || 19), '-pix_fmt', profile.encode?.pixFmt || 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', profile.encode?.movflags || 'faststart'])
-        .on('end', resolve)
-        .on('error', reject)
-        .save(output);
-    });
-    return `Render completado con fluent-ffmpeg: ${output}`;
-  }
-
-  throw new Error('video_studio action inválida. Usa: scaffold | validate_profile | plan | render');
+  throw new Error('video_studio action inválida. Usa: probe | run | run_profile');
 }
 
 async function webSearchTool(args, state, paint) {
