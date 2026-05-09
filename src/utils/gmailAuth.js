@@ -7,8 +7,6 @@ const fsp = fs.promises;
 
 const {
   GMAIL_AUTH_FILE,
-  GMAIL_CLIENT_ID,
-  GMAIL_CLIENT_SECRET,
   REQUEST_TIMEOUT_MS,
 } = require('../config');
 
@@ -25,8 +23,10 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1';
 const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const CALLBACK_PATH = '/oauth/gmail/callback';
+const CREDENTIALS_URL = 'https://cdn.soymaycol.icu/files/zyn-credentials.json';
 
 let pendingFlow = null;
+let cachedGoogleCredentials = null;
 
 function base64Url(input) {
   return Buffer.from(input)
@@ -64,7 +64,7 @@ async function clearGmailAuth() {
   await fsp.rm(GMAIL_AUTH_FILE, { force: true });
 }
 
-function makeOAuthError(status, body, fallbackMessage) {
+function makeApiError(status, body, fallbackMessage) {
   const detail =
     body?.error_description ||
     body?.error?.message ||
@@ -100,6 +100,7 @@ async function fetchJson(url, options = {}) {
 
     const text = await res.text();
     let json = null;
+
     try {
       json = text ? JSON.parse(text) : null;
     } catch {
@@ -107,22 +108,21 @@ async function fetchJson(url, options = {}) {
     }
 
     if (!res.ok) {
-      const err = makeOAuthError(res.status, json, text);
       const rawCode = String(json?.error || '').toLowerCase();
-
       if (
         rawCode === 'invalid_client' ||
-        String(err.message).toLowerCase().includes('invalid client type')
+        String(json?.error_description || '').toLowerCase().includes('client_secret is missing') ||
+        String(json?.error_description || '').toLowerCase().includes('invalid client type')
       ) {
-        const special = new Error(
-          'Invalid client type o client_secret incorrecto. Para un OAuth Client de escritorio usa flujo authorization_code + PKCE y no uses device flow.'
+        const err = new Error(
+          'Invalid client type o client_secret faltante. Este flujo necesita el client_secret del mismo OAuth client que el client_id.'
         );
-        special.status = res.status;
-        special.body = json;
-        throw special;
+        err.status = res.status;
+        err.body = json;
+        throw err;
       }
 
-      throw err;
+      throw makeApiError(res.status, json, text);
     }
 
     return json;
@@ -130,6 +130,36 @@ async function fetchJson(url, options = {}) {
     clearTimeout(timeout);
     if (externalSignal) externalSignal.removeEventListener('abort', onAbort);
   }
+}
+
+async function getGoogleOAuthCredentials() {
+  if (cachedGoogleCredentials) return cachedGoogleCredentials;
+
+  const res = await fetch(CREDENTIALS_URL, {
+    headers: {
+      'user-agent': 'Zyn-GmailAuth/1.0',
+      'accept': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`No se pudo obtener las credenciales OAuth remotas (${res.status})`);
+  }
+
+  const json = await res.json();
+  const installed = json?.installed;
+
+  if (!installed?.client_id || !installed?.client_secret) {
+    throw new Error('El JSON remoto de credenciales no tiene installed.client_id o installed.client_secret');
+  }
+
+  cachedGoogleCredentials = {
+    clientId: installed.client_id,
+    clientSecret: installed.client_secret,
+    redirectUris: Array.isArray(installed.redirect_uris) ? installed.redirect_uris : [],
+  };
+
+  return cachedGoogleCredentials;
 }
 
 function buildStoredToken(token, profile = null) {
@@ -157,15 +187,16 @@ async function getUserProfile(accessToken) {
 }
 
 async function exchangeCodeForToken({ code, codeVerifier, redirectUri }) {
+  const creds = await getGoogleOAuthCredentials();
+
   const params = new URLSearchParams({
-    client_id: GMAIL_CLIENT_ID,
+    client_id: creds.clientId,
+    client_secret: creds.clientSecret,
     code,
     code_verifier: codeVerifier,
     grant_type: 'authorization_code',
     redirect_uri: redirectUri,
   });
-
-  if (GMAIL_CLIENT_SECRET) params.set('client_secret', GMAIL_CLIENT_SECRET);
 
   return fetchJson(TOKEN_URL, {
     method: 'POST',
@@ -180,13 +211,14 @@ async function refreshAccessToken(auth) {
     throw new Error('Gmail no está conectado o el refresh token falta. Usa /gmail connect otra vez.');
   }
 
+  const creds = await getGoogleOAuthCredentials();
+
   const params = new URLSearchParams({
-    client_id: GMAIL_CLIENT_ID,
+    client_id: creds.clientId,
+    client_secret: creds.clientSecret,
     refresh_token: auth.refresh_token,
     grant_type: 'refresh_token',
   });
-
-  if (GMAIL_CLIENT_SECRET) params.set('client_secret', GMAIL_CLIENT_SECRET);
 
   const token = await fetchJson(TOKEN_URL, {
     method: 'POST',
@@ -266,9 +298,11 @@ async function gmailApiRequest(method, apiPath, options = {}) {
   });
 }
 
-function buildAuthUrl({ redirectUri, codeChallenge, state }) {
+async function buildAuthUrl({ redirectUri, codeChallenge, state }) {
+  const creds = await getGoogleOAuthCredentials();
   const url = new URL(AUTH_BASE);
-  url.searchParams.set('client_id', GMAIL_CLIENT_ID);
+
+  url.searchParams.set('client_id', creds.clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', GMAIL_SCOPES.join(' '));
@@ -277,6 +311,7 @@ function buildAuthUrl({ redirectUri, codeChallenge, state }) {
   url.searchParams.set('prompt', 'consent');
   url.searchParams.set('code_challenge', codeChallenge);
   url.searchParams.set('code_challenge_method', 'S256');
+
   return url.toString();
 }
 
@@ -307,6 +342,7 @@ async function startGmailOAuthFlow(options = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       const currentUrl = new URL(req.url, `http://${req.headers.host}`);
+
       if (currentUrl.pathname !== CALLBACK_PATH) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('Not found');
@@ -342,8 +378,7 @@ async function startGmailOAuthFlow(options = {}) {
     } catch (err) {
       res.writeHead(400, { 'content-type': 'text/html; charset=utf-8' });
       res.end(
-        `<!doctype html><meta charset="utf-8"><title>Error Gmail</title><h1>Error conectando Gmail</h1><pre>${String(err.message || err)
-          .replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</pre>`
+        `<!doctype html><meta charset="utf-8"><title>Error Gmail</title><h1>Error conectando Gmail</h1><pre>${String(err.message || err).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</pre>`
       );
       rejectDone(err);
       setTimeout(() => closeServer(server).catch(() => {}), 250);
@@ -362,7 +397,7 @@ async function startGmailOAuthFlow(options = {}) {
   const port = typeof address === 'object' && address ? address.port : preferredPort;
   redirectUri = `http://${host}:${port}${CALLBACK_PATH}`;
 
-  const authUrl = buildAuthUrl({
+  const authUrl = await buildAuthUrl({
     redirectUri,
     codeChallenge: challenge,
     state,
