@@ -174,28 +174,3 @@ Example:
   }
 }
 ```
-
-## PRoot Container Manager (experimental)
-
-This project now ships a `proot-manager` CLI to create and operate rootless containers with custom rootfs.
-
-### Quick start
-
-```bash
-proot-manager doctor
-proot-manager create --id demo --rootfs /path/to/rootfs.tar.gz --ramMb 1024 --diskMb 4096
-proot-manager list
-proot-manager exec --id demo --cmd /bin/sh
-proot-manager limits --id demo --ramMb 2048 --diskMb 8192
-proot-manager delete --id demo
-```
-
-### Features
-
-- Create/delete/list containers.
-- Execute commands or open an interactive shell.
-- Configurable RAM cap via `ulimit` (`RLIMIT_AS`).
-- Disk quota monitor with process-group kill when exceeded.
-- Auto-detects system and suggests the correct package-manager command to install PRoot.
-
-Programmatic API: `src/containers/prootManager.js`.
