@@ -28,7 +28,6 @@ function uiText(en, es) {
   return getTuiLang() === 'es' ? es : en;
 }
 const MAX_THINKING_LINES = 20;
-const MAX_PASTE_PREVIEW = 200;
 const SPIN_MS = 80;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
@@ -78,6 +77,8 @@ class UIStore extends EventEmitter {
     this.messageQueue = [];
     this.pendingExit = false;
     this.lastEscapeAt = 0;
+    this.submittedHistory = [];
+    this.submittedRedo = [];
     this._idCounter = 0;
     this._scheduled = false;
   }
@@ -157,6 +158,34 @@ class UIStore extends EventEmitter {
     this.messageQueue.push(text);
     this.addItem({ type: 'queued', text });
     this._emit();
+  }
+
+
+  pushSubmittedMessage(text) {
+    const value = String(text || '');
+    if (!value) return;
+    this.submittedHistory.unshift(value);
+    if (this.submittedHistory.length > 200) this.submittedHistory.pop();
+    this.submittedRedo = [];
+    this._emit();
+  }
+
+  undoSubmittedMessage() {
+    if (this.submittedHistory.length === 0) return null;
+    const value = this.submittedHistory.shift();
+    this.submittedRedo.unshift(value);
+    this.setInputDraft(value);
+    this.addEvent('info', uiText('message restored', 'mensaje restaurado'), shortTextPreview(value, 120));
+    return value;
+  }
+
+  redoSubmittedMessage() {
+    if (this.submittedRedo.length === 0) return null;
+    const value = this.submittedRedo.shift();
+    this.submittedHistory.unshift(value);
+    this.setInputDraft(value);
+    this.addEvent('info', uiText('message reapplied', 'mensaje reaplicado'), shortTextPreview(value, 120));
+    return value;
   }
 
   _emit() {
@@ -466,15 +495,19 @@ function EventLine({ kind, title, detail }) {
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
-  const compactTitle = String(title || '').replace(/\s{2,}/g, ' ').trim();
-  const compactDetail = String(detail || '').replace(/\s{2,}/g, ' ').trim();
+  const cleanTitle = String(title || '').trim();
+  const detailLines = String(detail || '').split('\n').map(line => line.replace(/\t/g, '  ').replace(/\s+$/g, '')).filter(Boolean);
 
   return h(Box, { paddingLeft: 3, flexDirection: 'column' },
     h(Box, { gap: 1 },
       h(Text, { color }, sym),
-      h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, compactTitle),
+      h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, cleanTitle),
     ),
-    compactDetail ? h(Box, { paddingLeft: 2 }, h(Text, { color: T.textGhost, wrap: 'wrap' }, compactDetail)) : null,
+    detailLines.length
+      ? h(Box, { paddingLeft: 2, flexDirection: 'column' },
+          ...detailLines.map((line, idx) => h(Text, { key: String(idx), color: T.textGhost, wrap: 'wrap' }, line)),
+        )
+      : null,
   );
 }
 
@@ -675,8 +708,12 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
   }, [onDraftChange]);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
+  const localSlash = [
+    { name: 'undo', desc: 'restore previous message', descEs: 'restaurar mensaje anterior' },
+    { name: 'redo', desc: 'reapply restored message', descEs: 'reaplicar mensaje restaurado' },
+  ];
   const suggestions = showSuggestions
-    ? SLASH_COMMANDS.filter(c => ('/' + c.name).startsWith(value.toLowerCase()))
+    ? [...SLASH_COMMANDS, ...localSlash].filter(c => ('/' + c.name).startsWith(value.toLowerCase()))
     : [];
 
   useInput((input, key) => {
@@ -766,6 +803,16 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
+    if (key.ctrl && input === 'z') {
+      onSubmit('/undo');
+      return;
+    }
+
+    if (key.ctrl && input === 'y') {
+      onSubmit('/redo');
+      return;
+    }
+
     if (key.ctrl && input === 'w') {
       const before = value.slice(0, cursor);
       const after = value.slice(cursor);
@@ -775,7 +822,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
-    if (key.backspace || key.delete) {
+    if (key.backspace) {
       if (cursor === 0) return;
       updateValue(value.slice(0, cursor - 1) + value.slice(cursor));
       setCursor(c => Math.max(0, c - 1));
@@ -783,8 +830,18 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
+    if (key.delete) {
+      if (cursor >= value.length) return;
+      updateValue(value.slice(0, cursor) + value.slice(cursor + 1));
+      setSuggestIdx(0);
+      return;
+    }
+
     if (input && !key.ctrl && !key.meta) {
-      const normalizedInput = input.replace(/\r\n/g, '\n');
+      const normalizedInput = input
+        .replace(/\u001b\[200~/g, '')
+        .replace(/\u001b\[201~/g, '')
+        .replace(/\r\n/g, '\n');
       const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
       updateValue(value.slice(0, cursor) + safeInput + value.slice(cursor));
       setCursor(c => c + safeInput.length);
@@ -1009,6 +1066,16 @@ export async function startTUI(options = {}) {
       return;
     }
 
+    if (input === '/undo') {
+      store.undoSubmittedMessage();
+      return;
+    }
+
+    if (input === '/redo') {
+      store.redoSubmittedMessage();
+      return;
+    }
+
     if (input.startsWith('/')) {
       const commandName = input.split(' ')[0].slice(1).toLowerCase();
       const lines = [];
@@ -1085,15 +1152,6 @@ export async function startTUI(options = {}) {
   let appInstance = null;
 
   const handleSubmit = async (input, meta = null) => {
-    const pasteLen = Number(meta?.length || 0);
-    if (pasteLen > 0 || (typeof input === 'string' && input.length > MAX_PASTE_PREVIEW)) {
-      const shown = input.length;
-      store.addEvent(
-        'warn',
-        `[ Pasted Text of ${shown} Characters ]`,
-        input.slice(0, MAX_PASTE_PREVIEW) + '...'
-      );
-    }
     if (input.startsWith('/') && store.processing) {
       await processInput(input);
       return;
@@ -1103,6 +1161,9 @@ export async function startTUI(options = {}) {
       store.enqueueMessage(input);
       return;
     }
+
+    store.pushSubmittedMessage(input);
+    store.setInputDraft('');
 
     store.processing = true;
     store.turnCount += 1;
