@@ -44,6 +44,23 @@ function getPlatformInfo() {
   return osName;
 }
 
+
+const TOOL_ALIASES = {
+  bash: 'run_command',
+  shell: 'run_command',
+  terminal: 'run_command',
+  execute_command: 'run_command',
+  command: 'run_command',
+  run_terminal_command: 'run_command',
+};
+
+function normalizeToolName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  return TOOL_ALIASES[lower] || lower;
+}
+
 const KNOWN_TOOLS = new Set([
   ...TOOL_DEFINITIONS.map(tool => tool.name),
   'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear',
@@ -238,7 +255,7 @@ function extractXmlTool(text) {
   );
   if (!invokeMatch) return null;
 
-  const tool = invokeMatch[1];
+  const tool = normalizeToolName(invokeMatch[1]);
   if (!KNOWN_TOOLS.has(tool)) return null;
 
   const rawArgs = invokeMatch[2].trim();
@@ -257,13 +274,15 @@ function extractXmlTool(text) {
 
 function classifyParsed(parsed) {
   if (parsed?.type === 'tool' && parsed.tool) {
-    return { type: 'tool', tool: parsed.tool, args: parsed.args ?? {} };
+    const normalized = normalizeToolName(parsed.tool);
+    if (KNOWN_TOOLS.has(normalized)) return { type: 'tool', tool: normalized, args: parsed.args ?? {} };
   }
   if (parsed?.type === 'final') {
     return { type: 'final', content: typeof parsed.content === 'string' ? parsed.content : '' };
   }
-  if (parsed?.tool && KNOWN_TOOLS.has(parsed.tool)) {
-    return { type: 'tool', tool: parsed.tool, args: parsed.args ?? {} };
+  if (parsed?.tool) {
+    const normalized = normalizeToolName(parsed.tool);
+    if (KNOWN_TOOLS.has(normalized)) return { type: 'tool', tool: normalized, args: parsed.args ?? {} };
   }
   return null;
 }
@@ -335,7 +354,7 @@ function fuzzyExtractTool(text) {
   const toolMatch = text.match(/(?:"|')?tool(?:"|')?\s*:\s*"(\w+)"/i);
   if (!toolMatch) return null;
 
-  const tool = toolMatch[1];
+  const tool = normalizeToolName(toolMatch[1]);
   if (!KNOWN_TOOLS.has(tool)) return null;
 
   const longArg = LONG_VALUE_ARG[tool];
@@ -529,7 +548,7 @@ function buildToolResultMessage(parsed, result) {
 
 function buildToolErrorMessage(parsed, errorMessage) {
   return [
-    `La herramienta "${parsed.tool}" NO existe.`,
+    `La herramienta "${parsed.tool}" no se pudo ejecutar (nombre inválido o no disponible en este modo).`,
     `Error: ${errorMessage}`,
     `Las unicas herramientas disponibles son: ${TOOL_DEFINITIONS.map(t => t.name).join(', ')}.`,
     'Elige UNA de esas herramientas. Usa el formato exacto del nombre. No inventes herramientas.',
