@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { MODELS_FILE, PROVIDERS_FILE, REQUEST_TIMEOUT_MS, SUPPORTED_MODEL_PROVIDERS } = require('../config');
+const { MODELS_FILE, PROVIDERS_FILE, SUPPORTED_MODEL_PROVIDERS } = require('../config');
 
 const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
@@ -42,49 +42,36 @@ function titleize(text) {
 }
 
 async function fetchJson(url, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs || REQUEST_TIMEOUT_MS);
   const signal = options.signal;
-  const onExternalAbort = () => controller.abort();
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort, { once: true });
-  }
+  const res = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      ...DEFAULT_HEADERS,
+      ...(options.headers || {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    signal,
+  });
 
+  const text = await res.text();
+  let data = null;
   try {
-    const res = await fetch(url, {
-      method: options.method || 'GET',
-      headers: {
-        ...DEFAULT_HEADERS,
-        ...(options.headers || {}),
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal,
-    });
-
-    const text = await res.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text };
-    }
-
-    if (!res.ok) {
-      const detail = typeof data === 'string'
-        ? data
-        : data?.message || data?.error || text;
-      const err = new Error(`HTTP ${res.status}: ${String(detail || '').slice(0, 300)}`);
-      err.status = res.status;
-      err.body = data;
-      throw err;
-    }
-
-    return data;
-  } finally {
-    clearTimeout(timeout);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text };
   }
+
+  if (!res.ok) {
+    const detail = typeof data === 'string'
+      ? data
+      : data?.message || data?.error || text;
+    const err = new Error(`HTTP ${res.status}: ${String(detail || '').slice(0, 300)}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+
+  return data;
 }
 
 function loadProviderRegistry() {

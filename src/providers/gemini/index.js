@@ -1,5 +1,4 @@
 const { Buffer } = require('buffer');
-const { REQUEST_TIMEOUT_MS } = require('../../config');
 const { parseAgentResponse } = require('../../core/prompts');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36';
@@ -35,35 +34,11 @@ function sleep(ms, signal) {
   });
 }
 
-function createTimeoutSignal(signal, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  const onExternalAbort = () => controller.abort();
-
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort, { once: true });
-  }
-
-  return {
-    signal: controller.signal,
-    cleanup() {
-      clearTimeout(timeout);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
-}
-
-async function fetchWithTimeout(url, options = {}) {
-  const timeoutSignal = createTimeoutSignal(options.signal, options.timeoutMs || REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: timeoutSignal.signal,
-    });
-  } finally {
-    timeoutSignal.cleanup();
-  }
+async function fetchWithSignal(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    signal: options.signal,
+  });
 }
 
 function walkDeep(node, visit, depth = 0, maxDepth = 7) {
@@ -77,7 +52,7 @@ function walkDeep(node, visit, depth = 0, maxDepth = 7) {
 }
 
 async function getAnonCookie(signal) {
-  const res = await fetchWithTimeout(ANON_COOKIE_URL, {
+  const res = await fetchWithSignal(ANON_COOKIE_URL, {
     method: 'POST',
     redirect: 'manual',
     headers: {
@@ -95,7 +70,7 @@ async function getAnonCookie(signal) {
 
 async function getXsrfToken(cookieHeader, signal) {
   try {
-    const res = await fetchWithTimeout(`${GEMINI_BASE}/app`, {
+    const res = await fetchWithSignal(`${GEMINI_BASE}/app`, {
       method: 'GET',
       headers: {
         'user-agent': UA,
@@ -181,15 +156,52 @@ function isLikelyText(value) {
   return text.length >= 8 || /\s/.test(text);
 }
 
-function pickBestTextFromAny(parsed) {
-  const found = [];
+function collectTextFragments(parsed) {
+  const fragments = [];
   walkDeep(parsed, (node) => {
     if (typeof node !== 'string' || !isLikelyText(node)) return;
     const cleaned = cleanGeminiResponseText(node);
-    if (cleaned) found.push(cleaned);
+    if (cleaned) fragments.push(cleaned);
   });
-  found.sort((a, b) => b.length - a.length);
-  return found[0] || '';
+
+  const uniq = [];
+  const seen = new Set();
+  for (const fragment of fragments) {
+    const key = fragment.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(fragment);
+  }
+  return uniq;
+}
+
+function combineFragments(fragments) {
+  if (!Array.isArray(fragments) || fragments.length === 0) return '';
+  if (fragments.length === 1) return fragments[0];
+  const merged = [];
+  for (const fragment of fragments) {
+    const value = String(fragment || '').trim();
+    if (!value) continue;
+    if (merged.length === 0) {
+      merged.push(value);
+      continue;
+    }
+    const last = merged[merged.length - 1];
+    if (last.endsWith(value) || value.endsWith(last)) continue;
+    if (last.length < 40 && value.length < 40) {
+      merged[merged.length - 1] = `${last} ${value}`.trim();
+    } else {
+      merged.push(value);
+    }
+  }
+  return merged.join('\n').trim();
+}
+
+function pickBestTextFromAny(parsed) {
+  const fragments = collectTextFragments(parsed);
+  if (!fragments.length) return '';
+  const scored = fragments.slice().sort((a, b) => b.length - a.length);
+  return combineFragments([scored[0], ...fragments.filter(fragment => fragment !== scored[0])]);
 }
 
 function pickFirstString(parsed, accept) {
@@ -242,26 +254,32 @@ function parseStream(data) {
 
   if (!chunks.length) throw new Error('Respuesta inválida');
 
-  let best = { text: '', resumeArray: null, parsed: null };
+  const candidates = [];
   for (const chunk of chunks) {
     try {
       const outer = JSON.parse(chunk);
       const inner = findInnerPayloadString(outer);
       if (!inner) continue;
       const parsed = JSON.parse(inner);
-      const text = pickBestTextFromAny(parsed);
+      const fragments = collectTextFragments(parsed);
+      const text = combineFragments(fragments) || pickBestTextFromAny(parsed);
       const resumeArray = Array.isArray(parsed?.[1]) ? parsed[1] : null;
-      if (!best.parsed || (text && text.length > (best.text?.length || 0))) {
-        best = { text, resumeArray, parsed };
-      }
+      candidates.push({ text, resumeArray, parsed, fragments });
     } catch {}
   }
 
-  if (!best.parsed) throw new Error('Error de parseo');
+  if (!candidates.length) throw new Error('Error de parseo');
 
+  candidates.sort((a, b) => {
+    const scoreA = (a.fragments?.length || 0) * 10 + (a.text?.length || 0);
+    const scoreB = (b.fragments?.length || 0) * 10 + (b.text?.length || 0);
+    return scoreB - scoreA;
+  });
+
+  const best = candidates[0];
   let cleanText = cleanGeminiResponseText(best.text).replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
   if (!cleanText) {
-    const accept = text => !/^https?:\/\/|^\/\/www\.|maps\/vt\/data/i.test(text);
+    const accept = text => !/^https?:\/\/?|^\/\/www\.|maps\/vt\/data/i.test(text);
     cleanText = cleanGeminiResponseText(pickFirstString(best.parsed, accept) || pickFirstString(best.parsed)).replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
   }
 
@@ -288,7 +306,7 @@ async function geminiScraper(prompt, previousId = null, options = {}) {
       const params = new URLSearchParams({ 'f.req': JSON.stringify(fReq) });
       if (xsrf) params.append('at', xsrf);
 
-      const response = await fetchWithTimeout(STREAM_URL, {
+      const response = await fetchWithSignal(STREAM_URL, {
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',

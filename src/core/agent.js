@@ -6,7 +6,6 @@ const {
   MODELS,
   PROVIDER_TIMEOUT_MAX_ATTEMPTS,
   PROVIDER_TIMEOUT_RETRY_DELAY_MS,
-  REQUEST_TIMEOUT_MS,
 } = require('../config');
 const { chat, chatSilent } = require('../providers/scraperClient');
 const {
@@ -68,8 +67,6 @@ async function requestModel(messages, state, ui, options = {}) {
     const stopThinking = ui.startThinkingIndicator(state, attempt === 0 ? label : `${label} (${state.language === 'es' ? 'reintento' : 'retry'})`);
     let answerStarted = false;
     let thinkingStarted = false;
-    let timedOut = false;
-    let timeout = null;
     const controller = new AbortController();
     const onExternalAbort = () => controller.abort();
 
@@ -77,14 +74,6 @@ async function requestModel(messages, state, ui, options = {}) {
       if (signal.aborted) controller.abort();
       else signal.addEventListener('abort', onExternalAbort, { once: true });
     }
-    const refreshTimeout = () => {
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, REQUEST_TIMEOUT_MS);
-    };
-    refreshTimeout();
 
     try {
       const result = await chat({
@@ -92,7 +81,6 @@ async function requestModel(messages, state, ui, options = {}) {
         modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
         signal: controller.signal,
         onChunk: (delta, phase) => {
-          refreshTimeout();
           if (phase === 'thinking') {
             if (!thinkingStarted) {
               stopThinking();
@@ -119,15 +107,10 @@ async function requestModel(messages, state, ui, options = {}) {
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
-      if (aborted && timedOut && !externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) {
-        await waitForRetry(PROVIDER_TIMEOUT_RETRY_DELAY_MS, signal);
-        continue;
-      }
       if (aborted) throw new Error(state.language === 'es' ? 'Tiempo agotado' : 'Timeout');
       if (!externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) continue;
       throw err;
     } finally {
-      clearTimeout(timeout);
       if (signal) signal.removeEventListener('abort', onExternalAbort);
       stopThinking();
       if (thinkingStarted) ui.endThinkingStream(state);
@@ -137,35 +120,89 @@ async function requestModel(messages, state, ui, options = {}) {
   throw new Error('Provider unreachable');
 }
 
-async function summarizeMessages(state, ui, messages) {
+function normalizeCompactMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (value === 'low' || value === 'medium' || value === 'high') return value;
+  return 'medium';
+}
+
+function compactTextLossless(text) {
+  return String(text || '')
+    .split('\r\n').join('\n')
+    .split('\r').join('\n')
+    .replaceAll('\t', ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function compactMessageContent(message, mode) {
+  const content = compactTextLossless(message?.content ?? '');
+  if (mode === 'low') return content;
+  const lines = content.split('\n');
+  const filtered = lines.filter((line, idx, arr) => !(line.trim() === '' && arr[idx - 1]?.trim() === ''));
+  if (mode === 'high') {
+    return filtered.slice(0, Math.max(8, Math.min(filtered.length, 24))).join('\n');
+  }
+  return filtered.join('\n');
+}
+
+function mergeMemorySummary(previous, next) {
+  const parts = [compactTextLossless(previous), compactTextLossless(next)].filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+  return parts.join('\n\n');
+}
+
+async function summarizeMessages(state, ui, messages, mode = 'medium') {
+  const compactMode = normalizeCompactMode(mode);
   const transcript = messages
-    .map(message => `${message.role.toUpperCase()}:\n${message.content}`)
+    .map(message => `${message.role.toUpperCase()}:\n${compactMessageContent(message, compactMode)}`)
     .join('\n\n');
+
+  if (compactMode === 'low') {
+    return compactTextLossless([
+      state.memorySummary ? `Memoria previa:\n${state.memorySummary}` : '',
+      transcript,
+    ].filter(Boolean).join('\n\n'));
+  }
 
   const prompt = [
     {
       role: 'system',
       content: [
-        'Eres un sistema de compresion de memoria tecnica profesional.',
-        'Resume la sesion manteniendo: Objetivos de desarrollo, estructura del proyecto actual, archivos modificados, comandos ejecutados con exito, errores encontrados y estado de los servicios (Docker/QEMU/Backend).',
-        'Se extremadamente conciso. Usa listas de puntos. No pierdas rutas de archivos ni valores de variables de entorno.',
-        'Si algo no se termino, marcalo como [BLOQUEADO] o [PENDIENTE].',
-        'Formato: Contexto | Progreso Tecnico | Archivos | Pendientes. Max 20 lineas.',
+        state.language === 'es'
+          ? 'Eres un sistema de compresion de memoria tecnica profesional.'
+          : 'You are a professional technical memory compression system.',
+        state.language === 'es'
+          ? 'Resume la sesion manteniendo: Objetivos de desarrollo, estructura del proyecto actual, archivos modificados, comandos ejecutados con exito, errores encontrados y estado de los servicios (Docker/QEMU/Backend).'
+          : 'Summarize the session while preserving development goals, current project structure, modified files, successful commands, encountered errors, and service state (Docker/QEMU/Backend).',
+        state.language === 'es'
+          ? 'Se extremadamente conciso. Usa listas de puntos. No pierdas rutas de archivos ni valores de variables de entorno.'
+          : 'Be extremely concise. Use bullet points. Do not lose file paths or environment variable values.',
+        state.language === 'es'
+          ? 'Si algo no se termino, marcalo como [BLOQUEADO] o [PENDIENTE].'
+          : 'If something was not finished, mark it as [BLOCKED] or [PENDING].',
+        state.language === 'es'
+          ? 'Formato: Contexto | Progreso Tecnico | Archivos | Pendientes. Max 20 lineas.'
+          : 'Format: Context | Technical Progress | Files | Pending. Max 20 lines.',
       ].join('\n'),
     },
     {
       role: 'user',
       content: [
-        state.memorySummary ? `Memoria previa:\n${state.memorySummary}\n` : '',
-        'Conversacion a resumir:',
+        state.memorySummary ? `${state.language === 'es' ? 'Memoria previa' : 'Previous memory'}:\n${state.memorySummary}\n` : '',
+        state.language === 'es' ? 'Conversacion a resumir:' : 'Conversation to summarize:',
         transcript,
       ].join('\n'),
     },
   ];
 
-  return normalizeText(await requestModel(prompt, state, ui, {
-    label: state.language === 'es' ? 'Consolidando memoria técnica' : 'Consolidating technical memory',
-  }));
+  const label = compactMode === 'high'
+    ? (state.language === 'es' ? 'Compactando memoria alta' : 'High memory compaction')
+    : (state.language === 'es' ? 'Consolidando memoria técnica' : 'Consolidating technical memory');
+
+  return normalizeText(await requestModel(prompt, state, ui, { label }));
 }
 
 async function compactHistoryIfNeeded(state, ui) {
@@ -175,15 +212,63 @@ async function compactHistoryIfNeeded(state, ui) {
   const splitIndex = Math.max(2, state.history.length - KEEP_RECENT_MESSAGES);
   const oldMessages = state.history.slice(0, splitIndex);
   const recentMessages = state.history.slice(splitIndex);
-  const summary = await summarizeMessages(state, ui, oldMessages);
+  const summary = await summarizeMessages(state, ui, oldMessages, 'medium');
 
-  state.memorySummary = summary;
+  state.memorySummary = mergeMemorySummary(state.memorySummary, summary);
   state.history = recentMessages;
-  ui.logEvent(state, 'info', 'Memoria compactada', shortText(summary, 120));
+  ui?.logEvent?.(state, 'info', state.language === 'es' ? 'Memoria compactada' : 'Memory compacted', shortText(summary, 120));
   await appendTranscriptEntry(state.sessionId, {
     type: 'system',
-    content: `Memoria técnica actualizada:\n${summary}`,
+    content: `${state.language === 'es' ? 'Memoria técnica actualizada' : 'Technical memory updated'}:
+${summary}`,
   });
+}
+
+async function compactMemory(state, ui, mode = 'medium', options = {}) {
+  const compactMode = normalizeCompactMode(mode);
+  const force = Boolean(options.force);
+  if (compactMode === 'high' && !force) {
+    const confirm = typeof state.tuiConfirm === 'function'
+      ? await state.tuiConfirm(
+          state.language === 'es' ? 'Confirmación de compactación alta' : 'High compaction confirmation',
+          t(state.language, 'compactWarningHigh'),
+        )
+      : true;
+    if (!confirm || String(confirm).toLowerCase() === 'n') return { changed: false, mode: compactMode, warned: true };
+  }
+
+  if (compactMode === 'low') {
+    const nextSummary = compactTextLossless([
+      state.memorySummary,
+      state.history.map(message => `${message.role.toUpperCase()}: ${compactMessageContent(message, 'low')}`).join('\n'),
+    ].filter(Boolean).join('\n\n'));
+    const changed = nextSummary !== state.memorySummary;
+    state.memorySummary = nextSummary;
+    if (changed) {
+      await saveState(state);
+      ui?.logEvent?.(state, 'info', t(state.language, 'compactDone'), t(state.language, 'compactCommand', { mode: compactMode }));
+    } else {
+      ui?.logEvent?.(state, 'info', t(state.language, 'compactNoChange'), '');
+    }
+    return { changed, mode: compactMode };
+  }
+
+  const splitIndex = Math.max(1, state.history.length - KEEP_RECENT_MESSAGES);
+  const oldMessages = state.history.slice(0, splitIndex);
+  const recentMessages = state.history.slice(splitIndex);
+  const summary = await summarizeMessages(state, ui, oldMessages, compactMode);
+  const nextSummary = mergeMemorySummary(state.memorySummary, summary);
+  const changed = nextSummary !== state.memorySummary || recentMessages.length !== state.history.length;
+  state.memorySummary = nextSummary;
+  state.history = recentMessages;
+  ui?.logEvent?.(state, 'info', t(state.language, 'compactDone'), t(state.language, 'compactCommand', { mode: compactMode }));
+  await appendTranscriptEntry(state.sessionId, {
+    type: 'system',
+    content: `${state.language === 'es' ? 'Memoria técnica actualizada' : 'Technical memory updated'}:
+${summary}`,
+  });
+  await saveState(state);
+  return { changed, mode: compactMode };
 }
 
 async function persistSessionState(state, ui) {
@@ -324,4 +409,4 @@ async function runAgentTurn(input, state, ui, options = {}) {
   }
 }
 
-module.exports = { runAgentTurn };
+module.exports = { compactMemory, normalizeCompactMode, runAgentTurn };

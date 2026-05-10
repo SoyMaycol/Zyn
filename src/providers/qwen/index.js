@@ -3,7 +3,6 @@ const { createHash, randomUUID } = require('crypto');
 const {
   QWEN_EMAIL,
   QWEN_PASSWORD,
-  REQUEST_TIMEOUT_MS,
 } = require('../../config');
 
 const BASE = 'https://chat.qwen.ai';
@@ -101,7 +100,6 @@ async function createChat(jar, signal) {
 async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
   const fid = randomUUID();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const onExternalAbort = () => controller.abort();
   if (signal) {
     if (signal.aborted) controller.abort();
@@ -203,7 +201,6 @@ async function streamCompletion(chatId, prompt, jar, onChunk, signal) {
 
     return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
-    clearTimeout(timeout);
     if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }

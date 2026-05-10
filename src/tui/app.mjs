@@ -290,88 +290,164 @@ function InlineLine({ text, color }) {
 }
 
 function parseMarkdownBlocks(text) {
-  const lines = text.split('\n');
+  const lines = String(text || '').split('\n');
   const blocks = [];
+  let paragraph = [];
   let i = 0;
+
+  const flushParagraph = () => {
+    const value = paragraph.join(' ').replace(/\s+/g, ' ').trim();
+    if (value) blocks.push({ type: 'paragraph', text: value });
+    paragraph = [];
+  };
+
   while (i < lines.length) {
     const line = lines[i];
-    const fenceMatch = line.match(/^```(\w*)/);
+    const trimmed = line.trim();
+    const fenceMatch = line.match(/^```(\w*)\s*$/);
     if (fenceMatch) {
+      flushParagraph();
       const lang = fenceMatch[1] || '';
       const codeLines = [];
-      i++;
+      i += 1;
       while (i < lines.length && !lines[i].startsWith('```')) {
         codeLines.push(lines[i]);
-        i++;
+        i += 1;
       }
-      if (i < lines.length) i++;
+      if (i < lines.length) i += 1;
       blocks.push({ type: 'code', lang, code: codeLines.join('\n') });
       continue;
     }
+
+    if (!trimmed) {
+      flushParagraph();
+      i += 1;
+      continue;
+    }
+
     const hMatch = line.match(/^(#{1,3})\s+(.+)/);
     if (hMatch) {
-      blocks.push({ type: 'header', level: hMatch[1].length, text: hMatch[2] });
-      i++;
+      flushParagraph();
+      blocks.push({ type: 'header', level: hMatch[1].length, text: hMatch[2].trim() });
+      i += 1;
       continue;
     }
-    const hrMatch = line.match(/^\s*(---+|\*\*\*+)\s*$/);
-    if (hrMatch) {
+
+    if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) {
+      flushParagraph();
       blocks.push({ type: 'hr' });
-      i++;
+      i += 1;
       continue;
     }
-    const quoteMatch = line.match(/^\s*>\s?(.*)$/);
-    if (quoteMatch) {
-      blocks.push({ type: 'quote', text: quoteMatch[1] });
-      i++;
+
+    if (/^\s*>\s?/.test(line)) {
+      flushParagraph();
+      const quoteLines = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, ''));
+        i += 1;
+      }
+      blocks.push({ type: 'quote', text: quoteLines.join(' ') });
       continue;
     }
+
     const tableCandidate = line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1]);
     if (tableCandidate) {
+      flushParagraph();
       const table = [line];
       i += 2;
       while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
         table.push(lines[i]);
-        i++;
+        i += 1;
       }
       blocks.push({ type: 'table', rows: table });
       continue;
     }
-    const ulMatch = line.match(/^(\s*)[-*]\s+(.+)/);
+
+    const ulMatch = line.match(/^(\s*)[-*+]\s+(.+)/);
     if (ulMatch) {
-      blocks.push({ type: 'list', indent: Math.floor(ulMatch[1].length / 2), text: ulMatch[2] });
-      i++;
+      flushParagraph();
+      const indent = Math.floor(ulMatch[1].length / 2);
+      const items = [];
+      while (i < lines.length) {
+        const current = lines[i].match(/^(\s*)[-*+]\s+(.+)/);
+        if (!current) break;
+        items.push({ ordered: false, indent: Math.floor(current[1].length / 2), text: current[2].trim() });
+        i += 1;
+      }
+      blocks.push({ type: 'list', items });
       continue;
     }
+
     const olMatch = line.match(/^(\s*)\d+[.)]\s+(.+)/);
     if (olMatch) {
-      blocks.push({ type: 'list', indent: Math.floor(olMatch[1].length / 2), text: olMatch[2], ordered: true });
-      i++;
+      flushParagraph();
+      const items = [];
+      while (i < lines.length) {
+        const current = lines[i].match(/^(\s*)\d+[.)]\s+(.+)/);
+        if (!current) break;
+        items.push({ ordered: true, indent: Math.floor(current[1].length / 2), text: current[2].trim() });
+        i += 1;
+      }
+      blocks.push({ type: 'list', items });
       continue;
     }
-    blocks.push({ type: 'text', text: line });
-    i++;
+
+    paragraph.push(trimmed);
+    i += 1;
   }
+
+  flushParagraph();
   return blocks;
 }
 
+function wrapText(text, maxWidth) {
+  const limit = Math.max(8, maxWidth || 80);
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = '';
+
+  if (words.length === 0) return [''];
+
+  for (const word of words) {
+    if (!current) {
+      current = word;
+      continue;
+    }
+    if ((current + ' ' + word).length <= limit) {
+      current += ' ' + word;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function splitTableCells(row) {
+  const raw = String(row || '').trim();
+  const cells = raw.startsWith('|') && raw.endsWith('|') ? raw.slice(1, -1).split('|') : raw.split('|');
+  return cells.map(cell => cell.trim()).filter((_, idx) => true);
+}
+
 function CodeBlock({ lang, code, width }) {
-  const maxW = Math.max(20, Math.min((width || 80) - 4, 90));
-  const inner = maxW - 4;
+  const maxW = Math.max(24, Math.min((width || 80) - 4, 120));
+  const inner = Math.max(10, maxW - 4);
   const langLabel = lang ? ' ' + lang + ' ' : '';
-  const topBar = '\u250c' + (langLabel ? '\u2500' + langLabel : '') + '\u2500'.repeat(Math.max(0, maxW - 2 - langLabel.length)) + '\u2510';
-  const botBar = '\u2514' + '\u2500'.repeat(maxW - 2) + '\u2518';
-  const codeLines = code.split('\n');
+  const topBar = '┌' + (langLabel ? '─' + langLabel : '') + '─'.repeat(Math.max(0, maxW - 2 - langLabel.length)) + '┐';
+  const botBar = '└' + '─'.repeat(maxW - 2) + '┘';
+  const codeLines = String(code || '').split('\n');
 
   return h(Box, { flexDirection: 'column', marginTop: 0, marginBottom: 0 },
     h(Text, { color: T.borderLight }, topBar),
-    ...codeLines.map((ln, i) => {
-      const padded = ln.length > inner ? ln.slice(0, inner) : ln + ' '.repeat(Math.max(0, inner - ln.length));
-      return h(Box, { key: String(i) },
-        h(Text, { color: T.borderLight }, '\u2502 '),
-        h(Text, { color: T.cyan }, padded),
-        h(Text, { color: T.borderLight }, ' \u2502'),
-      );
+    ...codeLines.flatMap((ln, i) => {
+      const wrapped = wrapText(ln, inner);
+      return wrapped.map((part, partIdx) => h(Box, { key: `${i}-${partIdx}` },
+        h(Text, { color: T.borderLight }, '│ '),
+        h(Text, { color: T.cyan }, part.padEnd(inner)),
+        h(Text, { color: T.borderLight }, ' │'),
+      ));
     }),
     h(Text, { color: T.borderLight }, botBar),
   );
@@ -379,6 +455,7 @@ function CodeBlock({ lang, code, width }) {
 
 function MarkdownContent({ text, width }) {
   const blocks = parseMarkdownBlocks(text);
+  const contentWidth = Math.max(24, (width || 80) - 8);
   return h(Box, { flexDirection: 'column' },
     ...blocks.map((block, i) => {
       switch (block.type) {
@@ -389,34 +466,58 @@ function MarkdownContent({ text, width }) {
             h(Text, { color: T.accent, bold: true }, block.text),
           );
         case 'list': {
-          const pad = '  '.repeat(block.indent || 0);
-          const bullet = block.ordered ? '  ' : '  \u2022 ';
-          return h(Box, { key: String(i) },
-            h(Text, { color: T.textMuted }, pad + bullet),
-            h(InlineLine, { text: block.text }),
+          return h(Box, { key: String(i), flexDirection: 'column', paddingLeft: 0 },
+            ...block.items.map((item, idx) => {
+              const bullet = item.ordered ? `${idx + 1}.` : '•';
+              const indent = '  '.repeat(item.indent || 0);
+              const wrapped = wrapText(item.text, Math.max(12, contentWidth - indent.length - 4));
+              return h(Box, { key: String(idx), flexDirection: 'column' },
+                h(Box, { flexWrap: 'wrap' },
+                  h(Text, { color: T.textMuted }, indent + bullet + ' '),
+                  h(InlineLine, { text: wrapped[0] || item.text }),
+                ),
+                ...wrapped.slice(1).map((part, partIdx) => h(Box, { key: String(partIdx), paddingLeft: indent.length + 2 }, h(Text, { color: T.textMuted }, part))),
+              );
+            }),
           );
         }
-        case 'text':
-          return block.text.trim()
-            ? h(Box, { key: String(i) }, h(InlineLine, { text: block.text }))
-            : h(Box, { key: String(i), height: 1 });
-        case 'quote':
-          return h(Box, { key: String(i), marginLeft: 1 },
-            h(Text, { color: T.textMuted }, '> '),
-            h(InlineLine, { text: block.text, color: T.textMuted }),
+        case 'paragraph': {
+          const wrapped = wrapText(block.text, contentWidth);
+          return h(Box, { key: String(i), flexDirection: 'column', marginBottom: 0 },
+            ...wrapped.map((part, idx) => h(InlineLine, { key: String(idx), text: part })),
           );
+        }
+        case 'quote': {
+          const wrapped = wrapText(block.text, contentWidth - 2);
+          return h(Box, { key: String(i), marginLeft: 1, flexDirection: 'column' },
+            ...wrapped.map((part, idx) => h(Box, { key: String(idx) },
+              h(Text, { color: T.textMuted }, '> '),
+              h(InlineLine, { text: part, color: T.textMuted }),
+            )),
+          );
+        }
         case 'hr':
           return h(Text, { key: String(i), color: T.borderLight }, '─'.repeat(Math.max(10, Math.min(width || 80, 70))));
         case 'table': {
-          const rows = block.rows.map(row => row.split('|').map(cell => cell.trim()).filter(Boolean));
-          const widthByCol = [];
+          const rows = block.rows.map(row => splitTableCells(row)).filter((row, idx) => idx === 0 || !row.every(cell => /^:?-{3,}:?$/.test(cell)));
+          const widths = [];
           for (const row of rows) {
-            row.forEach((cell, idx) => { widthByCol[idx] = Math.max(widthByCol[idx] || 0, cell.length); });
+            row.forEach((cell, idx) => {
+              widths[idx] = Math.max(widths[idx] || 0, cell.length);
+            });
           }
+          const maxTableWidth = Math.max(24, (width || 80) - 8);
+          const gaps = Math.max(0, widths.length - 1) * 3;
+          const total = widths.reduce((a, b) => a + b, 0) + gaps;
+          const scale = total > maxTableWidth ? Math.max(0.4, (maxTableWidth - gaps) / Math.max(1, widths.reduce((a, b) => a + b, 0))) : 1;
+          const fitted = widths.map(w => Math.max(6, Math.floor(w * scale)));
+          const lines = rows.map(row => row.map((cell, idx) => {
+            const cellWidth = fitted[idx] || 6;
+            const value = String(cell || '').slice(0, cellWidth);
+            return value.padEnd(cellWidth);
+          }).join(' │ '));
           return h(Box, { key: String(i), flexDirection: 'column' },
-            ...rows.map((row, rowIdx) => h(Text, { key: String(rowIdx), color: rowIdx === 0 ? T.accent : T.textMuted },
-              row.map((cell, idx) => String(cell).padEnd(widthByCol[idx] || cell.length)).join(' | ')
-            )),
+            ...lines.map((line, rowIdx) => h(Text, { key: String(rowIdx), color: rowIdx === 0 ? T.accent : T.textMuted, wrap: 'wrap' }, line)),
           );
         }
         default:
@@ -425,7 +526,6 @@ function MarkdownContent({ text, width }) {
     }),
   );
 }
-
 
 function Banner({ model, resumed, width, cwd }) {
   const maxW = Math.max(30, Math.min(width - 4, 72));
@@ -700,6 +800,10 @@ function clampCursor(nextCursor, length) {
   return Math.max(0, Math.min(nextCursor, length));
 }
 
+function isBackspaceInput(input, key) {
+  return Boolean(key?.backspace || input === '\b' || input === '\x7f' || input === '\u0008');
+}
+
 function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange }) {
   const [value, setValue] = useState(draft || '');
   const [cursor, setCursor] = useState((draft || '').length);
@@ -890,7 +994,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
-    if (key.backspace || input === '\b' || input === '\x7f') {
+    if (isBackspaceInput(input, key)) {
       if (currentCursor === 0) return;
       const nextValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
       commitValue(nextValue, currentCursor - 1);
@@ -914,6 +1018,9 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       const safeInput = normalizedInput.includes('\n')
         ? normalizedInput.replace(/\n+/g, ' ')
         : normalizedInput;
+      lastPasteMetaRef.current = safeInput.length > 1 || normalizedInput.includes('\n')
+        ? { kind: 'paste', length: safeInput.length, multiline: normalizedInput.includes('\n') }
+        : null;
       const nextValue = currentValue.slice(0, currentCursor) + safeInput + currentValue.slice(currentCursor);
       const nextCursor = currentCursor + safeInput.length;
       commitValue(nextValue, nextCursor);

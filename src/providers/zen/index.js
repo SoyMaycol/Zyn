@@ -1,4 +1,3 @@
-const { REQUEST_TIMEOUT_MS } = require('../../config');
 
 const BASE = 'https://opencode.ai/zen/v1';
 
@@ -12,7 +11,6 @@ const HEADERS = {
 
 async function streamCompletion(messages, modelId, onChunk, signal) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const onExternalAbort = () => controller.abort();
   if (signal) {
     if (signal.aborted) controller.abort();
@@ -76,7 +74,6 @@ async function streamCompletion(messages, modelId, onChunk, signal) {
 
     return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
-    clearTimeout(timeout);
     if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }
