@@ -26,8 +26,6 @@ const { estimateHistoryChars, saveState } = require('../utils/sessionStorage');
 const { normalizeText, shortText } = require('../utils/text');
 const { detectLanguage } = require('../i18n');
 
-
-
 function waitForRetry(ms, signal) {
   if (!ms || ms <= 0) return Promise.resolve();
   if (signal?.aborted) return Promise.reject(new Error('aborted'));
@@ -53,7 +51,7 @@ function waitForRetry(ms, signal) {
 function looksLikeActionRequest(text) {
   const sample = normalizeText(String(text || '')).toLowerCase();
   if (!sample) return false;
-  return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
+  return /(instala|install|run|ejecuta|crea|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|delete|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|import|aplica|apply|deploy|despliega|init|npm|git|docker|qemu)/i.test(sample);
 }
 
 async function requestModel(messages, state, ui, options = {}) {
@@ -65,7 +63,7 @@ async function requestModel(messages, state, ui, options = {}) {
 
   for (let attempt = 0; attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS; attempt += 1) {
     if (signal?.aborted) {
-      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
+      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario' : 'Agent stopped by user');
     }
     const stopThinking = ui.startThinkingIndicator(state, attempt === 0 ? label : `${label} (${state.language === 'es' ? 'reintento' : 'retry'})`);
     let answerStarted = false;
@@ -116,38 +114,17 @@ async function requestModel(messages, state, ui, options = {}) {
           if (streamOutput) ui.writeAssistantDelta(state, delta);
         },
       });
-      ui.pushAction(state, 'ok', 'Respuesta del modelo recibida');
+      ui.pushAction(state, 'ok', 'Respuesta recibida');
       return result.answer ?? '';
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
       if (aborted && timedOut && !externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) {
-        const waitMinutes = Math.round(PROVIDER_TIMEOUT_RETRY_DELAY_MS / 60000);
-        ui.logEvent(
-          state,
-          'warn',
-          state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout',
-          state.language === 'es'
-            ? `Esperando ${waitMinutes} minutos antes de reenviar (${attempt + 2}/${PROVIDER_TIMEOUT_MAX_ATTEMPTS})`
-            : `Waiting ${waitMinutes} minutes before resending (${attempt + 2}/${PROVIDER_TIMEOUT_MAX_ATTEMPTS})`,
-        );
-        try {
-          await waitForRetry(PROVIDER_TIMEOUT_RETRY_DELAY_MS, signal);
-        } catch {
-          throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
-        }
+        await waitForRetry(PROVIDER_TIMEOUT_RETRY_DELAY_MS, signal);
         continue;
       }
-      if (aborted) {
-        if (externalAbort) {
-          throw new Error(state.language === 'es' ? 'Agente detenido por el usuario (ESC x2)' : 'Agent stopped by the user (ESC x2)');
-        }
-        throw new Error(state.language === 'es' ? 'Tiempo agotado del proveedor' : 'Provider timeout exceeded');
-      }
-      if (!externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) {
-        ui.logEvent(state, 'warn', state.language === 'es' ? 'Error transitorio, reenviando contexto y skills' : 'Transient error, resending context and skills');
-        continue;
-      }
+      if (aborted) throw new Error(state.language === 'es' ? 'Tiempo agotado' : 'Timeout');
+      if (!externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) continue;
       throw err;
     } finally {
       clearTimeout(timeout);
@@ -157,7 +134,7 @@ async function requestModel(messages, state, ui, options = {}) {
       if (streamOutput && answerStarted) ui.endAssistantStream(state);
     }
   }
-  throw new Error(state.language === 'es' ? 'No se pudo obtener respuesta del proveedor' : 'Could not get provider response');
+  throw new Error('Provider unreachable');
 }
 
 async function summarizeMessages(state, ui, messages) {
@@ -169,38 +146,31 @@ async function summarizeMessages(state, ui, messages) {
     {
       role: 'system',
       content: [
-        state.language === 'es' ? 'Compacta la conversacion para memoria persistente del agente.' : 'Compact the conversation for the agent persistent memory.',
-        state.language === 'es' ? 'Escribe en español y conserva los idiomas/preferencias indicados por el usuario.' : 'Write in English and preserve any languages/preferences requested by the user.',
-        state.language === 'es'
-          ? 'Resume sin perder detalles críticos: objetivo del proyecto, progreso exacto, decisiones, archivos/rutas tocadas, comandos ejecutados, resultados, errores, credenciales/configuraciones no secretas, restricciones, próximos pasos y preferencias de idioma.'
-          : 'Summarize without losing critical details: project goal, exact progress, decisions, touched files/paths, executed commands, results, errors, non-secret credentials/configuration, constraints, next steps, and language preferences.',
-        state.language === 'es' ? 'No inventes; si algo está pendiente márcalo como Pendiente. Mantén nombres propios, rutas, APIs, límites y valores numéricos intactos.' : 'Do not invent; if something is pending mark it as Pending. Keep proper nouns, paths, APIs, limits, and numeric values intact.',
-        'Format: compact bullet list with sections Contexto/Progreso/Archivos/Comandos/Pendiente/Preferencias. Max 20 lines.',
+        'Eres un sistema de compresion de memoria tecnica profesional.',
+        'Resume la sesion manteniendo: Objetivos de desarrollo, estructura del proyecto actual, archivos modificados, comandos ejecutados con exito, errores encontrados y estado de los servicios (Docker/QEMU/Backend).',
+        'Se extremadamente conciso. Usa listas de puntos. No pierdas rutas de archivos ni valores de variables de entorno.',
+        'Si algo no se termino, marcalo como [BLOQUEADO] o [PENDIENTE].',
+        'Formato: Contexto | Progreso Tecnico | Archivos | Pendientes. Max 20 lineas.',
       ].join('\n'),
     },
     {
       role: 'user',
       content: [
         state.memorySummary ? `Memoria previa:\n${state.memorySummary}\n` : '',
-        'Conversacion a compactar:',
+        'Conversacion a resumir:',
         transcript,
       ].join('\n'),
     },
   ];
 
   return normalizeText(await requestModel(prompt, state, ui, {
-    label: state.language === 'es' ? 'Compactando memoria' : 'Compacting memory',
+    label: state.language === 'es' ? 'Consolidando memoria técnica' : 'Consolidating technical memory',
   }));
 }
 
 async function compactHistoryIfNeeded(state, ui) {
-  if (estimateHistoryChars(state.history) <= MAX_HISTORY_CHARS) {
-    return;
-  }
-
-  if (state.history.length <= KEEP_RECENT_MESSAGES) {
-    return;
-  }
+  if (estimateHistoryChars(state.history) <= MAX_HISTORY_CHARS) return;
+  if (state.history.length <= KEEP_RECENT_MESSAGES) return;
 
   const splitIndex = Math.max(2, state.history.length - KEEP_RECENT_MESSAGES);
   const oldMessages = state.history.slice(0, splitIndex);
@@ -209,10 +179,10 @@ async function compactHistoryIfNeeded(state, ui) {
 
   state.memorySummary = summary;
   state.history = recentMessages;
-  ui.logEvent(state, 'info', state.language === 'es' ? 'Memoria compactada' : 'Memory compacted', shortText(summary, 100));
+  ui.logEvent(state, 'info', 'Memoria compactada', shortText(summary, 120));
   await appendTranscriptEntry(state.sessionId, {
     type: 'system',
-    content: `Memoria compactada:\n${summary}`,
+    content: `Memoria técnica actualizada:\n${summary}`,
   });
 }
 
@@ -225,27 +195,16 @@ async function answerFromToolResult(input, call, result, state, ui) {
   const messages = [
     {
       role: 'system',
-      content: [
-        'You are Zyn.',
-        state.language === 'es' ? 'Responde en espanol, directo y solo con la respuesta final.' : 'Respond in English, direct and only with the final answer.',
-        state.language === 'es' ? 'Usa solo los datos del resultado de herramienta dado.' : 'Use only the data from the provided tool result.',
-        `Directorio actual: ${state.cwd}`,
-      ].join('\n'),
+      content: `Eres Zyn. Responde de forma técnica y directa basada únicamente en el resultado de la herramienta. Directorio: ${state.cwd}`,
     },
     {
       role: 'user',
-      content: [
-        'Solicitud original del usuario:',
-        input,
-        '',
-        `Resultado de la herramienta ${call.tool}:`,
-        result,
-      ].join('\n'),
+      content: `Solicitud: ${input}\n\nResultado de ${call.tool}:\n${result}`,
     },
   ];
 
   const output = await requestModel(messages, state, ui, {
-    label: state.language === 'es' ? 'Resumiendo resultado' : 'Summarizing result',
+    label: state.language === 'es' ? 'Procesando resultado' : 'Processing result',
   });
   const parsed = parseAgentResponse(output);
   return parsed.type === 'final' ? normalizeText(parsed.content) : normalizeText(output);
@@ -257,30 +216,15 @@ async function runAgentTurn(input, state, ui, options = {}) {
   if (state.turnCount === 1 && state.title === 'New session') {
     state.title = shortText(input, 60) || state.title;
   }
-  ui.logEvent(state, 'info', `${state.language === 'es' ? 'Turno' : 'Turn'} ${state.turnCount}`);
-
-  let toolUsedThisTurn = false;
-  let finalWithoutToolRetries = 0;
 
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
-    toolUsedThisTurn = true;
     const result = await executeToolCall(directAction, state, ui);
-    await appendTranscriptEntry(state.sessionId, {
-      type: 'tool',
-      tool: directAction.tool,
-      args: directAction.args,
-      result,
-    });
+    await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: directAction.tool, args: directAction.args, result });
     const finalAnswer = await answerFromToolResult(input, directAction, result, state, ui);
-    state.history.push({ role: 'user', content: input });
-    state.history.push({ role: 'assistant', content: finalAnswer });
-    await appendTranscriptEntry(state.sessionId, {
-      type: 'assistant',
-      content: finalAnswer,
-    });
-    ui.logEvent(state, 'ok', state.language === 'es' ? 'Respuesta lista' : 'Response ready');
+    state.history.push({ role: 'user', content: input }, { role: 'assistant', content: finalAnswer });
+    await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: finalAnswer });
     await persistSessionState(state, ui);
     return { content: finalAnswer, rendered: false };
   }
@@ -288,24 +232,19 @@ async function runAgentTurn(input, state, ui, options = {}) {
   const turnMessages = [{ role: 'user', content: input }];
   await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
 
+  let step = 0;
+  let toolUsedThisTurn = false;
+  let finalWithoutToolRetries = 0;
   let lastFingerprint = '';
   let repeatCount = 0;
-  const toolPathUsage = new Map();
-  let step = 0;
   const turnLanguage = detectLanguage(input, state.language);
 
   while (true) {
-    if (signal?.aborted) {
-      throw new Error(state.language === 'es' ? 'Agente detenido por el usuario' : 'Agent stopped by the user');
-    }
+    if (signal?.aborted) throw new Error('Aborted');
 
-    const injected = typeof state.getQueuedMessages === 'function'
-      ? state.getQueuedMessages()
-      : [];
+    const injected = typeof state.getQueuedMessages === 'function' ? state.getQueuedMessages() : [];
     for (const msg of injected) {
-      const note = `MENSAJE_ADICIONAL_DEL_USUARIO:\n${msg}`;
-      turnMessages.push({ role: 'user', content: note });
-      ui.logEvent(state, 'info', state.language === 'es' ? 'Mensaje recibido en vivo' : 'Live message received', shortText(msg, 60));
+      turnMessages.push({ role: 'user', content: `INPUT_ADICIONAL:\n${msg}` });
     }
 
     const messages = buildConversationMessages(
@@ -314,173 +253,49 @@ async function runAgentTurn(input, state, ui, options = {}) {
       buildSystemPrompt(state.cwd, state, { input, language: turnLanguage }),
     );
 
-    const primaryPromise = requestModel(messages, state, ui, {
-      label: step === 0 ? (state.language === 'es' ? 'Pensando' : 'Thinking') : `${state.language === 'es' ? 'Paso' : 'Step'} ${step + 1}`,
+    const raw = await requestModel(messages, state, ui, {
+      label: step === 0 ? 'Analizando' : `Paso ${step + 1}`,
       signal,
     });
 
-    let secondaryResults = [];
-    if (state.concuerdo) {
-      const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
-      const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
-      const CONCUERDO_TIMEOUT = 30000;
-      const withTimeout = (promise) => Promise.race([
-        promise,
-        new Promise(r => setTimeout(() => r(null), CONCUERDO_TIMEOUT)),
-      ]);
-      const secondaryPromises = otherKeys.map(k =>
-        withTimeout(chatSilent({ messages, modelKey: k, signal }).catch(() => null))
-      );
-      secondaryResults = secondaryPromises.map((p, i) => ({ promise: p, key: otherKeys[i] }));
-    }
-
-    const raw = await primaryPromise;
     let parsed = parseAgentResponse(raw);
 
-    if (secondaryResults.length > 0) {
-      const settled = await Promise.allSettled(secondaryResults.map(s => s.promise));
-      const extras = [];
-      let toolSuggestions = [];
+    if (state.concuerdo && step === 0) {
+      const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
+      const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
+      const secondaryResults = await Promise.all(otherKeys.map(k => chatSilent({ messages, modelKey: k, signal }).catch(() => null)));
+      
+      const suggestions = secondaryResults
+        .filter(r => r?.answer)
+        .map(r => parseAgentResponse(r.answer));
 
-      for (let i = 0; i < settled.length; i += 1) {
-        const val = settled[i].status === 'fulfilled' ? settled[i].value : null;
-        const label = MODELS[secondaryResults[i].key]?.label || secondaryResults[i].key;
-
-        if (!val?.answer) {
-          ui.logEvent(state, 'info', `${label} — ${state.language === 'es' ? 'sin respuesta' : 'no response'}`);
-          continue;
-        }
-
-        const altParsed = parseAgentResponse(val.answer);
-
-        if (altParsed.type === 'tool') {
-          toolSuggestions.push({ parsed: altParsed, label });
-          ui.logEvent(state, 'info', `${label} ${state.language === 'es' ? 'sugiere' : 'suggests'} ${altParsed.tool}`);
-        } else if (altParsed.type === 'final' && altParsed.content?.trim()) {
-          extras.push({ content: altParsed.content, label });
-          ui.logEvent(state, 'info', `${label} ${state.language === 'es' ? 'respondió' : 'responded'}`);
-        }
-      }
-
-      if (parsed.type === 'final' && toolSuggestions.length >= 2) {
-        parsed = toolSuggestions[0].parsed;
-        ui.logEvent(state, 'info', `${toolSuggestions.length} ${state.language === 'es' ? 'modelos concuerdan' : 'models agree'}: ${parsed.tool}`);
-      } else if (parsed.type === 'final' && extras.length > 0) {
-        const activeLabel = MODELS[state.activeModel || DEFAULT_MODEL_KEY]?.label || (state.language === 'es' ? 'Primario' : 'Primary');
-        ui.logEvent(state, 'info', `${state.language === 'es' ? 'Sintetizando' : 'Synthesizing'}: ${[activeLabel, ...extras.map(e => e.label)].join(' + ')}`);
-
-        const synthMessages = [
-          {
-            role: 'system',
-            content: [
-              state.language === 'es' ? 'Eres Zyn. Varios modelos IA analizaron la misma pregunta del usuario.' : 'You are Zyn. Several AI models analyzed the same user request.',
-              state.language === 'es' ? 'Tu trabajo: crear UNA SOLA respuesta final unificada.' : 'Your job: create ONE unified final answer.',
-              'Rules:',
-              state.language === 'es' ? '- NO repitas informacion que ya este cubierta por otro modelo' : '- Do not repeat information already covered by another model',
-              state.language === 'es' ? '- Integra las perspectivas unicas de cada uno naturalmente' : "- Blend each model's unique insights naturally",
-              state.language === 'es' ? '- Si todos dicen lo mismo, da UNA respuesta limpia sin redundancia' : '- If they all say the same thing, give one clean non-redundant answer',
-              state.language === 'es' ? '- Se directo y conciso' : '- Be direct and concise',
-              state.language === 'es' ? '- Responde en español' : '- Respond in English',
-              state.language === 'es' ? '- NO menciones que estas sintetizando ni que hay multiples modelos' : '- Do not mention that you are synthesizing or that multiple models are involved',
-              state.language === 'es' ? '- NO uses separadores --- ni secciones por modelo' : '- Do not use --- separators or per-model sections',
-              state.language === 'es' ? '- Responde como si fueras un solo agente dando la mejor respuesta posible' : '- Respond like a single agent giving the best possible answer',
-            ].join('\n'),
-          },
-          {
-            role: 'user',
-            content: [
-              `Respuesta de ${activeLabel}:\n${parsed.content}`,
-              '',
-              ...extras.map(e => `Respuesta de ${e.label}:\n${e.content}`),
-              '',
-              'Crea la respuesta final unificada:',
-            ].join('\n'),
-          },
-        ];
-
-        try {
-          const synthesis = await requestModel(synthMessages, state, ui, {
-            label: 'Concuerdo — unificando',
-            signal,
-          });
-          if (synthesis?.trim()) {
-            parsed = { type: 'final', content: synthesis.trim() };
-            ui.logEvent(state, 'info', state.language === 'es' ? '🤝 Respuesta unificada lista' : '🤝 Unified response ready');
-          }
-        } catch {
-        }
-      } else if (parsed.type === 'tool' && toolSuggestions.length > 0) {
-        const matching = toolSuggestions.filter(t => t.parsed.tool === parsed.tool);
-        if (matching.length > 0) {
-          ui.logEvent(state, 'info', `🤝 ${matching.length + 1} modelos concuerdan: ${parsed.tool}`);
-        }
+      const toolSugg = suggestions.filter(s => s.type === 'tool');
+      if (parsed.type === 'final' && toolSugg.length >= 2) {
+        parsed = toolSugg[0];
       }
     }
 
     if (parsed.type === 'final') {
-      const content = parsed.content.trim();
       if (looksLikeActionRequest(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
-        finalWithoutToolRetries += 1;
-        ui.logEvent(state, 'warn', turnLanguage === 'es' ? 'Sin prueba real todavía' : 'No real attempt yet', turnLanguage === 'es' ? 'Primero intenta una herramienta antes de concluir.' : 'Try a real tool before concluding.');
-        turnMessages.push({ role: 'assistant', content: content || raw.trim() });
-        turnMessages.push({
-          role: 'user',
-          content: [
-            turnLanguage === 'es'
-              ? 'Aun no has probado nada. No des una conclusion ni pasos teoricos.'
-              : 'You have not actually tried anything yet. Do not give a conclusion or theory steps.',
-            turnLanguage === 'es'
-              ? 'Primero intenta una herramienta real adecuada para la tarea.'
-              : 'First try a real tool that fits the task.',
-            turnLanguage === 'es'
-              ? 'Si ninguna herramienta aplica, dilo explicitamente con una sola frase corta y honesta.'
-              : 'If no tool applies, say so explicitly in one short honest sentence.',
-          ].join(' '),
-        });
-        step += 1;
+        finalWithoutToolRetries++;
+        turnMessages.push({ role: 'assistant', content: parsed.content });
+        turnMessages.push({ role: 'user', content: 'No has ejecutado ninguna herramienta técnica para esta solicitud de acción. Por favor, usa las herramientas necesarias para obtener resultados reales antes de concluir.' });
+        step++;
         continue;
       }
-      turnMessages.push({ role: 'assistant', content: content || raw.trim() });
+      turnMessages.push({ role: 'assistant', content: parsed.content });
       state.history.push(...turnMessages);
-      await appendTranscriptEntry(state.sessionId, {
-        type: 'assistant',
-        content,
-      });
-      ui.logEvent(state, 'ok', state.language === 'es' ? 'Respuesta lista' : 'Response ready');
+      await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: parsed.content });
       await persistSessionState(state, ui);
-      return { content, rendered: false };
+      return { content: parsed.content, rendered: false };
     }
 
-    const targetPath = parsed.args?.path || '';
-    const contentSample = typeof parsed.args?.content === 'string'
-      ? parsed.args.content.slice(0, 120)
-      : '';
-    const fingerprint = `${parsed.tool}:${targetPath}:${contentSample}`;
-    if (targetPath) {
-      const key = `${parsed.tool}:${targetPath}`;
-      const nextCount = (toolPathUsage.get(key) || 0) + 1;
-      toolPathUsage.set(key, nextCount);
-      if (nextCount >= 20 && ['write_file', 'append_file', 'replace_in_file'].includes(parsed.tool)) {
-        ui.logEvent(state, 'warn', state.language === 'es' ? 'Posible loop detectado' : 'Possible loop detected', `${parsed.tool} → ${targetPath} x${nextCount}`);
-        turnMessages.push({
-          role: 'user',
-          content: state.language === 'es'
-            ? `ALTO: ya editaste ${targetPath} varias veces en este turno. No repitas ediciones; valida y responde con type=final.`
-            : `STOP: you already edited ${targetPath} multiple times in this turn. Do not repeat edits; verify and answer with type=final.`,
-        });
-        step += 1;
-        continue;
-      }
-    }
+    const fingerprint = `${parsed.tool}:${parsed.args?.path || ''}:${shortText(JSON.stringify(parsed.args || {}), 50)}`;
     if (fingerprint === lastFingerprint) {
-      repeatCount += 1;
-      if (repeatCount >= 19) {
-        ui.logEvent(state, 'warn', 'Loop detectado', `${parsed.tool} repetido ${repeatCount + 1}x`);
-        turnMessages.push({
-          role: 'user',
-          content: 'ATENCION: Estas repitiendo la misma operacion. La operacion anterior ya fue exitosa. Responde con type=final confirmando lo que hiciste.',
-        });
-        step += 1;
+      repeatCount++;
+      if (repeatCount >= 3) {
+        turnMessages.push({ role: 'user', content: 'Estas en un bucle con la misma herramienta y argumentos. Cambia de estrategia o finaliza con el estado actual.' });
+        step++;
         continue;
       }
     } else {
@@ -488,61 +303,25 @@ async function runAgentTurn(input, state, ui, options = {}) {
       repeatCount = 0;
     }
 
-    turnMessages.push({
-      role: 'assistant',
-      content: JSON.stringify(
-        {
-          type: 'tool',
-          tool: parsed.tool,
-          args: sanitizeArgsForModel(parsed),
-        },
-        null,
-        2,
-      ),
-    });
+    turnMessages.push({ role: 'assistant', content: JSON.stringify({ type: 'tool', tool: parsed.tool, args: sanitizeArgsForModel(parsed) }) });
 
     try {
       toolUsedThisTurn = true;
       const result = await executeToolCall(parsed, state, ui);
-      await appendTranscriptEntry(state.sessionId, {
-        type: 'tool',
-        tool: parsed.tool,
-        args: parsed.args,
-        result,
-      });
-      turnMessages.push({
-        role: 'user',
-        content: `TOOL_RESULT\n${buildToolResultMessage(parsed, result)}`,
-      });
+      await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: parsed.tool, args: parsed.args, result });
+      turnMessages.push({ role: 'user', content: `TOOL_RESULT\n${buildToolResultMessage(parsed, result)}` });
     } catch (err) {
-      ui.logEvent(state, 'error', 'Fallo de herramienta', err.message);
-      await appendTranscriptEntry(state.sessionId, {
-        type: 'tool_error',
-        tool: parsed.tool,
-        args: parsed.args,
-        error: err.message,
-      });
-      turnMessages.push({
-        role: 'user',
-        content: buildToolErrorMessage(parsed, err.message),
-      });
+      turnMessages.push({ role: 'user', content: buildToolErrorMessage(parsed, err.message) });
     }
 
-    step += 1;
-    if (step >= MAX_TOOL_STEPS && MAX_TOOL_STEPS !== Number.POSITIVE_INFINITY) {
-      const limitMsg = state.language === 'es'
-        ? `Se alcanzó el límite de ${MAX_TOOL_STEPS} pasos. No se pueden ejecutar más herramientas en este turno. Responde con un resumen de lo que lograste.`
-        : `Reached the limit of ${MAX_TOOL_STEPS} steps. No more tools can be executed this turn. Reply with a summary of what was accomplished.`;
-      turnMessages.push({ role: 'assistant', content: limitMsg });
-      state.history.push(...turnMessages);
-      await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: limitMsg });
-      ui.logEvent(state, 'warn', state.language === 'es' ? 'Límite de pasos alcanzado' : 'Step limit reached');
+    step++;
+    if (step >= MAX_TOOL_STEPS) {
+      const limitMsg = 'Límite de pasos alcanzado. Resumiendo estado actual del sistema.';
+      state.history.push(...turnMessages, { role: 'assistant', content: limitMsg });
       await persistSessionState(state, ui);
       return { content: limitMsg, rendered: false };
     }
   }
 }
 
-module.exports = {
-  runAgentTurn,
-};
+module.exports = { runAgentTurn };
