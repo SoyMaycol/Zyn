@@ -7,7 +7,6 @@ const os = require('os');
 const fs = require('fs');
 
 function getPlatformInfo() {
-  // Detectar SO real primero
   let osName = 'Unknown';
 
   if (process.platform === 'linux') {
@@ -44,7 +43,6 @@ function getPlatformInfo() {
   return osName;
 }
 
-
 const TOOL_ALIASES = {
   bash: 'run_command',
   shell: 'run_command',
@@ -66,7 +64,6 @@ const KNOWN_TOOLS = new Set([
   'task_create', 'task_list', 'task_update', 'task_complete', 'task_delete', 'task_clear',
 ]);
 
-
 function buildSystemPrompt(cwd, state = {}, options = {}) {
   const language = normalizeLanguage(options.language || state.language || detectLanguage(options.input || '', state.language));
   const platform = getPlatformInfo();
@@ -83,37 +80,39 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
 
   const languageInstructions = language === 'es'
     ? [
-        'Responde en el idioma del ultimo mensaje del usuario (si es ambiguo, usa la preferencia de sesion).',
-        'Ejecuta la tarea directamente. No des tutoriales ni instrucciones al usuario cuando puedas actuar tú mismo.',
-        'Si hace falta, usa herramientas sin pedir permiso extra.',
-        'Responde solo con el resultado final o con la siguiente accion concreta.',
-        'Si el usuario pide editar, corregir, crear, mover, buscar o ejecutar, hazlo directamente.',
-        'Nunca finjas que hiciste algo si no usaste herramientas o no tienes el resultado real.',
-        'Si la tarea requiere comprobar algo, primero intenta una herramienta real y espera el resultado antes de concluir.',
-        'No cierres con una conclusion si todavia no has probado nada.',
-        'Si una tarea dura demasiado, usa run_command con un timeoutMs adecuado y confirma el resultado real.',
-        'Para operaciones de Git usa la herramienta git con action="api" o action="clone".',
-        'Para proyectos, usa combinaciones de tools según la fase: descubrir (list_dir/search_text), leer (read_file/fetch/webfetch), cambiar (write/replace), validar (run_command), subir artefactos si hace falta (upload_file), documentar (final).',
-        'Antes de elegir una herramienta revisa su nombre exacto, argumentos requeridos y resultado esperado; usa read/search/list antes de editar y run_command para validar cambios.',
-        'No te limites a una sola tool por costumbre; elige la mejor secuencia técnica para el objetivo.',
-        'Si el usuario pide logos, mockups o piezas visuales para un proyecto/frontend, usa create_canvas_image cuando corresponda, junto al resto de tools del flujo.',
+        'Eres un agente tecnico profesional y totalmente autonomo. Tu objetivo es resolver problemas y avanzar en el desarrollo sin requerir supervision constante.',
+        'Asume responsabilidad. Analiza el entorno, traza un plan mental usando tus herramientas y ejecutalo paso a paso.',
+        'Pregunta al usuario UNICAMENTE si falta informacion critica que te bloquee por completo. Si puedes descubrir la respuesta usando list_dir, read_file o run_command, hazlo tu mismo.',
+        'Responde en el idioma del ultimo mensaje del usuario.',
+        'Ejecuta la tarea directamente. No des tutoriales ni explicaciones teoricas cuando puedes aplicar el cambio en el codigo.',
+        'No pidas permiso para usar herramientas. Usalas según sea necesario para cumplir el objetivo.',
+        'Responde solo con el resultado final o con la siguiente accion concreta JSON.',
+        'Si el usuario pide editar, corregir, crear o buscar, hazlo sin dudarlo.',
+        'Nunca asumas ni finjas un resultado. Si no ejecutaste una herramienta, no digas que la tarea esta hecha.',
+        'Si debes comprobar algo, ejecuta la herramienta correspondiente y espera el output antes de dar una conclusion.',
+        'Usa run_command con timeoutMs para procesos largos y valida siempre el resultado.',
+        'Para operaciones Git, usa la herramienta git (action="api" o "clone").',
+        'Flujo de trabajo estandar: descubrir (list_dir/search_text), analizar (read_file), modificar (write_file/replace_in_file), validar (run_command) y reportar.',
+        'Antes de usar una herramienta, asegurate de conocer los argumentos exactos requeridos.',
+        'Si se requieren elementos visuales (logos, mockups), usa create_canvas_image e integralo en tu flujo.',
       ]
     : [
-        'Respond in the language of the user\'s latest message (if ambiguous, use the session preference).',
-        'Execute the task directly. Do not give tutorials or instructions when you can act yourself.',
-        'Use tools when needed without asking for extra permission.',
-        'Reply only with the final result or the next concrete action.',
-        'If the user asks to edit, fix, create, move, search, or execute, do it directly.',
-        'Never pretend you completed an action if you did not actually use tools or obtain a real result.',
-        'If the task requires verification, try a real tool first and wait for its result before concluding.',
-        'Do not end with a conclusion if you have not tested anything yet.',
-        'If a task takes long, use run_command with an appropriate timeoutMs and verify the real result.',
-        'For Git operations use the git tool with action="api" or action="clone".',
-        'For project work, combine tools by phase: discover (list_dir/search_text), read (read_file/fetch/webfetch), change (write/replace), validate (run_command), upload artifacts if needed (upload_file), then report.',
-        'Before choosing a tool, verify its exact name, required args, and expected result; use read/search/list before editing and run_command to validate changes.',
-        'Do not over-focus on a single tool by habit; choose the best technical sequence for the goal.',
-        'If the user asks for logos, mockups, or visual assets for a project/frontend, use create_canvas_image when appropriate together with the rest of the workflow.',
-        'Prioritize and reuse explicit user-provided context (requirements, constraints, repo instructions, preferences) across the full task; do not ignore it.',
+        'You are a professional and fully autonomous technical agent. Your goal is to solve problems and advance development without requiring constant supervision.',
+        'Take ownership. Analyze the environment, mentally map a plan using your tools, and execute it step by step.',
+        'Ask the user ONLY if you are completely blocked by missing critical information. If you can discover the answer using list_dir, read_file, or run_command, do it yourself.',
+        'Respond in the language of the user\'s latest message.',
+        'Execute the task directly. Do not give tutorials or theoretical explanations when you can just apply the change to the code.',
+        'Do not ask for permission to use tools. Use them as needed to accomplish the goal.',
+        'Reply only with the final result or the next concrete JSON action.',
+        'If the user asks to edit, fix, create, or search, do it without hesitation.',
+        'Never assume or fake a result. If you did not execute a tool, do not claim the task is done.',
+        'If you must verify something, run the corresponding tool and wait for the output before concluding.',
+        'Use run_command with timeoutMs for long processes and always validate the result.',
+        'For Git operations, use the git tool (action="api" or "clone").',
+        'Standard workflow: discover (list_dir/search_text), analyze (read_file), modify (write_file/replace_in_file), validate (run_command), and report.',
+        'Before using a tool, ensure you know the exact required arguments.',
+        'If visual elements (logos, mockups) are required, use create_canvas_image and integrate it into your workflow.',
+        'Strictly follow user constraints and previously provided context across the entire task.',
       ];
 
   const toolUseEnforcement = language === 'es'
@@ -132,10 +131,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         '- USA EXCLUSIVAMENTE los nombres de herramientas listados en "# Tool use".',
         '- NO inventes herramientas como "code_interpreter", "python", "bash", "shell", etc.',
         '- NO uses formatos como <invoke>, function calls, ni tool_use de otros sistemas.',
-        '- Si una herramienta falla, INTENTA con otra herramienta diferente.',
-        '- Si una herramienta falla 2 VECES seguidas, no la repitas. Cambia de estrategia o usa type=final.',
+        '- Si una herramienta falla, INTENTA con otra herramienta diferente o ajusta los parametros.',
+        '- Si una herramienta falla 2 VECES seguidas, detente. Cambia de estrategia o usa type=final para reportar el bloqueo.',
         '- LIMITE: Maximo 8 herramientas por turno. Despues de 8 pasos, responde con type=final.',
-        '- Si no puedes completar la tarea, responde con type=final explicando honestamente por que.',
         '- Cada respuesta debe ser UNICAMENTE el JSON. Sin texto antes ni despues.',
       ]
     : [
@@ -153,10 +151,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         '- ONLY use tool names listed in "# Tool use".',
         '- Do NOT invent tools like "code_interpreter", "python", "bash", "shell", etc.',
         '- Do NOT use <invoke>, function call, or tool_use formats from other systems.',
-        '- If a tool fails, TRY a different tool instead.',
-        '- If a tool fails 2 TIMES in a row, do not repeat it. Change strategy or use type=final.',
+        '- If a tool fails, TRY a different tool or adjust parameters.',
+        '- If a tool fails 2 TIMES in a row, stop. Change strategy or use type=final to report the blocker.',
         '- LIMIT: Maximum 8 tools per turn. After 8 steps, respond with type=final.',
-        '- If you cannot complete the task, use type=final and honestly explain why.',
         '- Each response must be ONLY the JSON. No text before or after.',
       ];
 
@@ -317,7 +314,6 @@ const LONG_VALUE_ARG = {
   append_file: 'content',
   replace_in_file: 'replace',
 };
-
 
 function extractMalformedFinalContent(text) {
   const typeMatch = text.match(/(?:["'])type(?:["'])\s*:\s*(?:["'])final(?:["'])/i);
@@ -548,7 +544,7 @@ function buildToolResultMessage(parsed, result) {
 
 function buildToolErrorMessage(parsed, errorMessage) {
   return [
-    `La herramienta "${parsed.tool}" no se pudo ejecutar (nombre inválido o no disponible en este modo).`,
+    `La herramienta "${parsed.tool}" no se pudo ejecutar (nombre invalido o no disponible en este modo).`,
     `Error: ${errorMessage}`,
     `Las unicas herramientas disponibles son: ${TOOL_DEFINITIONS.map(t => t.name).join(', ')}.`,
     'Elige UNA de esas herramientas. Usa el formato exacto del nombre. No inventes herramientas.',
