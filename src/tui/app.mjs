@@ -684,6 +684,22 @@ function StaticItem({ item, width }) {
   }
 }
 
+
+function sanitizeInputChunk(input) {
+  return String(input || '')
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
+    .replace(/\u001bP[\s\S]*?\u001b\\/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+}
+
+function clampCursor(nextCursor, length) {
+  return Math.max(0, Math.min(nextCursor, length));
+}
+
 function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange }) {
   const [value, setValue] = useState(draft || '');
   const [cursor, setCursor] = useState((draft || '').length);
@@ -692,19 +708,49 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
   const historyRef = useRef([]);
   const savedRef = useRef('');
   const lastPasteMetaRef = useRef(null);
+  const valueRef = useRef(value);
+  const cursorRef = useRef(cursor);
+  const histIdxRef = useRef(histIdx);
+  const suggestIdxRef = useRef(suggestIdx);
 
   useEffect(() => {
-    if (draft !== value) {
-      setValue(draft || '');
-      setCursor((draft || '').length);
+    valueRef.current = value;
+  }, [value]);
+
+  useEffect(() => {
+    cursorRef.current = cursor;
+  }, [cursor]);
+
+  useEffect(() => {
+    histIdxRef.current = histIdx;
+  }, [histIdx]);
+
+  useEffect(() => {
+    suggestIdxRef.current = suggestIdx;
+  }, [suggestIdx]);
+
+  useEffect(() => {
+    if (draft !== valueRef.current) {
+      const nextValue = String(draft || '');
+      valueRef.current = nextValue;
+      cursorRef.current = nextValue.length;
+      setValue(nextValue);
+      setCursor(nextValue.length);
       setHistIdx(-1);
+      histIdxRef.current = -1;
       setSuggestIdx(0);
+      suggestIdxRef.current = 0;
     }
   }, [draft]);
 
-  const updateValue = useCallback((next) => {
-    setValue(next);
-    if (onDraftChange) onDraftChange(next);
+  const commitValue = useCallback((nextValue, nextCursor = nextValue.length) => {
+    const safeValue = String(nextValue || '');
+    const safeCursor = clampCursor(nextCursor, safeValue.length);
+    valueRef.current = safeValue;
+    cursorRef.current = safeCursor;
+    setValue(safeValue);
+    setCursor(safeCursor);
+    if (onDraftChange) onDraftChange(safeValue);
   }, [onDraftChange]);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
@@ -717,43 +763,54 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
     : [];
 
   useInput((input, key) => {
+    const currentValue = valueRef.current;
+    const currentCursor = cursorRef.current;
+    const currentShowSuggestions = currentValue.startsWith('/') && !currentValue.includes(' ') && currentValue.length > 0;
+    const currentSuggestions = currentShowSuggestions
+      ? [...SLASH_COMMANDS, ...localSlash].filter(c => ('/' + c.name).startsWith(currentValue.toLowerCase()))
+      : [];
+
     if (key.return) {
-      let text = value.trim();
+      let text = currentValue.trim();
       if (!text) return;
-      // Si hay sugerencias visibles, autocompletar antes de enviar
-      if (showSuggestions && suggestions.length > 0 && text === '/') {
-        const cmd = suggestions[suggestIdx] || suggestions[0];
+      if (currentShowSuggestions && currentSuggestions.length > 0 && text === '/') {
+        const cmd = currentSuggestions[suggestIdxRef.current] || currentSuggestions[0];
         if (cmd) text = `/${cmd.name}`;
       }
       historyRef.current.unshift(text);
       if (historyRef.current.length > 100) historyRef.current.pop();
-      updateValue('');
-      setCursor(0);
+      commitValue('', 0);
       setHistIdx(-1);
+      histIdxRef.current = -1;
       setSuggestIdx(0);
+      suggestIdxRef.current = 0;
       onSubmit(text, lastPasteMetaRef.current);
       lastPasteMetaRef.current = null;
       return;
     }
 
-    if (key.tab && suggestions.length > 0) {
-      const cmd = suggestions[suggestIdx] || suggestions[0];
+    if (key.tab && currentSuggestions.length > 0) {
+      const cmd = currentSuggestions[suggestIdxRef.current] || currentSuggestions[0];
       if (cmd) {
         const completed = `/${cmd.name} `;
-        updateValue(completed);
-        setCursor(completed.length);
+        commitValue(completed, completed.length);
         setSuggestIdx(0);
+        suggestIdxRef.current = 0;
       }
       return;
     }
 
-    if (showSuggestions && suggestions.length > 0) {
+    if (currentShowSuggestions && currentSuggestions.length > 0) {
       if (key.upArrow) {
-        setSuggestIdx(i => Math.max(0, i - 1));
+        const next = Math.max(0, suggestIdxRef.current - 1);
+        setSuggestIdx(next);
+        suggestIdxRef.current = next;
         return;
       }
       if (key.downArrow) {
-        setSuggestIdx(i => Math.min(suggestions.length - 1, i + 1));
+        const next = Math.min(currentSuggestions.length - 1, suggestIdxRef.current + 1);
+        setSuggestIdx(next);
+        suggestIdxRef.current = next;
         return;
       }
     }
@@ -761,45 +818,57 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
     if (key.upArrow) {
       const hist = historyRef.current;
       if (hist.length === 0) return;
-      if (histIdx === -1) savedRef.current = value;
-      const next = Math.min(histIdx + 1, hist.length - 1);
+      if (histIdxRef.current === -1) savedRef.current = currentValue;
+      const next = Math.min(histIdxRef.current + 1, hist.length - 1);
       setHistIdx(next);
-      updateValue(hist[next]);
-      setCursor(hist[next].length);
+      histIdxRef.current = next;
+      commitValue(hist[next], hist[next].length);
       return;
     }
 
     if (key.downArrow) {
-      if (histIdx <= 0) {
+      if (histIdxRef.current <= 0) {
         setHistIdx(-1);
-        updateValue(savedRef.current);
-        setCursor(savedRef.current.length);
+        histIdxRef.current = -1;
+        commitValue(savedRef.current, savedRef.current.length);
         return;
       }
-      const next = histIdx - 1;
+      const next = histIdxRef.current - 1;
       setHistIdx(next);
-      updateValue(historyRef.current[next]);
-      setCursor(historyRef.current[next].length);
+      histIdxRef.current = next;
+      commitValue(historyRef.current[next], historyRef.current[next].length);
       return;
     }
 
     if (key.leftArrow) {
-      setCursor(c => Math.max(0, c - 1));
+      const nextCursor = clampCursor(currentCursor - 1, currentValue.length);
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
       return;
     }
 
     if (key.rightArrow) {
-      setCursor(c => Math.min(value.length, c + 1));
+      const nextCursor = clampCursor(currentCursor + 1, currentValue.length);
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
       return;
     }
 
-    if (key.ctrl && input === 'a') { setCursor(0); return; }
-    if (key.ctrl && input === 'e') { setCursor(value.length); return; }
+    if (key.ctrl && input === 'a') {
+      cursorRef.current = 0;
+      setCursor(0);
+      return;
+    }
+    if (key.ctrl && input === 'e') {
+      const nextCursor = currentValue.length;
+      cursorRef.current = nextCursor;
+      setCursor(nextCursor);
+      return;
+    }
 
     if (key.ctrl && input === 'u') {
-      const after = value.slice(cursor);
-      updateValue(after);
-      setCursor(0);
+      const after = currentValue.slice(currentCursor);
+      commitValue(after, 0);
       return;
     }
 
@@ -814,38 +883,42 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
     }
 
     if (key.ctrl && input === 'w') {
-      const before = value.slice(0, cursor);
-      const after = value.slice(cursor);
+      const before = currentValue.slice(0, currentCursor);
+      const after = currentValue.slice(currentCursor);
       const trimmed = before.replace(/\S+\s*$/, '');
-      updateValue(trimmed + after);
-      setCursor(trimmed.length);
+      commitValue(trimmed + after, trimmed.length);
       return;
     }
 
-    if (key.backspace) {
-      if (cursor === 0) return;
-      updateValue(value.slice(0, cursor - 1) + value.slice(cursor));
-      setCursor(c => Math.max(0, c - 1));
+    if (key.backspace || input === '\b' || input === '\x7f') {
+      if (currentCursor === 0) return;
+      const nextValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
+      commitValue(nextValue, currentCursor - 1);
       setSuggestIdx(0);
+      suggestIdxRef.current = 0;
       return;
     }
 
     if (key.delete) {
-      if (cursor >= value.length) return;
-      updateValue(value.slice(0, cursor) + value.slice(cursor + 1));
+      if (currentCursor >= currentValue.length) return;
+      const nextValue = currentValue.slice(0, currentCursor) + currentValue.slice(currentCursor + 1);
+      commitValue(nextValue, currentCursor);
       setSuggestIdx(0);
+      suggestIdxRef.current = 0;
       return;
     }
 
     if (input && !key.ctrl && !key.meta) {
-      const normalizedInput = input
-        .replace(/\u001b\[200~/g, '')
-        .replace(/\u001b\[201~/g, '')
-        .replace(/\r\n/g, '\n');
-      const safeInput = normalizedInput.includes('\n') ? normalizedInput.replace(/\n/g, ' ') : normalizedInput;
-      updateValue(value.slice(0, cursor) + safeInput + value.slice(cursor));
-      setCursor(c => c + safeInput.length);
+      const normalizedInput = sanitizeInputChunk(input);
+      if (!normalizedInput) return;
+      const safeInput = normalizedInput.includes('\n')
+        ? normalizedInput.replace(/\n+/g, ' ')
+        : normalizedInput;
+      const nextValue = currentValue.slice(0, currentCursor) + safeInput + currentValue.slice(currentCursor);
+      const nextCursor = currentCursor + safeInput.length;
+      commitValue(nextValue, nextCursor);
       setSuggestIdx(0);
+      suggestIdxRef.current = 0;
     }
   });
 
