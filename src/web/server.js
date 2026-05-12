@@ -13,6 +13,8 @@ const { MODELS, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, listProvidersFromModels
 const app = express();
 const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || process.env.ZYN_WEB_PORT || 3000);
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const WEB_UI_FILE = path.join(PUBLIC_DIR, 'zyn-ui.html');
 
 // Evitar crashes silenciosos
 process.on('uncaughtException', (err) => {
@@ -31,7 +33,10 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (req, res) => {
+  res.sendFile(WEB_UI_FILE);
+});
+app.use(express.static(PUBLIC_DIR, { index: false }));
 // Persistir secreto de sesion en disco
 const SECRET_FILE = path.join(__dirname, 'data', '.session-secret');
 let sessionSecret;
@@ -303,7 +308,7 @@ app.post('/api/chats/:id/send', requireAuth, async (req, res) => {
 // ─── SPA fallback ────────────────────────────────────
 
 app.get('/{*splat}', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(WEB_UI_FILE);
 });
 
 app.listen(PORT, HOST, () => {
