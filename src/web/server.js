@@ -36,6 +36,7 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
   res.sendFile(WEB_UI_FILE);
 });
+app.use('/assets', express.static(PUBLIC_DIR, { index: false }));
 app.use(express.static(PUBLIC_DIR, { index: false }));
 // Persistir secreto de sesion en disco
 const SECRET_FILE = path.join(__dirname, 'data', '.session-secret');
