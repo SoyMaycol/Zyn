@@ -14,7 +14,7 @@ const app = express();
 const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || process.env.ZYN_WEB_PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const WEB_UI_FILE = path.join(PUBLIC_DIR, 'zyn-ui.html');
+const WEB_UI_FILE = path.join(PUBLIC_DIR, 'index.html');
 
 // Evitar crashes silenciosos
 process.on('uncaughtException', (err) => {
