@@ -20,6 +20,9 @@
 
 ---
 
+> [!CAUTION]
+> Using the web version of the agent is not recommended as it contains bugs. I am doing my best to fix most of the web bugs.
+
 ## What is Zyn
 
 Zyn is a local AI agent designed for terminal and web usage. It supports persistent sessions, system tools, multiple AI providers, session exports, and configurable models.
