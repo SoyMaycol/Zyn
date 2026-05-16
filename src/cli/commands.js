@@ -7,7 +7,6 @@ const { listSkills, SKILLS_DIR } = require('../core/skills');
 const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, MODELS, listProvidersFromModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
-const { compactMemory, normalizeCompactMode } = require('../core/agent');
 const { listGitSecrets, removeGitSecret, upsertGitSecret } = require('../utils/secretStorage');
 const { clearGmailAuth, getGmailAuthStatus, startGmailOAuthFlow } = require('../utils/gmailAuth');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
@@ -34,41 +33,6 @@ function printLanguageChanged(language) {
     : `Updated to language ${label} (${normalized})`);
 }
 
-function getCompactModeArgs(args) {
-  const value = String(args || '').trim().toLowerCase();
-  if (!value) return 'medium';
-  const [mode] = value.split(/\s+/);
-  return ['low', 'medium', 'high'].includes(mode) ? mode : null;
-}
-
-async function runCompactCommand(state, args, printMemoryFn) {
-  const compactMode = getCompactModeArgs(args);
-  if (!compactMode) {
-    throw new Error(t(state.language, 'compactInvalid'));
-  }
-  const isHigh = compactMode === 'high';
-  if (isHigh) {
-    const warn = t(state.language, 'compactWarningHigh');
-    console.log(warn);
-  }
-
-  const ui = {
-    logEvent: (_state, kind, title, detail) => {
-      const prefix = kind === 'error' ? 'ERROR' : kind === 'warn' ? 'WARN' : 'INFO';
-      const line = [prefix, title, detail].filter(Boolean).join(' - ');
-      if (line) console.log(line);
-    },
-  };
-
-  const result = await compactMemory(state, ui, compactMode, { force: !isHigh });
-  if (!result?.changed) {
-    console.log(t(state.language, 'compactNoChange'));
-    return true;
-  }
-  console.log(t(state.language, 'compactCommand', { mode: compactMode }));
-  if (typeof printMemoryFn === 'function') printMemoryFn(state);
-  return true;
-}
 
 const SLASH_COMMANDS = [
   { name: 'help', desc: 'full help', descEs: 'ayuda completa' },
@@ -76,7 +40,6 @@ const SLASH_COMMANDS = [
   { name: 'history', desc: 'recent actions', descEs: 'acciones recientes' },
   { name: 'memory', desc: 'memory summary', descEs: 'resumen de memoria' },
   { name: 'summary', desc: 'memory summary', descEs: 'resumen de memoria' },
-  { name: 'compact', desc: 'compact memory', descEs: 'compactar memoria' },
   { name: 'session', desc: 'current session', descEs: 'sesión actual' },
   { name: 'sessions', desc: 'list sessions', descEs: 'listar sesiones' },
   { name: 'new', desc: 'new session', descEs: 'nueva sesión' },
@@ -97,6 +60,8 @@ const SLASH_COMMANDS = [
   { name: 'skills', desc: 'agent skills', descEs: 'skills del agente' },
   { name: 'config', desc: 'view/change session settings', descEs: 'ver/cambiar configuración' },
   { name: 'web', desc: 'open web version', descEs: 'abrir versión web' },
+  { name: 'undo', desc: 'undo last turn', descEs: 'deshacer último turno' },
+  { name: 'redo', desc: 'redo last turn', descEs: 'rehacer último turno' },
   { name: 'stop', desc: 'stop agent', descEs: 'detener agente' },
   { name: 'abort', desc: 'stop agent', descEs: 'detener agente' },
   { name: 'reset', desc: 'reset context', descEs: 'reiniciar contexto' },
@@ -297,17 +262,10 @@ async function handleLocalCommand(input, state, deps) {
   }
 
   if (commandName === 'memory' || commandName === 'summary') {
-    if (args && args.startsWith('compact')) {
-      const compactArgs = args.replace(/^compact\s*/i, '').trim();
-      return runCompactCommand(state, compactArgs, printMemory);
-    }
     printMemory(state);
     return true;
   }
 
-  if (commandName === 'compact') {
-    return runCompactCommand(state, args, printMemory);
-  }
 
   if (commandName === 'session') {
     printSession(state);
@@ -682,6 +640,32 @@ async function handleLocalCommand(input, state, deps) {
     } else {
       console.log(t(state.language, 'noActiveTurn'));
     }
+    return true;
+  }
+  if (commandName === 'undo') {
+    const len = state.history.length;
+    if (len < 2) {
+      console.log('Nothing to undo.');
+      return true;
+    }
+    state.redoHistory = state.redoHistory || [];
+    const removed = state.history.splice(len - 2, 2);
+    state.redoHistory.push(...removed);
+    await saveState(state);
+    console.log('Last turn undone.');
+    return true;
+  }
+
+  if (commandName === 'redo') {
+    const stack = state.redoHistory || [];
+    if (stack.length < 2) {
+      console.log('Nothing to redo.');
+      return true;
+    }
+    const restored = stack.splice(stack.length - 2, 2);
+    state.history.push(...restored);
+    await saveState(state);
+    console.log('Last turn restored.');
     return true;
   }
 
