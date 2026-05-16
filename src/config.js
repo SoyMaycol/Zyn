@@ -39,9 +39,15 @@ const BUILTIN_MODELS = {
     provider: 'gemini',
     geminiModel: 'gemini-flash',
   },
+
+  'hf-ling-2.6-1t': {
+    label: 'InclusionAI Ling 2.6 1T',
+    provider: 'huggingface',
+    huggingfaceModel: 'inclusionai/ling-2.6-1t',
+  },
 };
 
-const SUPPORTED_MODEL_PROVIDERS = new Set(['qwen', 'zen', 'gemini']);
+const SUPPORTED_MODEL_PROVIDERS = new Set(['qwen', 'zen', 'gemini', 'huggingface']);
 const GEMINI_MODEL_WARNING = 'It is not recommended for use in production; it is unstable and ineffective.';
 
 function readJsonFile(filePath) {

@@ -52,6 +52,7 @@ function createChat(userId, repoOwner, repoName) {
     repoName,
     title: `${repoOwner}/${repoName}`,
     messages: [],
+    undoneMessages: [],
     createdAt: Date.now(),
     activeModel: '',
     concuerdo: false,
@@ -104,4 +105,26 @@ module.exports = {
   saveChat,
   getUserChats,
   deleteChat,
+  undoChatMessage,
+  redoChatMessage,
 };
+
+
+function undoChatMessage(id) {
+  const chat = getChat(id);
+  if (!chat || !chat.messages?.length) return null;
+  chat.undoneMessages = chat.undoneMessages || [];
+  const last = chat.messages.pop();
+  chat.undoneMessages.push(last);
+  saveChat(chat);
+  return chat;
+}
+
+function redoChatMessage(id) {
+  const chat = getChat(id);
+  if (!chat || !chat.undoneMessages?.length) return null;
+  const item = chat.undoneMessages.pop();
+  chat.messages.push(item);
+  saveChat(chat);
+  return chat;
+}

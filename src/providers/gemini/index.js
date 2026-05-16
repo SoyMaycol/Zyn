@@ -250,7 +250,7 @@ function parseStream(data) {
 
   const chunks = Array.from(
     data.matchAll(/^\d+\r?\n([\s\S]+?)\r?\n(?=\d+\r?\n|$)/gm),
-  ).map(match => match[1]).reverse();
+  ).map(match => match[1]);
 
   if (!chunks.length) throw new Error('Respuesta inválida');
 
@@ -270,13 +270,14 @@ function parseStream(data) {
 
   if (!candidates.length) throw new Error('Error de parseo');
 
-  candidates.sort((a, b) => {
-    const scoreA = (a.fragments?.length || 0) * 10 + (a.text?.length || 0);
-    const scoreB = (b.fragments?.length || 0) * 10 + (b.text?.length || 0);
-    return scoreB - scoreA;
-  });
-
-  const best = candidates[0];
+  const best = candidates.reduce((acc, item) => {
+    const currentText = cleanGeminiResponseText(item.text || '').trim();
+    if (!currentText) return acc;
+    if (!acc) return item;
+    const accText = cleanGeminiResponseText(acc.text || '').trim();
+    if (currentText.length >= accText.length) return item;
+    return acc;
+  }, null) || candidates[candidates.length - 1];
   let cleanText = cleanGeminiResponseText(best.text).replace(/\*\*(.+?)\*\*/g, '*$1*').trim();
   if (!cleanText) {
     const accept = text => !/^https?:\/\/?|^\/\/www\.|maps\/vt\/data/i.test(text);

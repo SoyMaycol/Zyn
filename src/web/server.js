@@ -256,6 +256,22 @@ app.delete('/api/chats/:id', requireAuth, (req, res) => {
 
 // ─── Chat Send (SSE streaming) ──────────────────────
 
+app.post('/api/chats/:id/undo', requireAuth, (req, res) => {
+  const chat = store.getChat(req.params.id);
+  if (!chat || chat.userId !== req.session.userId) return res.status(404).json({ error: 'Chat not found' });
+  const next = store.undoChatMessage(req.params.id);
+  if (!next) return res.status(400).json({ error: 'Nothing to undo' });
+  res.json({ success: true, chat: next });
+});
+
+app.post('/api/chats/:id/redo', requireAuth, (req, res) => {
+  const chat = store.getChat(req.params.id);
+  if (!chat || chat.userId !== req.session.userId) return res.status(404).json({ error: 'Chat not found' });
+  const next = store.redoChatMessage(req.params.id);
+  if (!next) return res.status(400).json({ error: 'Nothing to redo' });
+  res.json({ success: true, chat: next });
+});
+
 app.post('/api/chats/:id/send', requireAuth, async (req, res) => {
   const chat = store.getChat(req.params.id);
   if (!chat || chat.userId !== req.session.userId) {
@@ -271,8 +287,45 @@ app.post('/api/chats/:id/send', requireAuth, async (req, res) => {
   if (!message?.trim()) {
     return res.status(400).json({ error: 'Empty message' });
   }
+  const trimmedMessage = message.trim();
 
-  chat.messages.push({ role: 'user', content: message.trim(), ts: Date.now() });
+  if (trimmedMessage.startsWith('/')) {
+    const command = trimmedMessage.toLowerCase();
+    if (command === '/undo') {
+      const next = store.undoChatMessage(req.params.id);
+      return res.json({ success: true, command: 'undo', chat: next || chat });
+    }
+    if (command === '/redo') {
+      const next = store.redoChatMessage(req.params.id);
+      return res.json({ success: true, command: 'redo', chat: next || chat });
+    }
+    if (command === '/models') {
+      return res.json({
+        success: true,
+        command: 'models',
+        output: Object.entries(MODELS).map(([key, val]) => `${key}: ${val.label} (${val.provider})`).join('\n'),
+      });
+    }
+    if (command === '/providers') {
+      return res.json({
+        success: true,
+        command: 'providers',
+        output: listProvidersFromModels(MODELS)
+          .map(provider => `${provider.key}: ${provider.models.map(model => model.key).join(', ')}`)
+          .join('\n'),
+      });
+    }
+    if (command === '/skills') {
+      const { listSkills } = require('../core/skills');
+      return res.json({
+        success: true,
+        command: 'skills',
+        output: listSkills().map(skill => `${skill.name} - ${skill.title}`).join('\n'),
+      });
+    }
+  }
+
+  chat.messages.push({ role: 'user', content: trimmedMessage, ts: Date.now() });
   store.saveChat(chat);
 
   res.setHeader('Content-Type', 'text/event-stream');

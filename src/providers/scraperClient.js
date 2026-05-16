@@ -1,6 +1,7 @@
 const { qwen } = require('./qwen/index');
 const { zen } = require('./zen/index');
 const { gemini } = require('./gemini/index');
+const { huggingface } = require('./huggingface/index');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 
 function buildPromptFromMessages(messages) {
@@ -30,6 +31,8 @@ async function runProvider(provider, messages, model, onChunk, options = {}) {
       return zen(messages, model.zenModel, onChunk, options);
     case 'gemini':
       return gemini(messages, model.geminiModel || 'gemini-flash', onChunk, options);
+    case 'huggingface':
+      return huggingface(messages, model.huggingfaceModel || 'inclusionai/ling-2.6-1t', onChunk, options);
     case 'qwen':
     default: {
       const prompt = buildPromptFromMessages(messages);
