@@ -1,5 +1,5 @@
 const { normalizeText } = require('../utils/text');
-const { buildSkillsPrompt } = require('./skills');
+const { buildSkillsIndexPrompt, buildSkillsPrompt } = require('./skills');
 const { getToolPromptText, TOOL_DEFINITIONS } = require('../tools');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
@@ -73,7 +73,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     day: 'numeric',
   });
 
-  const skills = buildSkillsPrompt();
+  const skillsIndex = buildSkillsIndexPrompt();
   const providerGroups = listProvidersFromModels(MODELS)
     .map(group => `${group.key}: ${group.models.map(m => m.key).join(', ')}`)
     .join('\n');
@@ -95,6 +95,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Flujo de trabajo estandar: descubrir (list_dir/search_text), analizar (read_file), modificar (write_file/replace_in_file), validar (run_command) y reportar.',
         'Antes de usar una herramienta, asegurate de conocer los argumentos exactos requeridos.',
         'Si se requieren elementos visuales (logos, mockups), usa create_canvas_image e integralo en tu flujo.',
+        'SKILLS: el system prompt solo lista el INDICE de skills (nombre + descripcion). Cuando una skill',
+        'sea relevante para la tarea actual, llama load_skill {"name":"<nombre>"} ANTES de aplicarla.',
+        'Carga solo las skills que realmente necesites; no cargues todas por defecto.',
       ]
     : [
         'You are a professional and fully autonomous technical agent. Your goal is to solve problems and advance development without requiring constant supervision.',
@@ -113,6 +116,25 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
         'Before using a tool, ensure you know the exact required arguments.',
         'If visual elements (logos, mockups) are required, use create_canvas_image and integrate it into your workflow.',
         'Strictly follow user constraints and previously provided context across the entire task.',
+        'SKILLS: the system prompt only lists the SKILL INDEX (name + description). When a skill is',
+        'relevant to the current task, call load_skill {"name":"<name>"} BEFORE applying it.',
+        'Load only the skills you actually need; do not load all of them by default.',
+      ];
+
+  const skillsToolHint = language === 'es'
+    ? [
+        '',
+        '# Skills (carga bajo demanda)',
+        'El system prompt solo expone el INDICE de skills. Para leer las reglas completas de una skill',
+        'relevante para la tarea actual, llama a load_skill con el nombre exacto.',
+        'Carga la skill UNA vez al inicio del turno si aplica; no la recargues en cada tool call.',
+      ]
+    : [
+        '',
+        '# Skills (on-demand loading)',
+        'The system prompt only exposes the SKILL INDEX. To read the full rules of a skill that is',
+        'relevant to the current task, call load_skill with the exact name.',
+        'Load the skill ONCE at the start of the turn if applicable; do not reload it on every tool call.',
       ];
 
   const toolUseEnforcement = language === 'es'
@@ -158,7 +180,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       ];
 
   const parts = [
-    skills,
+    skillsIndex,
+    '',
+    ...skillsToolHint,
     '',
     '# Tool use',
     getToolPromptText(),
@@ -306,6 +330,7 @@ const TOOL_ARG_KEYS = {
   gmail: ['action', 'query', 'maxResults', 'id', 'to', 'subject', 'body'],
   create_canvas_image: ['width', 'height', 'background', 'elements', 'format', 'outputPath'],
   git: ['provider', 'action', 'method', 'path', 'body', 'headers', 'name', 'repoUrl', 'destination', 'branch', 'timeoutMs'],
+  load_skill: ['name'],
 };
 
 const LONG_VALUE_ARG = {

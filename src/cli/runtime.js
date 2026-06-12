@@ -10,6 +10,7 @@ const {
   paint,
   printBanner,
   printHistory,
+  printHistoryReplay,
   printMemory,
   printSession,
   printSessions,
@@ -25,6 +26,8 @@ const {
 const { runAgentTurn } = require('../core/agent');
 const {
   applyLoadedState,
+  consumeBackgroundResult,
+  listBackgroundResults,
   loadOrCreateSessionState,
 } = require('../utils/sessionStorage');
 const { appendTranscriptEntry } = require('../utils/transcriptStorage');
@@ -57,16 +60,23 @@ function getUiBindings() {
   };
 }
 
-function getCommandDeps() {
+const selector = require('./selector');
+
+function getCommandDeps(extra = {}) {
   return {
     appendTranscriptEntry,
     applyLoadedState,
     printBanner,
     printHistory,
+    printHistoryReplay,
     printMemory,
     printSession,
     printSessions,
     printStatus,
+    askSelect: (options) => selector.askSelect(extra?.state || null, null, options),
+    askInput: (options) => selector.askInput(extra?.state || null, null, options),
+    askConfirm: (options) => selector.askConfirm(extra?.state || null, null, options),
+    ...extra,
   };
 }
 
@@ -85,11 +95,14 @@ async function runSinglePrompt(prompt, options = {}) {
     if (!rl) {
       state.autoApprove = true;
     }
-    const { resumed } = loaded;
+    const { resumed, rehydrated } = loaded;
     if (process.stdout.isTTY) {
       await printWelcome();
       printBanner(state);
       logEvent(state, 'info', resumed ? 'session resumed' : 'new session');
+      if (rehydrated && Array.isArray(state.__resumedHistory) && state.__resumedHistory.length > 0) {
+        printHistoryReplay(state, state.__resumedHistory);
+      }
       console.log('');
     }
 
@@ -112,15 +125,33 @@ async function runInteractiveChatClassic(options = {}) {
     output: process.stdout,
   });
 
-  const { state, resumed } = await loadOrCreateSessionState(rl, options);
+  const { state, resumed, rehydrated } = await loadOrCreateSessionState(rl, options);
+
+  const completedBackgrounds = await listBackgroundResults(state.sessionId).catch(() => []);
+  if (completedBackgrounds.length > 0) {
+    console.log('');
+    for (const bg of completedBackgrounds) {
+      const status = bg.result?.ok ? 'OK' : 'FAIL';
+      const preview = bg.result?.ok ? shortText(bg.result.content || '', 100) : (bg.result?.error || 'unknown');
+      console.log(`  \x1b[36m[bg ${status}]\x1b[0m \x1b[90mtask:${bg.taskId}\x1b[0m`);
+      console.log(`    ${preview}`);
+      await consumeBackgroundResult(bg.taskId);
+    }
+    console.log('');
+  }
+
   await printWelcome();
   printBanner(state);
   logEvent(state, 'info', resumed ? 'session resumed' : 'chat active — /help for commands');
+  if (rehydrated && Array.isArray(state.__resumedHistory) && state.__resumedHistory.length > 0) {
+    printHistoryReplay(state, state.__resumedHistory);
+  }
   console.log('');
 
   const messageQueue = [];
   let pendingExit = false;
   let currentAbort = null;
+  let pendingExitAfterBg = false;
 
   state.getQueuedMessages = () => messageQueue.splice(0);
   state.clearQueuedMessages = () => { messageQueue.length = 0; };
@@ -134,7 +165,9 @@ async function runInteractiveChatClassic(options = {}) {
 
   const runCommandInline = async (input) => {
     try {
-      const handled = await handleLocalCommand(input, state, getCommandDeps());
+      const handled = await handleLocalCommand(input, state, getCommandDeps({
+        exitAfterBg: () => { pendingExitAfterBg = true; pendingExit = true; },
+      }));
       if (!handled) {
         console.log('Comando no reconocido. Usa /help.');
       }
@@ -163,6 +196,7 @@ async function runInteractiveChatClassic(options = {}) {
         }
         return false;
       };
+      state.__bgDetach = { input, signal: currentAbort.signal };
       const result = await runAgentTurn(input, state, getUiBindings(), { signal: currentAbort.signal });
       if (!result.rendered) {
         await streamBufferedAssistantMessage(state, result.content);
@@ -171,6 +205,7 @@ async function runInteractiveChatClassic(options = {}) {
       logEvent(state, 'error', 'Error', err.message);
     } finally {
       currentAbort = null;
+      state.__bgDetach = null;
     }
   };
 
@@ -207,7 +242,11 @@ async function runInteractiveChatClassic(options = {}) {
       rl.removeListener('line', lineHandler);
 
       if (pendingExit) {
-        logEvent(state, 'info', t(state.language, 'goodbye'));
+        if (pendingExitAfterBg) {
+          logEvent(state, 'info', 'Background task scheduled. Exiting CLI...');
+        } else {
+          logEvent(state, 'info', t(state.language, 'goodbye'));
+        }
         break;
       }
     }
@@ -276,7 +315,7 @@ async function runTest() {
     ['tools/index', '../tools/index'],
     ['providers/scraperClient', '../providers/scraperClient'],
     ['providers/zen', '../providers/zen/index'],
-    ['providers/qwen', '../providers/qwen/index'],
+    ['providers/qwenapi', '../providers/qwenapi/index'],
   ];
   for (const [name, modPath] of modules) {
     try {
@@ -304,7 +343,7 @@ async function runTest() {
     const startMs = Date.now();
     let totalChars = 0;
     const msgs = [{ role: 'user', content: 'que modelo eres? responde en 1 linea corta' }];
-    await zen(msgs, 'nemotron-3-super-free', (text, phase) => {
+    await zen(msgs, 'nemotron-3-ultra-free', (text, phase) => {
       if (phase === 'answer') {
         process.stdout.write(text);
         totalChars += text.length;
@@ -333,8 +372,9 @@ async function main() {
   }
 
   const options = {
-    forceNew: false,
+    forceNew: true,
     sessionId: null,
+    resume: false,
   };
   const args = [];
 
@@ -346,8 +386,12 @@ async function main() {
     }
 
     if (arg === '--resume') {
-      options.sessionId = rawArgs[index + 1] ?? null;
-      index += 1;
+      options.forceNew = false;
+      options.resume = true;
+      if (rawArgs[index + 1] && !rawArgs[index + 1].startsWith('--')) {
+        options.sessionId = rawArgs[index + 1];
+        index += 1;
+      }
       continue;
     }
 
@@ -360,18 +404,13 @@ async function main() {
   }
 
   if (args[0] === 'web' || args.includes('--web')) {
-    const { handleLocalCommand } = require('./commands');
-    const tmpState = { abortCurrentTurn: null };
-    await handleLocalCommand('/web start', tmpState, {
-      applyLoadedState: () => {},
-      appendTranscriptEntry: async () => {},
-      printBanner: () => {},
-      printHistory: () => {},
-      printMemory: () => {},
-      printSession: () => {},
-      printSessions: () => {},
-      printStatus: () => {},
-    });
+    console.error('La versión web de Zyn fue eliminada. El agente ahora es CLI/TUI + integrable vía API pública (require("zyn-ai/agent")).');
+    return;
+  }
+
+  if (args[0] === '--bg-run' || process.env.ZYN_BG_RUN === '1') {
+    const { runBackgroundWorker } = require('../utils/backgroundWorker');
+    await runBackgroundWorker();
     return;
   }
 

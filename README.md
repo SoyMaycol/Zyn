@@ -1,4 +1,4 @@
-# Zyn Agent
+# Zyn
 
 <p align="center">
   <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
@@ -8,45 +8,44 @@
   <img src="https://img.shields.io/npm/v/zyn-ai?label=npm&color=%23CB3837" alt="NPM Version"/>
   <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
   <img src="https://img.shields.io/npm/dt/zyn-ai" alt="Downloads"/>
+  <img src="https://img.shields.io/github/license/SoyMaycol/Zyn" alt="License"/>
 </p>
 
 <p align="center">
-  <b>Local AI agent for terminal, TUI, and web.</b>
+  <b>AI agent for terminal, TUI, and external platforms (WhatsApp, Discord, Telegram).</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/SoyMaycol/Zyn">Official repository</a>
+  <a href="https://github.com/SoyMaycol/Zyn">GitHub</a>
 </p>
 
 ---
 
-> [!CAUTION]
-> Using the web version of the agent is not recommended as it contains bugs. I am doing my best to fix most of the web bugs.
+## Features
 
-## What is Zyn
-
-Zyn is a local AI agent designed for terminal and web usage. It supports persistent sessions, system tools, multiple AI providers, session exports, and configurable models.
-
----
+- **CLI + TUI** — full terminal UI with keyboard navigation, command suggestions, and overlay system
+- **Multi-provider** — Zen (free, no config), Gemini, Qwen (DashScope), HuggingFace, custom providers
+- **Skills system** — folder-based skills with YAML frontmatter that guide agent behavior
+- **Tool execution** — read/write files, run commands, search code, browse web, glob patterns
+- **Session management** — persistent sessions with full transcript replay, resume, export
+- **Multi-platform** — embeddable in WhatsApp (Baileys), Discord, and Telegram bots
+- **Background workers** — detach long-running turns to background processes
+- **i18n** — English and Spanish interfaces
 
 ## Requirements
 
 - Node.js 18+
 - npm
-- Internet connection for remote providers
-
----
+- Internet connection for remote AI providers
 
 ## Installation
-
-### Global install
 
 ```bash
 npm install -g zyn-ai
 zyn
 ```
 
-### Local development
+### From source
 
 ```bash
 git clone https://github.com/SoyMaycol/Zyn.git
@@ -55,125 +54,170 @@ npm install
 npm start
 ```
 
----
-
 ## Usage
 
 ```bash
-zyn
-zyn "Explain this project"
-zyn --new
-zyn --resume ID
+zyn                  # Interactive TUI (default)
+zyn "question"       # Single prompt (CLI mode)
+zyn --new            # Force new session
+zyn --resume ID      # Resume existing session
 ```
 
----
+## Models
 
-## Web mode
+14 built-in models across 4 providers:
 
-Inside Zyn:
+### Zen (free, no configuration)
 
-```text
-/web
-/web 0.0.0.0:3000
-```
+| Key | Model |
+|---|---|
+| `nemotron` | Nemotron 3 Ultra |
+| `mimo` | Mimo 2.5 |
+| `north-mini` | North Mini Code |
+| `deepseek` | DeepSeek V4 Flash |
 
-Or directly:
+### Gemini (requires API key)
 
-```bash
-npm run web
-```
+| Key | Model |
+|---|---|
+| `gemini-flash` | Gemini 2.5 Flash |
+| `gemini-flash-001` | Gemini 2.5 Flash 001 |
+| `gemini-pro` | Gemini 2.5 Pro |
+| `gemini-flash-lite` | Gemini 2.5 Flash Lite |
+| `gemini-flash-lite-001` | Gemini 2.5 Flash Lite 001 |
+| `gemma-3` | Gemma 3 27B |
 
----
+### Qwen (requires DashScope API key)
 
-## Language
+| Key | Model |
+|---|---|
+| `qwen-plus` | Qwen Plus |
+| `qwen-max` | Qwen Max |
+| `qwen-turbo` | Qwen Turbo |
 
-Supported languages:
+### HuggingFace (requires HF token)
 
-- `en`
-- `es`
+| Key | Model |
+|---|---|
+| `hf-ling-2.6-1t` | InclusionAI Ling 2.6 1T |
 
-Commands:
+Default model: `nemotron` (Zen, no configuration required).
 
-```text
-/lang
-/lang en
-/lang es
-```
-
----
-
-## Main Commands
+## Commands
 
 ### Sessions
 
 | Command | Description |
 |---|---|
-| `/help` | Show available commands |
-| `/status` | Show current status |
-| `/history` | Show recent actions |
-| `/memory` | Show memory summary |
-| `/sessions` | List saved sessions |
-| `/new` | Create a new session |
-| `/resume <ID>` | Resume a session |
+| `/help` | Show help |
+| `/status` | Current status |
+| `/history` | Recent actions (last 20) |
+| `/memory` | Memory summary |
+| `/session` | Current session info |
+| `/sessions` | List all sessions |
+| `/new` | New session |
+| `/resume <ID>` | Resume session |
 | `/title <text>` | Rename session |
 
 ### Configuration
 
 | Command | Description |
 |---|---|
-| `/model` | Show or change model |
-| `/models` | List models |
-| `/providers` | List providers |
+| `/models` | Open model picker (current provider) |
+| `/providers` | Open provider picker → configure → pick model |
 | `/lang <en\|es>` | Change language |
+| `/auto on\|off` | Toggle auto-approval |
+| `/concuerdo` | Toggle group model mode |
+| `/persona set <text>` | Set response persona |
 | `/config show` | Show config |
-| `/auto on\|off` | Toggle auto approval |
+| `/git set\|list\|remove` | Manage git credentials |
 | `/cwd <path>` | Change working directory |
 
-### Tools
+### Tools & Skills
 
 | Command | Description |
 |---|---|
-| `/tools` | List tools |
-| `/skills` | List skills |
-| `/gmail connect` | Connect Gmail with Google OAuth + PKCE |
-| `/gmail status` | Show Gmail connection status |
-| `/gmail disconnect` | Remove saved Gmail tokens |
-| `/cwd` | Show working directory |
+| `/tools` | List agent tools |
+| `/skills` | List loaded skills |
+| `/gmail connect` | Connect Gmail via OAuth |
 
-### Web & Export
+### Export & Control
 
 | Command | Description |
 |---|---|
-| `/web` | Start web interface |
-| `/transcript` | Show transcript |
-| `/export` | Export session |
+| `/bg` | Detach current turn to background |
+| `/transcript` | View session transcript |
+| `/export` | Export session to txt |
+| `/stop` | Stop current agent turn |
+| `/undo` | Undo last turn |
+| `/redo` | Redo undone turn |
+| `/reset` | Reset context |
+| `/exit` | Exit |
 
-### Control
+Press `ESC` twice in the TUI to stop the current task.
 
-| Command | Description |
-|---|---|
-| `/stop` | Stop current task |
-| `/reset` | Reset session |
-| `/exit` | Exit Zyn |
+## Skills
 
-In the TUI, press `ESC` twice to stop the current task.
+Skills are folders under `data/skills/<name>/SKILL.md` with YAML frontmatter:
 
+```markdown
+---
+name: reasoning
+description: Reasoning and planning for complex tasks
 ---
 
-## Models
-
-Custom models can be added using `data/models.json`.
-
-Example:
-
-```json
-{
-  "models": {
-    "my-gemini-flash": {
-      "label": "Gemini Flash",
-      "provider": "gemini",
-      "geminiModel": "gemini-flash"
-    }
-  }
-}
+# Skill body here
 ```
+
+The system prompt automatically advertises every loaded skill to the model.
+
+## API
+
+### Embed in your bot
+
+```js
+const { createAgent } = require('zyn-ai');
+
+const agent = createAgent({
+  model: 'nemotron',
+  language: 'en',
+  autoApprove: false,
+});
+
+const response = await agent.send('userId', 'Hello!');
+```
+
+### Platforms
+
+```js
+const { createAgent, platforms } = require('zyn-ai');
+
+const agent = createAgent({ model: 'nemotron' });
+
+// WhatsApp (Baileys)
+await platforms.whatsapp({ agent, session: './whatsapp-auth' });
+
+// Discord
+await platforms.discord({ agent, token: 'DISCORD_TOKEN' });
+
+// Telegram
+await platforms.telegram({ agent, token: 'TELEGRAM_TOKEN' });
+```
+
+Install the corresponding `optionalDependencies` only if you need them.
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `ZYN_DEFAULT_MODEL` | Override default model key |
+| `ZYN_DEFAULT_LANG` | Default language (`en` or `es`) |
+| `ZYN_GEMINI_API_KEY` | Gemini API key |
+| `ZYN_QWEN_API_KEY` | DashScope API key |
+| `ZYN_HUGGINGFACE_TOKEN` | HuggingFace token |
+| `ZYN_REQUEST_TIMEOUT_MS` | Request timeout (default: 180000) |
+| `ZYN_GMAIL_CLIENT_SECRET` | Gmail OAuth client secret |
+
+## License
+
+MIT

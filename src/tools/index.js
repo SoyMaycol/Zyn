@@ -19,6 +19,7 @@ const {
 } = require('../utils/secretStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
 const { getGmailAuthStatus, gmailApiRequest } = require('../utils/gmailAuth');
+const { loadSkill, listSkills } = require('../core/skills');
 const {
   formatLineRange,
   shortText,
@@ -27,11 +28,11 @@ const {
 
 const TOOL_DEFINITIONS = [
   { name: 'list_dir', usage: '{ path? }' },
-  { name: 'read_file', usage: '{ path, startLine?, endLine? }' },
+  { name: 'read_file', usage: '{ path, startLine?, endLine?, offset?, limit? }' },
   { name: 'search_text', usage: '{ pattern, path?, glob? }' },
   { name: 'glob_files', usage: '{ pattern, path? }' },
   { name: 'file_info', usage: '{ path }' },
-  { name: 'run_command', usage: '{ command }' },
+  { name: 'run_command', usage: '{ command, timeoutMs? }' },
   { name: 'make_dir', usage: '{ path }' },
   { name: 'write_file', usage: '{ path, content }' },
   { name: 'append_file', usage: '{ path, content }' },
@@ -47,6 +48,7 @@ const TOOL_DEFINITIONS = [
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
+  { name: 'load_skill', usage: '{ name }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
 
@@ -57,9 +59,10 @@ function getToolPromptText() {
     'list_dir { path? }',
     '  Lista archivos y carpetas ordenados. Sin path usa directorio actual.',
     '',
-    'read_file { path, startLine?, endLine? }',
+    'read_file { path, startLine?, endLine?, offset?, limit? }',
     '  Lee contenido con numeros de linea. Max 5000 lineas por llamada.',
-    '  Para archivos grandes, usa startLine/endLine para leer por secciones.',
+    '  startLine/endLine: lineas 1-indexadas. offset/limit: 0-indexados.',
+    '  Ej: {"offset":0,"limit":50} lee primeras 50 lineas.',
     '',
     'search_text { pattern, path?, glob? }',
     '  Busca patron regex en archivos (ripgrep). path: directorio base.',
@@ -91,8 +94,8 @@ function getToolPromptText() {
     '',
     '## Ejecucion',
     '',
-    'run_command { command }',
-    '  Ejecuta comando en bash. Timeout: 2 minutos.',
+    'run_command { command, timeoutMs? }',
+    '  Ejecuta comando en bash. Timeout: 2 min (ajustable con timeoutMs).',
     '  Retorna exit code, stdout y stderr.',
     '  Ejecuta la accion directamente. No expliques pasos al usuario salvo que sea estrictamente necesario.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
@@ -221,6 +224,17 @@ function getToolPromptText() {
     '  Control total: repos, issues, PRs, releases, webhooks, users, etc. Segun permisos del token.',
     '  No hay acciones fijas. Elige method y path libremente.',
     '',
+    '## Skills (carga bajo demanda)',
+    '',
+    'load_skill { name }',
+    '  Carga el contenido completo de una skill listada en "## Available Skills" del system prompt.',
+    '  Las skills viven en data/skills/<name>/SKILL.md. Solo el INDEX (nombre + descripcion) esta',
+    '  siempre disponible; el cuerpo completo se carga on-demand cuando lo necesitas.',
+    '  Llama load_skill ANTES de aplicar las reglas de una skill a la tarea actual.',
+    '  Si name esta vacio, la herramienta devuelve la lista completa de skills disponibles.',
+    '  Ejemplo: {"type":"tool","tool":"load_skill","args":{"name":"testing"}}',
+    '  Ejemplo (listar): {"type":"tool","tool":"load_skill","args":{"name":""}}',
+    '',
   ].join('\n');
 }
 
@@ -280,6 +294,8 @@ function describeToolCall(call) {
       return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
     case 'git':
       return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
+    case 'load_skill':
+      return `Cargando skill "${call.args.name || '?'}"`;
     default:
       return call.tool;
   }
@@ -331,6 +347,7 @@ async function runProcess(command, args, options = {}) {
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let aborted = false;
 
     const timer = options.timeoutMs
       ? setTimeout(() => {
@@ -338,6 +355,17 @@ async function runProcess(command, args, options = {}) {
           child.kill('SIGTERM');
         }, options.timeoutMs)
       : null;
+
+    const onAbort = () => {
+      if (aborted) return;
+      aborted = true;
+      try { child.kill('SIGKILL'); } catch {}
+    };
+
+    if (options.signal) {
+      if (options.signal.aborted) onAbort();
+      else options.signal.addEventListener('abort', onAbort, { once: true });
+    }
 
     child.stdout.on('data', chunk => {
       stdout += chunk.toString();
@@ -347,10 +375,22 @@ async function runProcess(command, args, options = {}) {
       stderr += chunk.toString();
     });
 
-    child.on('error', reject);
+    child.on('error', err => {
+      if (options.signal) options.signal.removeEventListener('abort', onAbort);
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
     child.on('close', code => {
       if (timer) {
         clearTimeout(timer);
+      }
+      if (options.signal) options.signal.removeEventListener('abort', onAbort);
+
+      if (aborted) {
+        const err = new Error('Process aborted by user');
+        err.code = 'ABORT_ERR';
+        reject(err);
+        return;
       }
 
       resolve({
@@ -373,6 +413,7 @@ async function askConfirmation(rl, title, detail, paint, state) {
 
   if (state?.tuiConfirm) {
     const answer = await state.tuiConfirm(title, detail || '');
+    if (typeof answer === 'boolean') return answer;
     return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
   }
 
@@ -412,6 +453,7 @@ async function requireIpConsent(urlValue, state, paint) {
 
   if (state?.tuiConfirm) {
     const answer = await state.tuiConfirm('Permiso obligatorio para IP', `Destino IP detectado: ${urlValue}\nConfirma acceso de red explícitamente.`);
+    if (typeof answer === 'boolean') return answer;
     return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
   }
   if (!state?.rl) return false;
@@ -445,13 +487,36 @@ async function listDirTool(args, state) {
   return `Ruta: ${targetPath}\n${formatted || '[vacio]'}`;
 }
 
+async function loadSkillTool(args) {
+  const name = String(args?.name || '').trim();
+  if (!name) {
+    const all = listSkills();
+    const list = all.map(s => `- \`${s.name}\` — ${s.description || s.title || ''}`).join('\n');
+    throw new Error(`load_skill requiere name. Skills disponibles:\n${list}`);
+  }
+  const skill = loadSkill(name);
+  if (!skill) {
+    const all = listSkills();
+    const list = all.map(s => `- \`${s.name}\` — ${s.description || s.title || ''}`).join('\n');
+    throw new Error(`Skill "${name}" no encontrada. Skills disponibles:\n${list}`);
+  }
+  const maxChars = 12000;
+  const body = skill.body.length > maxChars
+    ? `${skill.body.slice(0, maxChars)}\n\n[...contenido truncado, total ${skill.body.length} caracteres]`
+    : skill.body;
+  return `Skill: ${skill.name}\nTitle: ${skill.title}\nDescription: ${skill.description}\n\n${body}`;
+}
+
 async function readFileTool(args, state) {
   const targetPath = resolveInputPath(args.path, state.cwd);
   const content = await fsp.readFile(targetPath, 'utf8');
   const lines = content.split('\n');
-  const startLine = Math.max(Number(args.startLine ?? 1), 1);
-  const endLimit = Math.min(lines.length, startLine + MAX_FILE_LINES - 1);
-  const endLine = Math.min(Number(args.endLine ?? endLimit), endLimit);
+
+  const offset = args.offset != null ? Math.max(Number(args.offset), 0) : (args.startLine != null ? Number(args.startLine) - 1 : 0);
+  const limit = args.limit != null ? Math.max(Number(args.limit), 1) : MAX_FILE_LINES;
+
+  const startLine = Math.min(Math.max(offset + 1, 1), lines.length);
+  const endLine = Math.min(startLine + limit - 1, lines.length);
   const body = formatLineRange(lines, startLine, endLine);
 
   return truncateText(
@@ -459,7 +524,7 @@ async function readFileTool(args, state) {
   );
 }
 
-async function searchTextTool(args, state) {
+async function searchTextTool(args, state, ctx) {
   if (!args.pattern || typeof args.pattern !== 'string') {
     throw new Error('search_text requiere pattern');
   }
@@ -476,6 +541,7 @@ async function searchTextTool(args, state) {
   const result = await runProcess('rg', rgArgs, {
     cwd: state.cwd,
     timeoutMs: 20000,
+    signal: ctx?.signal,
   });
 
   if (result.code === 1) {
@@ -523,7 +589,7 @@ async function fileInfoTool(args, state) {
   ].join('\n');
 }
 
-async function runCommandTool(args, state, paint) {
+async function runCommandTool(args, state, paint, ctx) {
   if (!args.command || typeof args.command !== 'string') {
     throw new Error('run_command requiere command');
   }
@@ -543,9 +609,11 @@ async function runCommandTool(args, state, paint) {
   }
 
 
+  const timeoutMs = Number(args.timeoutMs ?? 120000);
   const result = await runProcess('bash', ['-lc', command], {
     cwd: state.cwd,
-    timeoutMs: 120000,
+    timeoutMs,
+    signal: ctx?.signal,
   });
 
   const parts = [`Exit code: ${result.code ?? 'desconocido'}`];
@@ -1318,7 +1386,7 @@ async function webReadTool(args, state, paint) {
   return truncateText(`URL: ${url}\nStatus: ${res.status}\n\n${text}`);
 }
 
-async function executeToolCall(call, state, ui) {
+async function executeToolCall(call, state, ui, options = {}) {
   if (!call || typeof call.tool !== 'string' || !REGISTERED_TOOLS.has(call.tool)) {
     throw new Error(`Herramienta no registrada: ${call?.tool || 'desconocida'}`);
   }
@@ -1327,72 +1395,85 @@ async function executeToolCall(call, state, ui) {
   const startTime = Date.now();
   let result;
 
-  switch (call.tool) {
-    case 'list_dir':
-      result = await listDirTool(call.args, state);
-      break;
-    case 'read_file':
-      result = await readFileTool(call.args, state);
-      break;
-    case 'search_text':
-      result = await searchTextTool(call.args, state);
-      break;
-    case 'glob_files':
-      result = await globFilesTool(call.args, state);
-      break;
-    case 'file_info':
-      result = await fileInfoTool(call.args, state);
-      break;
-    case 'run_command':
-      result = await runCommandTool(call.args, state, ui.paint);
-      break;
-    case 'make_dir':
-      result = await makeDirTool(call.args, state, ui.paint);
-      break;
-    case 'write_file':
-      result = await writeFileTool(call.args, state, ui.paint);
-      break;
-    case 'append_file':
-      result = await appendFileTool(call.args, state, ui.paint);
-      break;
-    case 'replace_in_file':
-      result = await replaceInFileTool(call.args, state, ui.paint);
-      break;
-    case 'fetch_url':
-      result = await fetchUrlTool(call.args, state, ui.paint);
-      break;
-    case 'fetch_http':
-      result = await fetchHttpTool(call.args, state, ui.paint);
-      break;
-    case 'fetch':
-      result = await fetchHttpTool(call.args, state, ui.paint);
-      break;
-    case 'webfetch':
-      result = await webfetchTool(call.args, state, ui.paint);
-      break;
-    case 'scrape_site':
-      result = await scrapeSiteTool(call.args, state, ui.paint);
-      break;
-    case 'web_search':
-      result = await webSearchTool(call.args, state, ui.paint);
-      break;
-    case 'web_read':
-      result = await webReadTool(call.args, state, ui.paint);
-      break;
-    case 'upload_file':
-      result = await uploadFileTool(call.args, state, ui.paint);
-      break;
-    case 'gmail':
-      result = await gmailTool(call.args, state, ui.paint);
-      break;
-    case 'create_canvas_image':
-      result = await createCanvasImageTool(call.args, state, ui.paint);
-      break;
-    case 'git':
-      result = await gitUnifiedTool(call.args, state, ui.paint);
-      break;
-    default:
-      throw new Error(`Herramienta no soportada: ${call.tool}`);
+  const ctx = { ...options, state, ui };
+
+  try {
+    switch (call.tool) {
+      case 'list_dir':
+        result = await listDirTool(call.args, state, ctx);
+        break;
+      case 'read_file':
+        result = await readFileTool(call.args, state, ctx);
+        break;
+      case 'search_text':
+        result = await searchTextTool(call.args, state, ctx);
+        break;
+      case 'glob_files':
+        result = await globFilesTool(call.args, state, ctx);
+        break;
+      case 'file_info':
+        result = await fileInfoTool(call.args, state, ctx);
+        break;
+      case 'run_command':
+        result = await runCommandTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'make_dir':
+        result = await makeDirTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'write_file':
+        result = await writeFileTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'append_file':
+        result = await appendFileTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'replace_in_file':
+        result = await replaceInFileTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'fetch_url':
+        result = await fetchUrlTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'fetch_http':
+        result = await fetchHttpTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'fetch':
+        result = await fetchHttpTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'webfetch':
+        result = await webfetchTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'scrape_site':
+        result = await scrapeSiteTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'web_search':
+        result = await webSearchTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'web_read':
+        result = await webReadTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'upload_file':
+        result = await uploadFileTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'gmail':
+        result = await gmailTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'create_canvas_image':
+        result = await createCanvasImageTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'git':
+        result = await gitUnifiedTool(call.args, state, ui.paint, ctx);
+        break;
+      case 'load_skill':
+        result = await loadSkillTool(call.args);
+        break;
+      default:
+        throw new Error(`Herramienta no soportada: ${call.tool}`);
+    }
+  } catch (err) {
+    if (options.signal?.aborted || err?.code === 'ABORT_ERR') {
+      ui.logEvent(state, 'warn', 'Tool aborted', call.tool);
+      throw new Error('aborted');
+    }
+    throw err;
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1760,7 +1841,7 @@ async function gitUnifiedTool(args, state, paint) {
       `Timeout: ${timeoutMs}ms`,
     ].filter(Boolean).join('\n'), paint, state);
     if (!allowed) return 'Clonado cancelado por el usuario.';
-    const result = await runProcess('git', ['clone', ...(args.branch ? ['--branch', String(args.branch)] : []), finalUrl, ...(destination ? [destination] : [])], { cwd: state.cwd, timeoutMs });
+    const result = await runProcess('git', ['clone', ...(args.branch ? ['--branch', String(args.branch)] : []), finalUrl, ...(destination ? [destination] : [])], { cwd: state.cwd, timeoutMs, signal: ctx?.signal });
     const lines = [`Exit code: ${result.code}`];
     if (result.timedOut) lines.push('Timeout: el clon fue detenido por tiempo.');
     if (result.stdout.trim()) lines.push(`STDOUT:\n${result.stdout.trim()}`);

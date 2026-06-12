@@ -1,17 +1,29 @@
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 
 const fsp = fs.promises;
 const { listSkills, SKILLS_DIR } = require('../core/skills');
 const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, MODELS, listProvidersFromModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
-const { createNewSessionState, listSessions, loadSessionState, saveState } = require('../utils/sessionStorage');
+const { createNewSessionState, listSessions, loadSessionState, saveState, listBackgroundResults, consumeBackgroundResult, enqueueBackgroundTask } = require('../utils/sessionStorage');
 const { listGitSecrets, removeGitSecret, upsertGitSecret } = require('../utils/secretStorage');
 const { clearGmailAuth, getGmailAuthStatus, startGmailOAuthFlow } = require('../utils/gmailAuth');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
 const { printTools } = require('../tools');
+const { detachBackgroundTurn } = require('../utils/backgroundWorker');
+const {
+  describeProviderConfig,
+  fetchProviderModels,
+  getActiveModelsForProvider,
+  listConfiguredProviders,
+  maskSecret,
+  removeProviderConfig,
+  setProviderField,
+  summarizeProviderConfig,
+  syncProvider,
+  unsetProviderField,
+} = require('../providers/catalog');
 
 
 function getModelWarning(key) {
@@ -46,7 +58,6 @@ const SLASH_COMMANDS = [
   { name: 'resume', desc: 'resume session', descEs: 'reanudar sesión' },
   { name: 'title', desc: 'rename session', descEs: 'renombrar sesión' },
   { name: 'rename', desc: 'rename session', descEs: 'renombrar sesión' },
-  { name: 'model', desc: 'view/change model', descEs: 'ver/cambiar modelo' },
   { name: 'models', desc: 'list models', descEs: 'listar modelos' },
   { name: 'providers', desc: 'list providers', descEs: 'listar proveedores' },
   { name: 'git', desc: 'configure git credentials', descEs: 'configurar credenciales git' },
@@ -59,7 +70,7 @@ const SLASH_COMMANDS = [
   { name: 'tools', desc: 'tools', descEs: 'herramientas' },
   { name: 'skills', desc: 'agent skills', descEs: 'skills del agente' },
   { name: 'config', desc: 'view/change session settings', descEs: 'ver/cambiar configuración' },
-  { name: 'web', desc: 'open web version', descEs: 'abrir versión web' },
+  { name: 'bg', desc: 'background: continue current turn in background', descEs: 'segundo plano: continuar el turno en background' },
   { name: 'undo', desc: 'undo last turn', descEs: 'deshacer último turno' },
   { name: 'redo', desc: 'redo last turn', descEs: 'rehacer último turno' },
   { name: 'stop', desc: 'stop agent', descEs: 'detener agente' },
@@ -116,10 +127,8 @@ function printHelp(state = {}) {
 
   // Configuration
   console.log(`  ${paint('── Configuration ──', 'dim')}`);
-  console.log(`    ${b('/model')}                       Show active model`);
-  console.log(`    ${b('/model <key>')}                 Change active model`);
-  console.log(`    ${b('/models')}                      List available models`);
-  console.log(`    ${b('/providers')}                   List detected providers`);
+  console.log(`    ${b('/models')}                      Open model picker`);
+  console.log(`    ${b('/providers')}                   Open provider picker`);
   console.log(`    ${b('/lang')}                        Show current language`);
   console.log(`    ${b('/lang <en|es>')}                Change language`);
   console.log(`    ${b('/language <en|es>')}            Alias of /lang`);
@@ -153,10 +162,9 @@ function printHelp(state = {}) {
   console.log(`    ${b('/cwd <path>')}                  Change working directory`);
   console.log('');
 
-  // Web and export
-  console.log(`  ${paint('── Web and Export ──', 'dim')}`);
-  console.log(`    ${b('/web')}                         Open web version`);
-  console.log(`    ${b('/web <host:port>')}             Open web version on custom host:port`);
+  // Export and background
+  console.log(`  ${paint('── Export and Background ──', 'dim')}`);
+  console.log(`    ${b('/bg')}                          Detach current turn to a background worker`);
   console.log(`    ${b('/transcript')}                  View full session transcript`);
   console.log(`    ${b('/export')}                      Export session to txt`);
   console.log(`    ${b('/export <path>')}               Export session to specific path`);
@@ -196,6 +204,134 @@ function printModels() {
   console.log('');
 }
 
+function buildModelListItems() {
+  const providers = listProvidersFromModels(MODELS);
+  const items = [];
+  for (const provider of providers) {
+    for (const model of provider.models) {
+      const isActive = model.key === (global.__zynActiveModel || DEFAULT_MODEL_KEY);
+      items.push({
+        key: model.key,
+        label: `${model.key.padEnd(22)} ${model.label}`,
+        provider: provider.key,
+        active: isActive,
+      });
+    }
+  }
+  return items;
+}
+
+function buildProviderListItems() {
+  const providers = listProvidersFromModels(MODELS);
+  return providers.map(p => ({
+    key: p.key,
+    label: `${p.key}  ${p.models.length} model${p.models.length === 1 ? '' : 's'}`,
+    models: p.models,
+  }));
+}
+
+async function runModelSelector(state, deps) {
+  const items = buildModelListItems();
+  if (items.length === 0) return null;
+  const active = state.activeModel || DEFAULT_MODEL_KEY;
+  const initialIndex = Math.max(0, items.findIndex(it => it.key === active));
+  const choice = await deps.askSelect({
+    title: state.language === 'es' ? 'Selecciona un modelo' : 'Select a model',
+    subtitle: state.language === 'es' ? '↑/↓ navega · Enter elige · Esc cancela' : '↑/↓ move · Enter pick · Esc cancel',
+    items,
+    initialIndex: initialIndex >= 0 ? initialIndex : 0,
+    getLabel: (item) => `${item.active ? '● ' : '  '}${item.label}`,
+    getValue: (item) => item.key,
+    isActive: (item) => item.active,
+  });
+  return choice || null;
+}
+
+async function runProviderSelector(state, deps) {
+  const items = buildProviderListItems();
+  const addCustomKey = '__add_custom__';
+  items.push({ key: addCustomKey, label: '', models: [] });
+  const es = state?.language === 'es';
+  const choice = await deps.askSelect({
+    title: es ? 'Selecciona un proveedor' : 'Select a provider',
+    subtitle: es ? '↑/↓ navega · Enter elige · Esc cancela' : '↑/↓ move · Enter pick · Esc cancel',
+    items,
+    getLabel: (item) => {
+      if (item.key === addCustomKey) return '+ ' + (es ? 'Agregar proveedor personalizado' : 'Add custom provider');
+      return item.label;
+    },
+    getValue: (item) => item.key,
+  });
+  if (choice === addCustomKey) {
+    const name = await deps.askInput({
+      title: es ? 'Nombre del proveedor personalizado' : 'Custom provider name',
+      prompt: es ? 'Ej: ollama, groq, anthropic' : 'E.g.: ollama, groq, anthropic',
+      defaultValue: 'custom',
+    });
+    if (!name) return null;
+    const baseUrl = await deps.askInput({
+      title: es ? 'URL base de la API' : 'API base URL',
+      prompt: 'baseUrl',
+      defaultValue: '',
+    });
+    if (baseUrl) setProviderField(name, 'baseUrl', baseUrl);
+    const apiKey = await deps.askInput({
+      title: es ? `API Key para ${name} (opcional)` : `API Key for ${name} (optional)`,
+      prompt: 'apiKey',
+      hidden: true,
+      defaultValue: '',
+    });
+    if (apiKey) setProviderField(name, 'apiKey', apiKey);
+    const modelId = await deps.askInput({
+      title: es ? `Model ID para ${name}` : `Model ID for ${name}`,
+      prompt: 'modelId',
+      defaultValue: '',
+    });
+    if (modelId) setProviderField(name, 'modelId', modelId);
+    console.log(es ? `Proveedor "${name}" agregado. Ejecuta /provider sync ${name} para listar modelos.` : `Provider "${name}" added. Run /provider sync ${name} to list models.`);
+    return name;
+  }
+  return choice || null;
+}
+
+async function runProviderModelsSelector(state, deps, providerKey) {
+  const providerGroup = listProvidersFromModels(MODELS).find(p => p.key === providerKey);
+  if (!providerGroup) return null;
+  const items = providerGroup.models.map(m => ({
+    key: m.key,
+    label: `${m.key.padEnd(22)} ${m.label}`,
+    active: m.key === (state.activeModel || DEFAULT_MODEL_KEY),
+  }));
+  if (items.length === 0) return null;
+  const initialIndex = Math.max(0, items.findIndex(it => it.active));
+  return deps.askSelect({
+    title: state.language === 'es' ? `Modelos de ${providerKey}` : `Models in ${providerKey}`,
+    subtitle: state.language === 'es' ? 'Elige un modelo · Esc vuelve' : 'Pick a model · Esc back',
+    items,
+    initialIndex,
+    getLabel: (item) => `${item.active ? '● ' : '  '}${item.label}`,
+    getValue: (item) => item.key,
+    isActive: (item) => item.active,
+  });
+}
+
+async function switchActiveModel(state, deps, key) {
+  if (!MODELS[key]) {
+    const available = Object.keys(MODELS).join(', ');
+    throw new Error(`${t(state.language, 'modelInvalid')}: ${available}`);
+  }
+  state.activeModel = key;
+  global.__zynActiveModel = key;
+  await saveState(state);
+  if (deps.appendTranscriptEntry) {
+    await deps.appendTranscriptEntry(state.sessionId, {
+      type: 'system',
+      content: `Model switched to: ${MODELS[key].label}${getModelWarning(key) ? `\nWarning: ${getModelWarning(key)}` : ''}`,
+    });
+  }
+  return key;
+}
+
 function printConfig(state) {
   const key = state.activeModel || DEFAULT_MODEL_KEY;
   const model = MODELS[key];
@@ -218,18 +354,6 @@ function printConfig(state) {
   console.log('');
 }
 
-async function startWebVersion(host = '127.0.0.1', port = 3000) {
-  const serverPath = path.join(__dirname, '..', 'web', 'server.js');
-  const child = spawn(process.execPath, [serverPath], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    env: { ...process.env, HOST: host, PORT: String(port) },
-  });
-  child.unref();
-  return `http://${host}:${port}`;
-}
-
 async function handleLocalCommand(input, state, deps) {
   const parsed = parseSlashCommand(input);
   if (!parsed) return false;
@@ -244,6 +368,9 @@ async function handleLocalCommand(input, state, deps) {
     printSession,
     printSessions: renderSessions,
     printStatus,
+    askSelect,
+    askInput,
+    askConfirm,
   } = deps;
 
   if (commandName === 'help') {
@@ -489,48 +616,75 @@ async function handleLocalCommand(input, state, deps) {
     throw new Error('Use /config show|lang|model|auto|group|cwd');
   }
 
-  if (commandName === 'model') {
-    if (!args) {
-      const key = state.activeModel || DEFAULT_MODEL_KEY;
-      const info = MODELS[key];
-      console.log(`${key} (${info?.label || '?'})`);
-      return true;
-    }
+function isProviderConfigured(providerKey) {
+  const config = describeProviderConfig(providerKey);
+  if (!config) return false;
+  if (providerKey === 'qwenapi') return Boolean(config.apiKey || process.env.ZYN_QWEN_API_KEY);
+  if (providerKey === 'gemini') return Boolean(config.apiKey || process.env.ZYN_GEMINI_API_KEY);
+  if (providerKey === 'huggingface') return Boolean(config.apiKey || process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN);
+  return true;
+}
 
-    const key = args.toLowerCase().trim();
-    if (!MODELS[key]) {
-      const available = Object.keys(MODELS).join(', ');
-      throw new Error(`${t(state.language, 'modelInvalid')}: ${available}`);
-    }
-
-    state.activeModel = key;
-    global.__zynActiveModel = key;
-    await saveState(state);
-    await appendTranscriptEntry(state.sessionId, {
-      type: 'system',
-      content: `Model switched to: ${MODELS[key].label}${getModelWarning(key) ? `\nWarning: ${getModelWarning(key)}` : ''}`,
+async function configureProviderInteractive(state, deps, providerKey) {
+  const es = state?.language === 'es';
+  const fields = [];
+  if (providerKey === 'qwenapi') {
+    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'API Key (dashscope)' : 'API Key (DashScope)' });
+  } else if (providerKey === 'gemini') {
+    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'API Key (Google AI Studio)' : 'API Key (Google AI Studio)' });
+  } else if (providerKey === 'huggingface') {
+    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'Token (huggingface.co/settings/tokens)' : 'Token (huggingface.co/settings/tokens)' });
+  }
+  for (const field of fields) {
+    const value = await deps.askInput({
+      title: es ? `Configurar ${field.name} de ${providerKey}` : `Set ${field.name} for ${providerKey}`,
+      prompt: field.prompt,
+      hidden: field.hidden,
+      defaultValue: '',
     });
-    printModelChanged(key);
-    return true;
-  }
-
-  if (commandName === 'models') {
-    printModels();
-    return true;
-  }
-
-  if (commandName === 'providers') {
-    const providers = listProvidersFromModels(MODELS);
-    console.log('');
-    for (const provider of providers) {
-      console.log(`  ${provider.key}`);
-      for (const model of provider.models) {
-        console.log(`    ${model.key.padEnd(16)} ${model.label}`);
-      }
+    if (value) {
+      setProviderField(providerKey, field.name, value);
     }
-    console.log('');
-    return true;
   }
+}
+
+async function runProvidersFlow(state, deps) {
+  const es = state?.language === 'es';
+  
+  // Paso 1: Elegir proveedor
+  const provider = await runProviderSelector(state, deps);
+  if (!provider || provider === '__add_custom__') return;
+
+  // Paso 2: Si es opcional y no configurado, preguntar si configurar
+  const optionalProviders = ['qwenapi', 'gemini', 'huggingface'];
+  if (optionalProviders.includes(provider) && !isProviderConfigured(provider)) {
+    const configure = await deps.askConfirm({
+      title: es ? `Configurar ${provider} ahora?` : `Configure ${provider} now?`,
+      detail: es ? 'Puedes configurarlo despues con variables de entorno' : 'You can configure later with env vars',
+    });
+    if (configure) {
+      await configureProviderInteractive(state, deps, provider);
+    }
+  }
+
+  // Paso 3: Mostrar modelos del proveedor
+  const model = await runProviderModelsSelector(state, deps, provider);
+  if (model) {
+    await switchActiveModel(state, deps, model);
+    printModelChanged(model);
+  }
+}
+
+async function runModelsFlow(state, deps) {
+  const currentKey = state.activeModel || DEFAULT_MODEL_KEY;
+  const currentModel = MODELS[currentKey];
+  const currentProvider = currentModel?.provider || 'zen';
+  const model = await runProviderModelsSelector(state, deps, currentProvider);
+  if (model) {
+    await switchActiveModel(state, deps, model);
+    printModelChanged(model);
+  }
+}
 
   if (commandName === 'auto') {
     if (!args) {
@@ -615,21 +769,24 @@ async function handleLocalCommand(input, state, deps) {
     throw new Error('Use /gmail connect|status|disconnect');
   }
 
-  if (commandName === 'web') {
-    let host = '127.0.0.1';
-    let port = 3000;
-    if (args) {
-      const parts = args.split(/[\s:]+/).filter(Boolean);
-      for (const part of parts) {
-        if (/^\d{1,5}$/.test(part)) {
-          port = Math.min(65535, Math.max(1, Number(part)));
-        } else if (/^[\d.]+$/.test(part) || part === 'localhost' || part === '0.0.0.0') {
-          host = part;
-        }
-      }
+  if (commandName === 'bg') {
+    if (!state.__bgDetach) {
+      console.log('No hay un turno activo para mandar a segundo plano.');
+      console.log('  /bg funciona después de enviar un mensaje; el worker procesa el turno y guarda el resultado.');
+      return true;
     }
-    const url = await startWebVersion(host, port);
-    console.log(`Web version started at ${url}`);
+    const { input, signal } = state.__bgDetach;
+    const sessionId = state.sessionId;
+    const taskId = enqueueBackgroundTask({ sessionId, input, detachedAt: new Date().toISOString() });
+    detachBackgroundTurn({ taskId, sessionId, input, cwd: state.cwd, modelKey: state.activeModel, language: state.language, personaPrompt: state.personaPrompt, autoApprove: state.autoApprove, concuerdo: state.concuerdo });
+    if (signal && !signal.aborted) signal.abort();
+    if (typeof deps.exitAfterBg === 'function') {
+      deps.exitAfterBg();
+    } else {
+      console.log(`Turno enviado a segundo plano. Task: ${taskId}`);
+      console.log('  El worker terminará el turno y guardará la respuesta en la sesión.');
+      console.log('  Vuelve a abrir zyn para ver el resultado.');
+    }
     return true;
   }
 
@@ -730,6 +887,32 @@ async function handleLocalCommand(input, state, deps) {
     const outputPath = args ? resolveInputPath(args, state.cwd) : '';
     const exported = await exportTranscriptText(state.sessionId, outputPath);
     console.log(`Transcript exported to: ${exported}`);
+    return true;
+  }
+
+  if (commandName === 'models') {
+    if (askSelect) {
+      await runModelsFlow(state, deps);
+      return true;
+    }
+    printModels();
+    return true;
+  }
+
+  if (commandName === 'providers') {
+    if (askSelect) {
+      await runProvidersFlow(state, deps);
+      return true;
+    }
+    const providers = listProvidersFromModels(MODELS);
+    console.log('');
+    for (const provider of providers) {
+      console.log(`  ${provider.key}`);
+      for (const model of provider.models) {
+        console.log(`    ${model.key.padEnd(16)} ${model.label}`);
+      }
+    }
+    console.log('');
     return true;
   }
 

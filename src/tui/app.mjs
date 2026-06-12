@@ -10,6 +10,8 @@ const { handleLocalCommand, SLASH_COMMANDS } = require('../cli/commands');
 const {
   loadOrCreateSessionState,
   applyLoadedState,
+  consumeBackgroundResult,
+  listBackgroundResults,
 } = require('../utils/sessionStorage');
 const { appendTranscriptEntry } = require('../utils/transcriptStorage');
 const { pushAction } = require('../cli/print');
@@ -71,6 +73,8 @@ class UIStore extends EventEmitter {
     this.spinner = null;
     this.processing = false;
     this.confirmRequest = null;
+    this.selectRequest = null;
+    this.inputRequest = null;
     this.lastUserMessage = '';
     this.inputDraft = '';
     this.turnCount = 0;
@@ -151,6 +155,60 @@ class UIStore extends EventEmitter {
     if (!this.confirmRequest) return;
     this.confirmRequest.resolve(answer);
     this.confirmRequest = null;
+    this._emit();
+  }
+
+  requestSelect(options) {
+    return new Promise(resolve => {
+      this.selectRequest = { ...options, resolve, selected: Number.isInteger(options?.initialIndex) ? options.initialIndex : 0 };
+      this._emit();
+    });
+  }
+
+  resolveSelect(value) {
+    if (!this.selectRequest) return;
+    this.selectRequest.resolve(value);
+    this.selectRequest = null;
+    this._emit();
+  }
+
+  cancelSelect() {
+    if (!this.selectRequest) return;
+    this.selectRequest.resolve(null);
+    this.selectRequest = null;
+    this._emit();
+  }
+
+  adjustSelect(delta) {
+    if (!this.selectRequest) return;
+    const total = this.selectRequest.items?.length || 0;
+    if (total === 0) return;
+    const next = (this.selectRequest.selected + delta + total) % total;
+    this.selectRequest.selected = next;
+    this._emit();
+  }
+
+  requestInput(options) {
+    return new Promise(resolve => {
+      this.inputRequest = { ...options, resolve, value: '' };
+      this._emit();
+    });
+  }
+
+  appendInputChar(ch) {
+    if (!this.inputRequest) return;
+    if (ch === '\x1b' || ch === '\x1b\x1b' || ch === '\x03') {
+      this.inputRequest.resolve(null);
+      this.inputRequest = null;
+    } else if (ch === '\r' || ch === '\n') {
+      const value = this.inputRequest.value;
+      this.inputRequest.resolve(value);
+      this.inputRequest = null;
+    } else if (ch === '\x7f' || ch === '\b') {
+      this.inputRequest.value = this.inputRequest.value.slice(0, -1);
+    } else if (ch.length === 1 && ch.charCodeAt(0) >= 32) {
+      this.inputRequest.value += ch;
+    }
     this._emit();
   }
 
@@ -734,6 +792,64 @@ function ConfirmBar({ title, detail, lastMessage, draft }) {
   );
 }
 
+function SelectBar({ request, width }) {
+  if (!request) return null;
+  const items = Array.isArray(request.items) ? request.items : [];
+  const total = items.length;
+  const w = width || 100;
+  const maxVisible = Math.max(3, Math.min(12, Math.floor((w - 6) / 1.5)));
+  const safeIdx = Math.max(0, Math.min(request.selected || 0, total - 1));
+  const half = Math.floor(maxVisible / 2);
+  let start = Math.max(0, safeIdx - half);
+  const end = Math.min(total, start + maxVisible);
+  start = Math.max(0, end - maxVisible);
+  const visible = items.slice(start, end);
+
+  return h(Box, {
+    flexDirection: 'column',
+    paddingLeft: 3,
+    paddingRight: 3,
+    marginTop: 1,
+    borderStyle: 'round',
+    borderColor: T.border,
+  },
+    h(Box, { paddingTop: 0, paddingBottom: 0 },
+      h(Text, { color: T.amber, bold: true }, '\u25b8 '),
+      h(Text, { color: T.text, bold: true }, request.title || 'Select'),
+      request.subtitle
+        ? h(Text, { color: T.textGhost }, '  ' + request.subtitle)
+        : null,
+    ),
+    h(Box, { flexDirection: 'column', paddingTop: 0 },
+      ...visible.map((item, i) => {
+        const realIdx = start + i;
+        const isSelected = realIdx === safeIdx;
+        const label = request.getLabel ? request.getLabel(item, realIdx) : String(request.getValue ? request.getValue(item) : item);
+        const active = request.isActive && request.isActive(item);
+        const prefix = isSelected ? '\u25b8 ' : '  ';
+        const activeTag = active ? ' \u25cf' : '  ';
+        const number = String(realIdx + 1).padStart(2, ' ');
+        const color = isSelected ? T.accent : (active ? T.green : T.textMuted);
+        return h(Box, { key: realIdx, paddingLeft: 1 },
+          h(Text, { color, bold: isSelected }, `${prefix}${number}${activeTag} ${label}`),
+        );
+      }),
+      total > maxVisible
+        ? h(Box, { paddingLeft: 1, marginTop: 0 },
+            h(Text, { color: T.textInvis }, `... ${total} items · scroll with ↑/↓`),
+          )
+        : null,
+    ),
+    h(Box, { paddingTop: 0, paddingBottom: 0, gap: 1 },
+      h(Text, { color: T.textGhost }, '\u2191/\u2193 ' + uiText('navigate', 'navegar')),
+      h(Text, { color: T.textInvis }, '\u00b7'),
+      h(Text, { color: T.textGhost }, uiText('Enter select', 'Enter seleccionar')),
+      h(Text, { color: T.textInvis }, '\u00b7'),
+      h(Text, { color: T.textGhost }, uiText('Esc cancel', 'Esc cancelar')),
+    ),
+  );
+}
+
 function StatusBar({ model, processing, width, turnCount }) {
   const [frame, setFrame] = useState(0);
 
@@ -766,6 +882,43 @@ function StatusBar({ model, processing, width, turnCount }) {
         h(Text, { color: T.textInvis }, '\u00b7'),
         h(Text, { color: T.textInvis }, uiText('esc exit', 'esc salir')),
       ),
+    ),
+  );
+}
+
+function PromptBar({ request, width }) {
+  if (!request) return null;
+  const hidden = Boolean(request.hidden);
+  const displayValue = hidden && request.value
+    ? '*'.repeat(request.value.length)
+    : (request.value || '');
+
+  return h(Box, {
+    flexDirection: 'column',
+    paddingLeft: 3,
+    paddingRight: 3,
+    marginTop: 1,
+    borderStyle: 'round',
+    borderColor: T.border,
+  },
+    h(Box, { paddingTop: 0, paddingBottom: 0 },
+      h(Text, { color: T.amber, bold: true }, '\u270e '),
+      h(Text, { color: T.text, bold: true }, request.title || 'Input'),
+      request.subtitle
+        ? h(Text, { color: T.textGhost }, '  ' + request.subtitle)
+        : null,
+    ),
+    h(Box, { paddingTop: 0, paddingBottom: 0 },
+      h(Text, { color: T.textGhost }, (request.prompt || '>') + ' '),
+      h(Text, { color: T.text, inverse: true }, displayValue.length > 0 ? displayValue.slice(-1) : ' '),
+      h(Text, { color: T.textMuted }, displayValue.slice(0, -1) || ''),
+    ),
+    h(Box, { paddingTop: 0, paddingBottom: 0, gap: 1 },
+      h(Text, { color: T.textGhost }, uiText('Type to enter', 'Escribe para ingresar')),
+      h(Text, { color: T.textInvis }, '\u00b7'),
+      h(Text, { color: T.textGhost }, 'Enter ' + uiText('confirm', 'confirmar')),
+      h(Text, { color: T.textInvis }, '\u00b7'),
+      h(Text, { color: T.textGhost }, 'Esc ' + uiText('cancel', 'cancelar')),
     ),
   );
 }
@@ -858,10 +1011,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
   }, [onDraftChange]);
 
   const showSuggestions = value.startsWith('/') && !value.includes(' ') && value.length > 0;
-  const localSlash = [
-    { name: 'undo', desc: 'restore previous message', descEs: 'restaurar mensaje anterior' },
-    { name: 'redo', desc: 'reapply restored message', descEs: 'reaplicar mensaje restaurado' },
-  ];
+  const localSlash = [];
   const suggestions = showSuggestions
     ? [...SLASH_COMMANDS, ...localSlash].filter(c => ('/' + c.name).startsWith(value.toLowerCase()))
     : [];
@@ -873,6 +1023,30 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
     const currentSuggestions = currentShowSuggestions
       ? [...SLASH_COMMANDS, ...localSlash].filter(c => ('/' + c.name).startsWith(currentValue.toLowerCase()))
       : [];
+
+    if (key?.backspace || input === '\b' || input === '\x7f' || input === '\u0008') {
+      if (currentCursor > 0) {
+        const nextValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
+        commitValue(nextValue, currentCursor - 1);
+        setSuggestIdx(0);
+        suggestIdxRef.current = 0;
+      } else if (currentValue.length > 0) {
+        commitValue('', 0);
+        setSuggestIdx(0);
+        suggestIdxRef.current = 0;
+      }
+      return;
+    }
+
+    if (key?.delete || input === '\u001b[3~') {
+      if (currentCursor < currentValue.length) {
+        const nextValue = currentValue.slice(0, currentCursor) + currentValue.slice(currentCursor + 1);
+        commitValue(nextValue, currentCursor);
+        setSuggestIdx(0);
+        suggestIdxRef.current = 0;
+      }
+      return;
+    }
 
     if (key.return) {
       let text = currentValue.trim();
@@ -994,24 +1168,6 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       return;
     }
 
-    if (isBackspaceInput(input, key)) {
-      if (currentCursor === 0) return;
-      const nextValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
-      commitValue(nextValue, currentCursor - 1);
-      setSuggestIdx(0);
-      suggestIdxRef.current = 0;
-      return;
-    }
-
-    if (key.delete) {
-      if (currentCursor >= currentValue.length) return;
-      const nextValue = currentValue.slice(0, currentCursor) + currentValue.slice(currentCursor + 1);
-      commitValue(nextValue, currentCursor);
-      setSuggestIdx(0);
-      suggestIdxRef.current = 0;
-      return;
-    }
-
     if (input && !key.ctrl && !key.meta) {
       const normalizedInput = sanitizeInputChunk(input);
       if (!normalizedInput) return;
@@ -1123,6 +1279,14 @@ function App({ store, state, onSubmit }) {
   useInput((input, key) => {
     if (key.ctrl && input === 'c') { exit(); return; }
     if (key.escape) {
+      if (store.selectRequest) {
+        store.cancelSelect();
+        return;
+      }
+      if (store.inputRequest) {
+        store.appendInputChar('\x1b');
+        return;
+      }
       if (store.processing) {
         const now = Date.now();
         if (now - store.lastEscapeAt < 1000) {
@@ -1140,13 +1304,55 @@ function App({ store, state, onSubmit }) {
       }
       if (!store.confirmRequest) { exit(); return; }
     }
+    if (store.selectRequest) {
+      if (key.upArrow || input === '\x1b[A') { store.adjustSelect(-1); return; }
+      if (key.downArrow || input === '\x1b[B') { store.adjustSelect(1); return; }
+      if (key.return || input === '\r' || input === '\n') {
+        const sel = store.selectRequest;
+        const item = sel.items[sel.selected];
+        const value = sel.getValue ? sel.getValue(item, sel.selected) : item;
+        store.resolveSelect(value);
+        return;
+      }
+      if (input === 'k') { store.adjustSelect(-1); return; }
+      if (input === 'j') { store.adjustSelect(1); return; }
+      if (/^[1-9]$/.test(input)) {
+        const num = Number(input);
+        if (num >= 1 && num <= store.selectRequest.items.length) {
+          const sel = store.selectRequest;
+          const item = sel.items[num - 1];
+          const value = sel.getValue ? sel.getValue(item, num - 1) : item;
+          store.resolveSelect(value);
+          return;
+        }
+      }
+      if (input === 'q' || input === 'Q' || input === '\x1b') { store.cancelSelect(); return; }
+      return;
+    }
+    if (store.inputRequest) {
+      if (key.return || input === '\r' || input === '\n') {
+        store.appendInputChar('\r');
+        return;
+      }
+      if (key.backspace || input === '\x7f' || input === '\b') {
+        store.appendInputChar('\x7f');
+        return;
+      }
+      if (input && input.length > 0) {
+        store.appendInputChar(input);
+        return;
+      }
+      return;
+    }
     if (!store.confirmRequest) return;
-    if (input === 'y' || input === 's') store.resolveConfirm('s');
-    else if (input === 'n' || key.return) store.resolveConfirm('n');
+    if (input === 'y' || input === 's') store.resolveConfirm(true);
+    else if (input === 'n' || key.return || input === '\r' || input === '\n') store.resolveConfirm(false);
   });
 
-  const showInput   = !store.confirmRequest;
+  const showInput   = !store.confirmRequest && !store.selectRequest && !store.inputRequest;
   const showConfirm = !!store.confirmRequest;
+  const showSelect  = !!store.selectRequest;
+  const showPrompt  = !!store.inputRequest;
 
   const dynamicArea = [];
 
@@ -1171,6 +1377,18 @@ function App({ store, state, onSubmit }) {
   if (showConfirm) {
     dynamicArea.push(
       h(ConfirmBar, { key: 'confirm', title: store.confirmRequest.title, detail: store.confirmRequest.detail, lastMessage: store.lastUserMessage, draft: store.inputDraft })
+    );
+  }
+
+  if (showSelect) {
+    dynamicArea.push(
+      h(SelectBar, { key: 'select', request: store.selectRequest, width })
+    );
+  }
+
+  if (showPrompt) {
+    dynamicArea.push(
+      h(PromptBar, { key: 'prompt', request: store.inputRequest, width })
     );
   }
 
@@ -1216,11 +1434,13 @@ function getUiBindings(store, state) {
 }
 
 export async function startTUI(options = {}) {
-  const { state, resumed } = await loadOrCreateSessionState(null, options);
+  const { state, resumed, rehydrated } = await loadOrCreateSessionState(null, options);
   const store = new UIStore();
 
   state.rl = null;
   state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
+  state.tuiSelect = (options) => store.requestSelect(options);
+  state.tuiInput = (options) => store.requestInput(options);
   state.getQueuedMessages = () => {
     const msgs = store.messageQueue.splice(0);
     if (msgs.length) store._emit();
@@ -1238,6 +1458,42 @@ export async function startTUI(options = {}) {
   const cwd = state.cwd || process.cwd();
 
   store.addItem({ type: 'banner', model: modelLabel, resumed, cwd });
+
+  const completedBackgrounds = await listBackgroundResults(state.sessionId).catch(() => []);
+  if (completedBackgrounds.length > 0) {
+    for (const bg of completedBackgrounds) {
+      const status = bg.result?.ok ? 'OK' : 'FAIL';
+      const preview = bg.result?.ok
+        ? String(bg.result.content || '').slice(0, 240)
+        : (bg.result?.error || 'unknown');
+      store.addItem({ type: 'system', text: `[background ${status}] task ${bg.taskId}\n${preview}` });
+      await consumeBackgroundResult(bg.taskId);
+    }
+    store.addItem({ type: 'divider' });
+  }
+
+  if (rehydrated && Array.isArray(state.__resumedHistory) && state.__resumedHistory.length > 0) {
+    const sessionTag = state.sessionId ? ` ${state.sessionId.slice(0, 8)}` : '';
+    store.addItem({ type: 'system', text: uiText(`Resuming session${sessionTag} · ${state.__resumedHistory.length} messages replayed`, `Reanudando sesion${sessionTag} · ${state.__resumedHistory.length} mensajes completos`) });
+    for (const msg of state.__resumedHistory) {
+      if (!msg || typeof msg !== 'object') continue;
+      if (msg.role === 'user' && msg.content) {
+        store.addItem({ type: 'user', text: String(msg.content) });
+      } else if (msg.role === 'assistant' && msg.content) {
+        const text = String(msg.content);
+        const clean = text.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
+        if (clean) store.addItem({ type: 'answer', text: clean });
+      } else if (msg.role === 'tool' && msg.tool) {
+        store.addEvent('info', msg.tool, String(msg.result || '').slice(0, 240));
+      } else if (msg.role === 'system' && msg.content) {
+        store.addItem({ type: 'system', text: '· ' + String(msg.content) });
+      } else {
+        const fallback = String(msg.content || JSON.stringify(msg)).slice(0, 200);
+        if (fallback) store.addItem({ type: 'system', text: `${msg.role || 'msg'}: ${fallback}` });
+      }
+    }
+    store.addItem({ type: 'divider' });
+  }
 
   const processInput = async (input) => {
     if (input === '/exit' || input === '/quit') {
@@ -1266,31 +1522,28 @@ export async function startTUI(options = {}) {
 
       try {
         const printMod = require('../cli/print');
+        const selectorMod = require('../cli/selector');
         const deps = {
           appendTranscriptEntry,
           applyLoadedState,
           printBanner: printMod.printBanner,
           printHistory: printMod.printHistory,
+          printHistoryReplay: printMod.printHistoryReplay,
           printMemory: printMod.printMemory,
           printSession: printMod.printSession,
           printSessions: printMod.printSessions,
           printStatus: printMod.printStatus,
+          askSelect: (options) => selectorMod.askSelect(state, deps, options),
+          askInput: (options) => selectorMod.askInput(state, deps, options),
+          askConfirm: (options) => selectorMod.askConfirm(state, deps, options),
         };
 
-        if (commandName === 'persona') {
-          const handled = await handleLocalCommand(input, state, deps);
-          if (handled && lines.length > 0) {
-            const clean = lines.filter(l => l.trim()).join('\n');
-            if (clean) store.addItem({ type: 'system', text: clean });
-          }
-        } else {
-          const handled = await handleLocalCommand(input, state, deps);
-          if (handled && lines.length > 0) {
-            const clean = lines.filter(l => l.trim()).join('\n');
-            if (clean) store.addItem({ type: 'system', text: clean });
-          }
-          if (!handled) store.addEvent('warn', uiText('command not recognized', 'comando no reconocido'), input);
+        const handled = await handleLocalCommand(input, state, deps);
+        if (handled && lines.length > 0) {
+          const clean = lines.filter(l => l.trim()).join('\n');
+          if (clean) store.addItem({ type: 'system', text: clean });
         }
+        if (!handled) store.addEvent('warn', uiText('command not recognized', 'comando no reconocido'), input);
       } catch (err) {
         store.addEvent('error', uiText('error', 'error'), err.message);
       } finally {
@@ -1316,6 +1569,7 @@ export async function startTUI(options = {}) {
         }
         return false;
       };
+      state.__bgDetach = { input, signal: controller.signal };
       const ui = getUiBindings(store, state);
       const result = await runAgentTurn(input, state, ui, { signal: controller.signal });
       if (!result.rendered && result.content) {
@@ -1326,13 +1580,14 @@ export async function startTUI(options = {}) {
     } finally {
       console.error = origError;
       state.abortCurrentTurn = null;
+      state.__bgDetach = null;
     }
   };
 
   let appInstance = null;
 
   const handleSubmit = async (input, meta = null) => {
-    if (input.startsWith('/') && store.processing) {
+    if (input.startsWith('/')) {
       await processInput(input);
       return;
     }

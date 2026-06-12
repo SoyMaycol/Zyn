@@ -153,7 +153,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
-    const result = await executeToolCall(directAction, state, ui);
+    const result = await executeToolCall(directAction, state, ui, { signal });
     await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: directAction.tool, args: directAction.args, result });
     const finalAnswer = await answerFromToolResult(input, directAction, result, state, ui);
     state.history.push({ role: 'user', content: input }, { role: 'assistant', content: finalAnswer });
@@ -240,10 +240,13 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
     try {
       toolUsedThisTurn = true;
-      const result = await executeToolCall(parsed, state, ui);
+      const result = await executeToolCall(parsed, state, ui, { signal });
       await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: parsed.tool, args: parsed.args, result });
       turnMessages.push({ role: 'user', content: `TOOL_RESULT\n${buildToolResultMessage(parsed, result)}` });
     } catch (err) {
+      if (err?.message === 'aborted' && signal?.aborted) {
+        throw new Error('aborted');
+      }
       turnMessages.push({ role: 'user', content: buildToolErrorMessage(parsed, err.message) });
     }
 

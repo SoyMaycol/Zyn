@@ -11,35 +11,71 @@ const HOME_DIR = os.homedir() || '/root';
 const MODELS_FILE = path.join(DATA_ROOT, 'models.json');
 
 const BUILTIN_MODELS = {
-  'qwen': {
-    label: 'Qwen 3.6 Plus',
-    provider: 'qwen',
-  },
-  'qwen-coder': {
-    label: 'Qwen Coder',
-    provider: 'qwen',
-  },
   'nemotron': {
-    label: 'Nemotron 3 Super',
+    label: 'Nemotron 3 Ultra',
     provider: 'zen',
-    zenModel: 'nemotron-3-super-free',
+    zenModel: 'nemotron-3-ultra-free',
   },
-  'minimax': {
-    label: 'MiniMax M2.5',
+  'mimo': {
+    label: 'Mimo 2.5',
     provider: 'zen',
-    zenModel: 'minimax-m2.5-free',
+    zenModel: 'mimo-v2.5-free',
   },
-  'trinity': {
-    label: 'Trinity Large',
+  'north-mini': {
+    label: 'North Mini Code',
     provider: 'zen',
-    zenModel: 'trinity-large-preview-free',
+    zenModel: 'north-mini-code-free',
+  },
+  'deepseek': {
+    label: 'DeepSeek V4 Flash',
+    provider: 'zen',
+    zenModel: 'deepseek-v4-flash-free',
+  },
+  'qwen-plus': {
+    label: 'Qwen Plus',
+    provider: 'qwenapi',
+    qwenapiModel: 'qwen-plus',
+  },
+  'qwen-max': {
+    label: 'Qwen Max',
+    provider: 'qwenapi',
+    qwenapiModel: 'qwen-max',
+  },
+  'qwen-turbo': {
+    label: 'Qwen Turbo',
+    provider: 'qwenapi',
+    qwenapiModel: 'qwen-turbo',
   },
   'gemini-flash': {
-    label: 'Gemini Flash',
+    label: 'Gemini 2.5 Flash',
     provider: 'gemini',
-    geminiModel: 'gemini-flash',
+    geminiModel: 'gemini-2.5-flash',
   },
-
+  'gemini-flash-001': {
+    label: 'Gemini 2.5 Flash 001',
+    provider: 'gemini',
+    geminiModel: 'gemini-2.5-flash-001',
+  },
+  'gemini-pro': {
+    label: 'Gemini 2.5 Pro',
+    provider: 'gemini',
+    geminiModel: 'gemini-2.5-pro',
+  },
+  'gemini-flash-lite': {
+    label: 'Gemini 2.5 Flash Lite',
+    provider: 'gemini',
+    geminiModel: 'gemini-2.5-flash-lite',
+  },
+  'gemini-flash-lite-001': {
+    label: 'Gemini 2.5 Flash Lite 001',
+    provider: 'gemini',
+    geminiModel: 'gemini-2.5-flash-lite-001',
+  },
+  'gemma-3': {
+    label: 'Gemma 3 27B',
+    provider: 'gemini',
+    geminiModel: 'gemma-3-27b-it',
+  },
   'hf-ling-2.6-1t': {
     label: 'InclusionAI Ling 2.6 1T',
     provider: 'huggingface',
@@ -47,8 +83,8 @@ const BUILTIN_MODELS = {
   },
 };
 
-const SUPPORTED_MODEL_PROVIDERS = new Set(['qwen', 'zen', 'gemini', 'huggingface']);
-const GEMINI_MODEL_WARNING = 'It is not recommended for use in production; it is unstable and ineffective.';
+const SUPPORTED_MODEL_PROVIDERS = new Set(['qwenapi', 'zen', 'gemini', 'huggingface', 'custom']);
+const GEMINI_MODEL_WARNING = '';
 
 function readJsonFile(filePath) {
   try {
@@ -89,11 +125,11 @@ const MODELS = {
   ...loadExternalModels(),
 };
 
-const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'qwen';
+const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'nemotron';
 const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || process.env.LANG || 'en');
 
-const QWEN_EMAIL = process.env.ZYN_QWEN_EMAIL || 'danielalejandrobasado@gmail.com';
-const QWEN_PASSWORD = process.env.ZYN_QWEN_PASSWORD || 'zyzz1234';
+const HUGGINGFACE_TOKEN = process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN || '';
+const GEMINI_API_KEY = process.env.ZYN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 
 const MAX_TOOL_STEPS = Number.POSITIVE_INFINITY;
 const MAX_OUTPUT_CHARS = 12000;
@@ -110,6 +146,7 @@ const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
 const PERSISTENT_CONFIG_FILE = path.join(SESSION_ROOT, 'persistent-config.json');
 const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
 const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
+const BACKGROUND_DIR = path.join(SESSION_ROOT, 'background');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const USER_DATA_ROOT = path.join(os.homedir(), '.zyn');
 const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
@@ -142,6 +179,7 @@ module.exports = {
   ACTION_LOG_LIMIT,
   APP_NAME,
   APP_ROOT,
+  BACKGROUND_DIR,
   BUILTIN_MODELS,
   CURRENT_SESSION_FILE,
   PERSISTENT_CONFIG_FILE,
@@ -153,6 +191,8 @@ module.exports = {
   GMAIL_CLIENT_ID,
   GMAIL_CLIENT_SECRET,
   EXPORTS_DIR,
+  HUGGINGFACE_TOKEN,
+  GEMINI_API_KEY,
   HOME_DIR,
   KEEP_RECENT_MESSAGES,
   MAX_FILE_LINES,
@@ -165,8 +205,6 @@ module.exports = {
   SUPPORTED_MODEL_PROVIDERS,
   PROVIDER_TIMEOUT_MAX_ATTEMPTS,
   PROVIDER_TIMEOUT_RETRY_DELAY_MS,
-  QWEN_EMAIL,
-  QWEN_PASSWORD,
   REQUEST_TIMEOUT_MS,
   SESSION_ROOT,
   SESSIONS_DIR,

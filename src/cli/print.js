@@ -134,6 +134,39 @@ function printDivider() {
   console.log(`  ${c('─'.repeat(w), C.darkGray)}`);
 }
 
+function printHistoryReplay(state, history) {
+  if (!Array.isArray(history) || history.length === 0) return;
+  const sessionId = state?.sessionId ? ` ${state.sessionId.slice(0, 8)}` : '';
+  const w = Math.min(contentWidth(), 70);
+  console.log('');
+  console.log(`  ${c(`Reanudando sesion${sessionId} · ${history.length} mensajes completos`, C.darkGray, C.dim)}`);
+  console.log(`  ${c('─'.repeat(w), C.darkGray)}`);
+
+  for (const msg of history) {
+    if (!msg || typeof msg !== 'object') continue;
+    if (msg.role === 'user') {
+      const text = String(msg.content || '').trim();
+      if (text) console.log(`  ${c('❯', C.accent)} ${c(text, C.white)}`);
+    } else if (msg.role === 'assistant') {
+      const text = String(msg.content || '').trim();
+      if (text) {
+        const wrapped = wrapLines(text, contentWidth() - INDENT_LEN);
+        for (const line of wrapped) console.log(`${INDENT}${c(line, C.gray)}`);
+      }
+    } else if (msg.role === 'system') {
+      console.log(`  ${c('· ' + String(msg.content || ''), C.darkGray, C.dim)}`);
+    } else if (msg.role === 'tool') {
+      const summary = shortText(String(msg.result || ''), 80).replace(/\n/g, ' ');
+      console.log(`  ${c('◇', C.gray)} ${c(`${msg.tool || 'tool'}: ${summary}`, C.darkGray)}`);
+    } else {
+      const fallback = String(msg.content || JSON.stringify(msg)).slice(0, 200);
+      console.log(`  ${c('○', C.gray)} ${c(`${msg.role || 'msg'}: ${fallback}`, C.darkGray)}`);
+    }
+  }
+  console.log(`  ${c('─'.repeat(w), C.darkGray)}`);
+  console.log('');
+}
+
 function printBanner(state) {
   const key = state.activeModel || DEFAULT_MODEL_KEY;
   const model = (MODELS[key]?.label || key).toLowerCase();
@@ -521,6 +554,7 @@ module.exports = {
   printBanner,
   printDivider,
   printHistory,
+  printHistoryReplay,
   printMemory,
   printSession,
   printSessions,
