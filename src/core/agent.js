@@ -6,6 +6,11 @@ const {
   MODELS,
   PROVIDER_TIMEOUT_MAX_ATTEMPTS,
   PROVIDER_TIMEOUT_RETRY_DELAY_MS,
+  AUTO_COMPACT_THRESHOLD,
+  countTokens,
+  estimateContextTokens,
+  getContextLimit,
+  stripBase64Images,
 } = require('../config');
 const { chat, chatSilent } = require('../providers/scraperClient');
 const {
@@ -15,6 +20,7 @@ const {
   buildToolResultMessage,
   parseAgentResponse,
   sanitizeArgsForModel,
+  truncateHistory,
 } = require('./prompts');
 const {
   executeToolCall,
@@ -121,6 +127,21 @@ async function requestModel(messages, state, ui, options = {}) {
 }
 
 async function persistSessionState(state, ui) {
+  const contextLimit = getContextLimit(state.activeModel);
+  const estimatedTokens = estimateContextTokens(state);
+  if (contextLimit > 0 && estimatedTokens > contextLimit * AUTO_COMPACT_THRESHOLD) {
+    if (typeof state.__compacting !== 'boolean' || !state.__compacting) {
+      state.__compacting = true;
+      try {
+        const compactMsg = `Contexto aproximadamente ${estimatedTokens.toLocaleString()}/${contextLimit.toLocaleString()} tokens. Compactando historial automaticamente.`;
+        ui.pushAction(state, 'info', state.language === 'es' ? 'Comprimiendo memoria...' : 'Compacting memory...', compactMsg);
+        truncateHistory(state);
+        ui.pushAction(state, 'ok', state.language === 'es' ? 'Memoria compactada' : 'Memory compacted', `~${countTokens(state.memorySummary)} tokens resumidos, ${state.history.length} mensajes recientes`);
+      } finally {
+        state.__compacting = false;
+      }
+    }
+  }
   await saveState(state);
 }
 
@@ -154,8 +175,9 @@ async function runAgentTurn(input, state, ui, options = {}) {
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
     const result = await executeToolCall(directAction, state, ui, { signal });
-    await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: directAction.tool, args: directAction.args, result });
-    const finalAnswer = await answerFromToolResult(input, directAction, result, state, ui);
+    const cleanResult = stripBase64Images(String(result || ''));
+    await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: directAction.tool, args: directAction.args, result: cleanResult });
+    const finalAnswer = await answerFromToolResult(input, directAction, cleanResult, state, ui);
     state.history.push({ role: 'user', content: input }, { role: 'assistant', content: finalAnswer });
     await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: finalAnswer });
     await persistSessionState(state, ui);
@@ -179,6 +201,8 @@ async function runAgentTurn(input, state, ui, options = {}) {
     for (const msg of injected) {
       turnMessages.push({ role: 'user', content: `INPUT_ADICIONAL:\n${msg}` });
     }
+
+    truncateHistory(state);
 
     const messages = buildConversationMessages(
       state,

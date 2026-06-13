@@ -1,0 +1,39 @@
+{
+  "sessionId": "zyn-20260613031917-sc9m1o",
+  "createdAt": "2026-06-13T03:19:17.096Z",
+  "updatedAt": "2026-06-13T03:19:22.362Z",
+  "title": "hola",
+  "cwd": "/root/Zyn",
+  "history": [
+    {
+      "role": "user",
+      "content": "hola"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! ¿En qué puedo ayudarte hoy?"
+    }
+  ],
+  "memorySummary": "",
+  "actionLog": [
+    {
+      "at": "2026-06-13T03:19:17.990Z",
+      "kind": "think",
+      "title": "Analizando",
+      "detail": ""
+    },
+    {
+      "at": "2026-06-13T03:19:22.271Z",
+      "kind": "ok",
+      "title": "Respuesta recibida",
+      "detail": ""
+    }
+  ],
+  "turnCount": 1,
+  "transcriptPath": "/root/Zyn/data/chat/transcripts/zyn-20260613031917-sc9m1o.jsonl",
+  "autoApprove": true,
+  "concuerdo": false,
+  "activeModel": "nemotron",
+  "language": "es",
+  "personaPrompt": ""
+}

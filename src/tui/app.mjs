@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const { runAgentTurn } = require('../core/agent');
 const { parseAgentResponse } = require('../core/prompts');
 const { handleLocalCommand, SLASH_COMMANDS } = require('../cli/commands');
+const { countTokens, estimateContextTokens, getContextLimit } = require('../config');
 const {
   loadOrCreateSessionState,
   applyLoadedState,
@@ -160,8 +161,16 @@ class UIStore extends EventEmitter {
 
   requestSelect(options) {
     return new Promise(resolve => {
-      this.selectRequest = { ...options, resolve, selected: Number.isInteger(options?.initialIndex) ? options.initialIndex : 0 };
-      this._emit();
+      const marker = Symbol('select');
+      this._selectMarker = marker;
+      setImmediate(() => {
+        if (this._selectMarker !== marker) {
+          resolve(null);
+          return;
+        }
+        this.selectRequest = { ...options, resolve, selected: Number.isInteger(options?.initialIndex) ? options.initialIndex : 0 };
+        this._emit();
+      });
     });
   }
 
@@ -173,6 +182,7 @@ class UIStore extends EventEmitter {
   }
 
   cancelSelect() {
+    this._selectMarker = null;
     if (!this.selectRequest) return;
     this.selectRequest.resolve(null);
     this.selectRequest = null;
@@ -190,8 +200,16 @@ class UIStore extends EventEmitter {
 
   requestInput(options) {
     return new Promise(resolve => {
-      this.inputRequest = { ...options, resolve, value: '' };
-      this._emit();
+      const marker = Symbol('input');
+      this._inputMarker = marker;
+      setImmediate(() => {
+        if (this._inputMarker !== marker) {
+          resolve(null);
+          return;
+        }
+        this.inputRequest = { ...options, resolve, value: '' };
+        this._emit();
+      });
     });
   }
 
@@ -850,7 +868,7 @@ function SelectBar({ request, width }) {
   );
 }
 
-function StatusBar({ model, processing, width, turnCount }) {
+function StatusBar({ model, processing, width, turnCount, tokenEstimate, contextLimit }) {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -861,6 +879,15 @@ function StatusBar({ model, processing, width, turnCount }) {
 
   const line = '\u2500'.repeat(Math.max(10, Math.min(width - 4, 120)));
   const safeW = Math.max(width - 2, 20);
+
+  const tokenStr = tokenEstimate > 0
+    ? (contextLimit > 0
+        ? `${(tokenEstimate / 1000).toFixed(0)}K/${(contextLimit / 1000).toFixed(0)}K`
+        : `${(tokenEstimate / 1000).toFixed(0)}K`)
+    : '';
+  const tokenColor = contextLimit > 0 && tokenEstimate > contextLimit * 0.85
+    ? T.amber
+    : T.textInvis;
 
   return h(Box, { flexDirection: 'column', paddingLeft: 1, paddingRight: 1 },
     h(Box, {},
@@ -878,6 +905,9 @@ function StatusBar({ model, processing, width, turnCount }) {
           : null,
       ),
       h(Box, { gap: 1 },
+        tokenStr
+          ? h(Text, { color: tokenColor }, tokenStr)
+          : null,
         h(Text, { color: T.textInvis }, '/help'),
         h(Text, { color: T.textInvis }, '\u00b7'),
         h(Text, { color: T.textInvis }, uiText('esc exit', 'esc salir')),
@@ -1397,7 +1427,14 @@ function App({ store, state, onSubmit }) {
       ),
       ...dynamicArea,
     ),
-    h(StatusBar, { model: modelLabel, processing: store.processing, width, turnCount: store.turnCount }),
+    h(StatusBar, {
+      model: modelLabel,
+      processing: store.processing,
+      width,
+      turnCount: store.turnCount,
+      tokenEstimate: estimateContextTokens(state),
+      contextLimit: getContextLimit(state.activeModel),
+    }),
   );
 }
 

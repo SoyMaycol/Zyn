@@ -138,6 +138,52 @@ const ACTION_LOG_LIMIT = 40;
 const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 180000);
 const MAX_HISTORY_CHARS = 60000;
 const KEEP_RECENT_MESSAGES = 50;
+const AUTO_COMPACT_THRESHOLD = 0.85;
+
+const DEFAULT_CONTEXT_LIMIT = 128000;
+
+const MODEL_CONTEXT_LIMITS = {
+  'nemotron': 128000,
+  'mimo': 128000,
+  'north-mini': 128000,
+  'deepseek': 128000,
+  'qwen-plus': 131072,
+  'qwen-max': 131072,
+  'qwen-turbo': 131072,
+  'gemini-flash': 1000000,
+  'gemini-flash-001': 1000000,
+  'gemini-pro': 1000000,
+  'gemini-flash-lite': 1000000,
+  'gemini-flash-lite-001': 1000000,
+  'gemma-3': 8192,
+  'hf-ling-2.6-1t': 32000,
+};
+
+function countTokens(str) {
+  if (!str) return 0;
+  return Math.ceil(str.length * 0.25);
+}
+
+function estimateContextTokens(state) {
+  let total = 0;
+  if (state.memorySummary) total += countTokens(state.memorySummary);
+  if (Array.isArray(state.history)) {
+    for (const msg of state.history) {
+      if (msg.content) total += countTokens(msg.content) + 4;
+    }
+  }
+  return total;
+}
+
+function getContextLimit(modelKey) {
+  return MODEL_CONTEXT_LIMITS[modelKey] || DEFAULT_CONTEXT_LIMIT;
+}
+
+function stripBase64Images(text) {
+  if (!text) return text;
+  const base64LineRe = /^[A-Za-z0-9+/]{200,}={0,2}$/gm;
+  return text.replace(base64LineRe, '[base64 image data removed]');
+}
 const PROVIDER_TIMEOUT_RETRY_DELAY_MS = Number(process.env.ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS || 600000);
 const PROVIDER_TIMEOUT_MAX_ATTEMPTS = 3;
 const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
@@ -179,12 +225,14 @@ module.exports = {
   ACTION_LOG_LIMIT,
   APP_NAME,
   APP_ROOT,
+  AUTO_COMPACT_THRESHOLD,
   BACKGROUND_DIR,
   BUILTIN_MODELS,
   CURRENT_SESSION_FILE,
   PERSISTENT_CONFIG_FILE,
   DATA_ROOT,
   DEFAULT_LANGUAGE,
+  DEFAULT_CONTEXT_LIMIT,
   DEFAULT_MODEL_KEY,
   GEMINI_MODEL_WARNING,
   GMAIL_AUTH_FILE,
@@ -199,6 +247,7 @@ module.exports = {
   MAX_HISTORY_CHARS,
   MAX_OUTPUT_CHARS,
   MAX_TOOL_STEPS,
+  MODEL_CONTEXT_LIMITS,
   MODELS,
   MODELS_FILE,
   PROVIDERS_FILE,
@@ -212,5 +261,9 @@ module.exports = {
   THINK_FRAMES,
   TRANSCRIPTS_DIR,
   USER_DATA_ROOT,
+  countTokens,
+  estimateContextTokens,
+  getContextLimit,
   listProvidersFromModels,
+  stripBase64Images,
 };

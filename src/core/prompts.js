@@ -1,7 +1,7 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsIndexPrompt, buildSkillsPrompt } = require('./skills');
 const { getToolPromptText, TOOL_DEFINITIONS } = require('../tools');
-const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY } = require('../config');
+const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY, MAX_HISTORY_CHARS, KEEP_RECENT_MESSAGES, countTokens, stripBase64Images } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const os = require('os');
 const fs = require('fs');
@@ -532,6 +532,32 @@ function sanitizeArgsForModel(parsed) {
   return args;
 }
 
+function truncateHistory(state) {
+  if (!Array.isArray(state.history) || state.history.length === 0) return;
+  const totalChars = state.history.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+  if (totalChars <= MAX_HISTORY_CHARS) return;
+
+  const keep = Math.min(KEEP_RECENT_MESSAGES, state.history.length);
+  const recent = state.history.slice(-keep);
+  const removed = state.history.slice(0, -keep);
+
+  const removedSummary = removed
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => {
+      const label = m.role === 'user' ? 'U' : 'A';
+      const preview = (m.content || '').slice(0, 120).replace(/\n/g, ' ');
+      return `[${label}] ${preview}`;
+    })
+    .join('\n');
+
+  const compacted = removedSummary
+    ? `Conversacion anterior (${removed.length} mensajes, ~${countTokens(removedSummary)} tokens):\n${removedSummary}`
+    : '';
+
+  state.memorySummary = compacted;
+  state.history = recent;
+}
+
 function buildConversationMessages(state, turnMessages, systemPrompt) {
   const messages = [];
   if (systemPrompt) {
@@ -553,10 +579,12 @@ function buildConversationMessages(state, turnMessages, systemPrompt) {
 }
 
 function buildToolResultMessage(parsed, result) {
+  let cleanResult = typeof result === 'string' ? result : String(result || '');
+  cleanResult = stripBase64Images(cleanResult);
   const maxResultChars = 8000;
-  const truncatedResult = typeof result === 'string' && result.length > maxResultChars
-    ? `${result.slice(0, maxResultChars)}\n... [resultado truncado, ${result.length} caracteres totales]`
-    : result;
+  const truncatedResult = cleanResult.length > maxResultChars
+    ? `${cleanResult.slice(0, maxResultChars)}\n... [resultado truncado, ${cleanResult.length} caracteres totales]`
+    : cleanResult;
   return [
     `Herramienta: ${parsed.tool}`,
     `Argumentos: ${JSON.stringify(sanitizeArgsForModel(parsed), null, 2)}`,
@@ -583,4 +611,5 @@ module.exports = {
   buildToolResultMessage,
   parseAgentResponse,
   sanitizeArgsForModel,
+  truncateHistory,
 };
