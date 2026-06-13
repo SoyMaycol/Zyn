@@ -954,7 +954,7 @@ function clampCursor(nextCursor, length) {
 }
 
 function isBackspaceInput(input, key) {
-  return Boolean(key?.backspace || input === '\b' || input === '\x7f' || input === '\u0008');
+  return Boolean(key?.backspace || key?.delete || input === '\b' || input === '\x7f' || input === '\u0008');
 }
 
 function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange }) {
@@ -1024,7 +1024,7 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
       ? [...SLASH_COMMANDS, ...localSlash].filter(c => ('/' + c.name).startsWith(currentValue.toLowerCase()))
       : [];
 
-    if (key?.backspace || input === '\b' || input === '\x7f' || input === '\u0008') {
+    if (key?.backspace || key?.delete || input === '\b' || input === '\x7f' || input === '\u0008') {
       if (currentCursor > 0) {
         const nextValue = currentValue.slice(0, currentCursor - 1) + currentValue.slice(currentCursor);
         commitValue(nextValue, currentCursor - 1);
@@ -1032,16 +1032,6 @@ function InputBar({ onSubmit, processing, width = 100, draft = '', onDraftChange
         suggestIdxRef.current = 0;
       } else if (currentValue.length > 0) {
         commitValue('', 0);
-        setSuggestIdx(0);
-        suggestIdxRef.current = 0;
-      }
-      return;
-    }
-
-    if (key?.delete || input === '\u001b[3~') {
-      if (currentCursor < currentValue.length) {
-        const nextValue = currentValue.slice(0, currentCursor) + currentValue.slice(currentCursor + 1);
-        commitValue(nextValue, currentCursor);
         setSuggestIdx(0);
         suggestIdxRef.current = 0;
       }
@@ -1334,7 +1324,7 @@ function App({ store, state, onSubmit }) {
         store.appendInputChar('\r');
         return;
       }
-      if (key.backspace || input === '\x7f' || input === '\b') {
+      if (key.backspace || key.delete || input === '\x7f' || input === '\b') {
         store.appendInputChar('\x7f');
         return;
       }

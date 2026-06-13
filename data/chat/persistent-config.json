@@ -3,6 +3,6 @@
   "autoApprove": true,
   "activeModel": "nemotron",
   "language": "es",
-  "concuerdo": true,
+  "concuerdo": false,
   "personaPrompt": ""
 }
