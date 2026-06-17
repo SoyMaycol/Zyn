@@ -12,7 +12,7 @@ const {
   getContextLimit,
   stripBase64Images,
 } = require('../config');
-const { chat, chatSilent } = require('../providers/scraperClient');
+const { chat } = require('../providers/scraperClient');
 const {
   buildConversationMessages,
   buildSystemPrompt,
@@ -56,12 +56,12 @@ function waitForRetry(ms, signal) {
 function looksLikeActionRequest(text) {
   const sample = normalizeText(String(text || '')).toLowerCase();
   if (!sample) return false;
-  return /(instala|install|run|ejecuta|crea|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|delete|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|import|aplica|apply|deploy|despliega|init|npm|git|docker|qemu)/i.test(sample);
+  return /(haz|hacer|hazme|make|instala|install|run|ejecuta|crea|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|delete|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|import|aplica|apply|deploy|despliega|init|npm|git|docker|qemu)/i.test(sample);
 }
 
 async function requestModel(messages, state, ui, options = {}) {
   const {
-    label = 'Pensando',
+    label = 'Thinking',
     streamOutput = false,
     signal,
   } = options;
@@ -82,6 +82,7 @@ async function requestModel(messages, state, ui, options = {}) {
     }
 
     try {
+      let answerChunks = '';
       const result = await chat({
         messages,
         modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
@@ -101,20 +102,72 @@ async function requestModel(messages, state, ui, options = {}) {
             thinkingStarted = false;
           }
           if (streamOutput && !answerStarted) {
+            answerChunks += delta;
+            const trimmed = answerChunks.trim();
+            if (trimmed.startsWith('{')) {
+              const isToolCall = /"type"\s*:\s*"tool"/.test(trimmed);
+              if (isToolCall) return;
+              const isFinalComplete = /"type"\s*:\s*"final"\s*,\s*"content"\s*:\s*"/.test(trimmed);
+              if (isFinalComplete && trimmed.endsWith('"}')) {
+                const contentMatch = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                if (contentMatch) {
+                  stopThinking();
+                  ui.beginAssistantStream(state);
+                  answerStarted = true;
+                  ui.writeAssistantDelta(state, contentMatch[1]);
+                  return;
+                }
+              }
+              if (trimmed.length > 50) {
+                stopThinking();
+                ui.beginAssistantStream(state);
+                answerStarted = true;
+                const contentMatch = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                if (contentMatch) {
+                  ui.writeAssistantDelta(state, contentMatch[1]);
+                }
+                return;
+              }
+              return;
+            }
             stopThinking();
             ui.beginAssistantStream(state);
             answerStarted = true;
           }
-          if (streamOutput) ui.writeAssistantDelta(state, delta);
+          if (streamOutput && answerStarted) {
+            answerChunks += delta;
+            const contentMatch = answerChunks.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (contentMatch) {
+              ui.writeAssistantDelta(state, contentMatch[1]);
+            } else if (!answerChunks.trim().startsWith('{')) {
+              ui.writeAssistantDelta(state, delta);
+            }
+          }
         },
       });
-      ui.pushAction(state, 'ok', 'Respuesta recibida');
-      return result.answer ?? '';
+      ui.pushAction(state, 'ok', state.language === 'es' ? 'Respuesta recibida' : 'Answer received');
+      let answer = result.answer ?? '';
+      if (!answer && result.thinking) {
+        const thinkingTrimmed = result.thinking.trim();
+        if (/^\s*\{/.test(thinkingTrimmed) && /"type"\s*:\s*"(tool|final)"/.test(thinkingTrimmed)) {
+          answer = thinkingTrimmed;
+        } else {
+          const extracted = thinkingTrimmed.match(/\{[\s\S]*"type"\s*:\s*"(tool|final)"[\s\S]*\}/);
+          if (extracted) {
+            answer = extracted[0];
+          }
+        }
+      }
+      return answer;
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
       if (aborted) throw new Error(state.language === 'es' ? 'Tiempo agotado' : 'Timeout');
-      if (!externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) continue;
+      if (!externalAbort && attempt < PROVIDER_TIMEOUT_MAX_ATTEMPTS - 1) {
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 10000);
+        await waitForRetry(backoff, signal);
+        continue;
+      }
       throw err;
     } finally {
       if (signal) signal.removeEventListener('abort', onExternalAbort);
@@ -123,7 +176,7 @@ async function requestModel(messages, state, ui, options = {}) {
       if (streamOutput && answerStarted) ui.endAssistantStream(state);
     }
   }
-  throw new Error('Provider unreachable');
+  throw new Error(state.language === 'es' ? 'Proveedor inalcanzable' : 'Provider unreachable');
 }
 
 async function persistSessionState(state, ui) {
@@ -161,7 +214,8 @@ async function answerFromToolResult(input, call, result, state, ui) {
     label: state.language === 'es' ? 'Procesando resultado' : 'Processing result',
   });
   const parsed = parseAgentResponse(output);
-  return parsed.type === 'final' ? normalizeText(parsed.content) : normalizeText(output);
+  const answer = parsed.type === 'final' ? normalizeText(parsed.content) : normalizeText(output);
+  return answer || '(procesado)';
 }
 
 async function runAgentTurn(input, state, ui, options = {}) {
@@ -195,7 +249,13 @@ async function runAgentTurn(input, state, ui, options = {}) {
   const turnLanguage = detectLanguage(input, state.language);
 
   while (true) {
-    if (signal?.aborted) throw new Error('Aborted');
+    if (signal?.aborted) {
+      if (turnMessages.length > 0) {
+        state.history.push(...turnMessages);
+        await persistSessionState(state, ui);
+      }
+      throw new Error('Aborted');
+    }
 
     const injected = typeof state.getQueuedMessages === 'function' ? state.getQueuedMessages() : [];
     for (const msg of injected) {
@@ -210,41 +270,29 @@ async function runAgentTurn(input, state, ui, options = {}) {
       buildSystemPrompt(state.cwd, state, { input, language: turnLanguage }),
     );
 
+    const useStream = !!state.tuiConfirm;
     const raw = await requestModel(messages, state, ui, {
-      label: step === 0 ? 'Analizando' : `Paso ${step + 1}`,
+      label: step === 0 ? (state.language === 'es' ? 'Analizando' : 'Analyzing') : (state.language === 'es' ? `Paso ${step + 1}` : `Step ${step + 1}`),
       signal,
+      streamOutput: useStream,
     });
 
     let parsed = parseAgentResponse(raw);
 
-    if (state.concuerdo && step === 0) {
-      const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
-      const otherKeys = Object.keys(MODELS).filter(k => k !== activeKey);
-      const secondaryResults = await Promise.all(otherKeys.map(k => chatSilent({ messages, modelKey: k, signal }).catch(() => null)));
-      
-      const suggestions = secondaryResults
-        .filter(r => r?.answer)
-        .map(r => parseAgentResponse(r.answer));
-
-      const toolSugg = suggestions.filter(s => s.type === 'tool');
-      if (parsed.type === 'final' && toolSugg.length >= 2) {
-        parsed = toolSugg[0];
-      }
-    }
-
     if (parsed.type === 'final') {
+      const safeContent = (parsed.content || '').trim() || '(respuesta vacía)';
       if (looksLikeActionRequest(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
         finalWithoutToolRetries++;
-        turnMessages.push({ role: 'assistant', content: parsed.content });
+        turnMessages.push({ role: 'assistant', content: safeContent });
         turnMessages.push({ role: 'user', content: 'No has ejecutado ninguna herramienta técnica para esta solicitud de acción. Por favor, usa las herramientas necesarias para obtener resultados reales antes de concluir.' });
         step++;
         continue;
       }
-      turnMessages.push({ role: 'assistant', content: parsed.content });
+      turnMessages.push({ role: 'assistant', content: safeContent });
       state.history.push(...turnMessages);
-      await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: parsed.content });
+      await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: safeContent });
       await persistSessionState(state, ui);
-      return { content: parsed.content, rendered: false };
+      return { content: safeContent, rendered: useStream };
     }
 
     const fingerprint = `${parsed.tool}:${parsed.args?.path || ''}:${shortText(JSON.stringify(parsed.args || {}), 50)}`;

@@ -3,6 +3,7 @@ const { zen } = require('./zen/index');
 const { gemini } = require('./gemini/index');
 const { huggingface } = require('./huggingface/index');
 const { custom } = require('./custom/index');
+const { deepseekChat } = require('./deepseek/index');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 const { describeProviderConfig } = require('./catalog');
 
@@ -45,6 +46,8 @@ async function runProvider(provider, messages, model, onChunk, options = {}) {
       return gemini(messages, model.geminiModel || 'gemini-2.5-flash', onChunk, { ...options, config: providerConfig });
     case 'huggingface':
       return huggingface(messages, model.huggingfaceModel, onChunk, { ...options, config: providerConfig });
+    case 'deepseek':
+      return deepseekChat(messages, model.deepseekChatModel, onChunk, { ...options, config: providerConfig });
     case 'custom':
       return custom(messages, model, onChunk, { ...options, config: providerConfig });
     default:

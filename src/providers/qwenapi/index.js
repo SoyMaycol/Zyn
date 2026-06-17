@@ -1,5 +1,6 @@
 const BASE = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 const DEFAULT_MODEL = 'qwen-plus';
+const { REQUEST_TIMEOUT_MS } = require('../../config');
 
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -24,6 +25,8 @@ async function streamCompletion(messages, modelId, apiKey, onChunk, signal) {
     if (signal.aborted) controller.abort();
     else signal.addEventListener('abort', onExternalAbort, { once: true });
   }
+
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(`${BASE}/chat/completions`, {
@@ -60,7 +63,7 @@ async function streamCompletion(messages, modelId, apiKey, onChunk, signal) {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) continue;
         const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') break;
+        if (data === '[DONE]') continue;
 
         let parsed;
         try { parsed = JSON.parse(data); } catch { continue; }
@@ -68,12 +71,17 @@ async function streamCompletion(messages, modelId, apiKey, onChunk, signal) {
         const delta = parsed?.choices?.[0]?.delta;
         if (!delta) continue;
 
-        const reasoning = delta.reasoning || delta.reasoning_content || delta.reasoning_details?.[0]?.text;
-        if (reasoning && reasoning.length > thinking.length) {
-          const newDelta = reasoning.slice(thinking.length);
-          thinking = reasoning;
-          if (onChunk) onChunk(newDelta, 'thinking');
+        const fullReasoning = delta.reasoning_content || delta.reasoning_text || delta.reasoning_details?.[0]?.text || delta.reasoning_final || delta.completion_reasoning || delta.reasoning_summary;
+        const incrementalReasoning = delta.reasoning || delta.reasoning_delta || delta.reasoning_chunk;
+        let newDelta = '';
+        if (fullReasoning && fullReasoning.length > thinking.length) {
+          newDelta = fullReasoning.slice(thinking.length);
+          thinking = fullReasoning;
+        } else if (incrementalReasoning && incrementalReasoning.length > 0) {
+          newDelta = incrementalReasoning;
+          thinking += incrementalReasoning;
         }
+        if (newDelta && onChunk) onChunk(newDelta, 'thinking');
 
         if (delta.content) {
           answer += delta.content;
@@ -84,6 +92,7 @@ async function streamCompletion(messages, modelId, apiKey, onChunk, signal) {
 
     return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
+    clearTimeout(timeoutId);
     if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }
@@ -107,7 +116,11 @@ async function qwenapi(messages, modelId, onChunk = null, options = {}) {
       };
     } catch (err) {
       if (err?.name === 'AbortError') throw err;
-      if (attempt < MAX_RETRIES) {
+      const isRetryable = err.message?.includes('429')
+        || err.message?.includes('502')
+        || err.message?.includes('503')
+        || err.message?.includes('504');
+      if (isRetryable && attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }

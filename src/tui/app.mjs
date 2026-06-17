@@ -34,34 +34,137 @@ const MAX_THINKING_LINES = 20;
 const SPIN_MS = 80;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
+const SPIN_FRAMES_DOTS = ['\u25cb', '\u25cf', '\u25d0', '\u25d1', '\u25d2', '\u25d3'];
+const SPIN_FRAMES_BRAILLE = ['\u2801', '\u2803', '\u2807', '\u280f', '\u281f', '\u283f', '\u287f', '\u28ff'];
+const SPIN_FRAMES_ARROW = ['\u2190', '\u2196', '\u2191', '\u2197', '\u2192', '\u2198', '\u2193', '\u2199'];
+const SPIN_FRAMES_MOON = ['\u25d6', '\u25d7', '\u25d8', '\u25d9'];
+const SPIN_FRAMES_CLOCK = ['\u2570', '\u256f', '\u256e', '\u256d', '\u256c', '\u256b', '\u256a', '\u2569', '\u2568', '\u2567', '\u2566', '\u2565', '\u2564', '\u2563', '\u2562', '\u2561'];
 
-const T = {
-  bg:          '#212823',
-  surface:     '#1a1a1a',
-  surfaceHi:   '#222222',
-  text:        '#ffffff',
-  textDim:     '#cccccc',
-  textMuted:   '#999999',
-  textGhost:   '#666666',
-  textInvis:   '#333333',
-  accent:      '#d4a054',
-  accentSoft:  '#c49450',
-  accentDim:   '#8a6a3a',
-  green:       '#6aab6a',
-  greenDim:    '#3a6a3a',
-  red:         '#cc5555',
-  redDim:      '#6a3333',
-  amber:       '#ccaa44',
-  amberDim:    '#6a5522',
-  purple:      '#aa88cc',
-  purpleDim:   '#5a446a',
-  blue:        '#6699cc',
-  blueDim:     '#334466',
-  cyan:        '#66cccc',
-  cyanDim:     '#336666',
-  border:      '#2a2a2a',
-  borderLight: '#383838',
-  codeBg:      '#111111',
+const THEMES = {
+  dark: {
+    bg: '#212823', surface: '#1a1a1a', surfaceHi: '#222222',
+    text: '#ffffff', textDim: '#cccccc', textMuted: '#999999',
+    textGhost: '#666666', textInvis: '#333333',
+    accent: '#d4a054', accentSoft: '#c49450', accentDim: '#8a6a3a',
+    green: '#6aab6a', greenDim: '#3a6a3a', red: '#cc5555', redDim: '#6a3333',
+    amber: '#ccaa44', amberDim: '#6a5522', purple: '#aa88cc', purpleDim: '#5a446a',
+    blue: '#6699cc', blueDim: '#334466', cyan: '#66cccc', cyanDim: '#336666',
+    border: '#2a2a2a', borderLight: '#383838', codeBg: '#111111',
+    spinFrames: SPIN_FRAMES, spinMs: 80, borderStyle: 'line',
+  },
+  cappuccino: {
+    bg: '#f5efe6', surface: '#f0e6d6', surfaceHi: '#e8dcc8',
+    text: '#3b2f2f', textDim: '#5a4a4a', textMuted: '#7a6a6a',
+    textGhost: '#9a8a7a', textInvis: '#bfb0a0',
+    accent: '#a0522d', accentSoft: '#b0623d', accentDim: '#c0724d',
+    green: '#2e8b57', greenDim: '#5cb85c', red: '#c0392b', redDim: '#e74c3c',
+    amber: '#d4a017', amberDim: '#f0c040', purple: '#8e44ad', purpleDim: '#a855c0',
+    blue: '#2980b9', blueDim: '#5dade2', cyan: '#17a2b8', cyanDim: '#5bc0de',
+    border: '#c8b89a', borderLight: '#d8c8aa', codeBg: '#e8dcc8',
+    spinFrames: SPIN_FRAMES_DOTS, spinMs: 120, borderStyle: 'round',
+  },
+  light: {
+    bg: '#ffffff', surface: '#f8f9fa', surfaceHi: '#e9ecef',
+    text: '#212529', textDim: '#495057', textMuted: '#6c757d',
+    textGhost: '#adb5bd', textInvis: '#dee2e6',
+    accent: '#d35400', accentSoft: '#e67e22', accentDim: '#f39c12',
+    green: '#28a745', greenDim: '#5cb85c', red: '#dc3545', redDim: '#e74c3c',
+    amber: '#ffc107', amberDim: '#f0c040', purple: '#6f42c1', purpleDim: '#8a55c0',
+    blue: '#007bff', blueDim: '#5dade2', cyan: '#17a2b8', cyanDim: '#5bc0de',
+    border: '#dee2e6', borderLight: '#e9ecef', codeBg: '#f8f9fa',
+    spinFrames: SPIN_FRAMES_BRAILLE, spinMs: 100, borderStyle: 'line',
+  },
+  coffee: {
+    bg: '#2c1e10', surface: '#241a0c', surfaceHi: '#3a2a18',
+    text: '#e8d5b8', textDim: '#c4a882', textMuted: '#a08868',
+    textGhost: '#7a6848', textInvis: '#544830',
+    accent: '#d4a054', accentSoft: '#c49450', accentDim: '#8a6a3a',
+    green: '#6aab6a', greenDim: '#3a6a3a', red: '#cc5555', redDim: '#6a3333',
+    amber: '#ccaa44', amberDim: '#6a5522', purple: '#aa88cc', purpleDim: '#5a446a',
+    blue: '#6699cc', blueDim: '#334466', cyan: '#66cccc', cyanDim: '#336666',
+    border: '#4a3a20', borderLight: '#5a4a30', codeBg: '#1a1008',
+    spinFrames: SPIN_FRAMES_MOON, spinMs: 150, borderStyle: 'double',
+  },
+  gruvbox: {
+    bg: '#282828', surface: '#3c3836', surfaceHi: '#504945',
+    text: '#ebdbb2', textDim: '#d5c4a1', textMuted: '#bdae93',
+    textGhost: '#928374', textInvis: '#7c6f64',
+    accent: '#fe8019', accentSoft: '#fabd2f', accentDim: '#b8bb26',
+    green: '#b8bb26', greenDim: '#98971a', red: '#fb4934', redDim: '#cc241d',
+    amber: '#fabd2f', amberDim: '#d79921', purple: '#d3869b', purpleDim: '#b16286',
+    blue: '#83a598', blueDim: '#458588', cyan: '#8ec07c', cyanDim: '#689d6a',
+    border: '#504945', borderLight: '#665c54', codeBg: '#1d2021',
+    spinFrames: SPIN_FRAMES_ARROW, spinMs: 90, borderStyle: 'bold',
+  },
+  dracula: {
+    bg: '#282a36', surface: '#343746', surfaceHi: '#44475a',
+    text: '#f8f8f2', textDim: '#cccac2', textMuted: '#aaa8a0',
+    textGhost: '#6272a4', textInvis: '#44475a',
+    accent: '#ff79c6', accentSoft: '#bd93f9', accentDim: '#6272a4',
+    green: '#50fa7b', greenDim: '#00b956', red: '#ff5555', redDim: '#cc3333',
+    amber: '#f1fa8c', amberDim: '#d4d4aa', purple: '#bd93f9', purpleDim: '#8a6fd0',
+    blue: '#6272a4', blueDim: '#44475a', cyan: '#8be9fd', cyanDim: '#5fc4d4',
+    border: '#44475a', borderLight: '#6272a4', codeBg: '#1e1f29',
+    spinFrames: SPIN_FRAMES_CLOCK, spinMs: 70, borderStyle: 'double',
+  },
+  nord: {
+    bg: '#2e3440', surface: '#3b4252', surfaceHi: '#434c5e',
+    text: '#eceff4', textDim: '#d8dee9', textMuted: '#aeb6c2',
+    textGhost: '#616e88', textInvis: '#4c566a',
+    accent: '#88c0d0', accentSoft: '#81a1c1', accentDim: '#5e81ac',
+    green: '#a3be8c', greenDim: '#8faa7b', red: '#bf616a', redDim: '#a3555a',
+    amber: '#ebcb8b', amberDim: '#d4a96a', purple: '#b48ead', purpleDim: '#9a7a9a',
+    blue: '#81a1c1', blueDim: '#6a8aaa', cyan: '#88c0d0', cyanDim: '#6aabb0',
+    border: '#4c566a', borderLight: '#5e81ac', codeBg: '#242933',
+    spinFrames: SPIN_FRAMES_BRAILLE, spinMs: 110, borderStyle: 'round',
+  },
+  solarized: {
+    bg: '#002b36', surface: '#073642', surfaceHi: '#0a4a5a',
+    text: '#839496', textDim: '#93a1a1', textMuted: '#657b83',
+    textGhost: '#586e75', textInvis: '#073642',
+    accent: '#b58900', accentSoft: '#cb4b16', accentDim: '#dc322f',
+    green: '#859900', greenDim: '#586e75', red: '#dc322f', redDim: '#cb4b16',
+    amber: '#b58900', amberDim: '#93a1a1', purple: '#6c71c4', purpleDim: '#586e75',
+    blue: '#268bd2', blueDim: '#2aa198', cyan: '#2aa198', cyanDim: '#268bd2',
+    border: '#0a4a5a', borderLight: '#586e75', codeBg: '#001e26',
+    spinFrames: SPIN_FRAMES_CLOCK, spinMs: 130, borderStyle: 'line',
+  },
+  monokai: {
+    bg: '#272822', surface: '#3e3d32', surfaceHi: '#49483e',
+    text: '#f8f8f2', textDim: '#cfcfc2', textMuted: '#a0a090',
+    textGhost: '#75715e', textInvis: '#49483e',
+    accent: '#f92672', accentSoft: '#ae81ff', accentDim: '#66d9ef',
+    green: '#a6e22e', greenDim: '#7aaf20', red: '#f92672', redDim: '#cc3355',
+    amber: '#e6db74', amberDim: '#c4be60', purple: '#ae81ff', purpleDim: '#9060c0',
+    blue: '#66d9ef', blueDim: '#40b0d0', cyan: '#66d9ef', cyanDim: '#40b0d0',
+    border: '#49483e', borderLight: '#5e5d50', codeBg: '#1a1b16',
+    spinFrames: SPIN_FRAMES_ARROW, spinMs: 60, borderStyle: 'bold',
+  },
+  tokyoNight: {
+    bg: '#1a1b26', surface: '#24283b', surfaceHi: '#414868',
+    text: '#c0caf5', textDim: '#a9b1d6', textMuted: '#565f89',
+    textGhost: '#3b4261', textInvis: '#1f2335',
+    accent: '#ff9e64', accentSoft: '#bb9af7', accentDim: '#7dcfff',
+    green: '#9ece6a', greenDim: '#73daca', red: '#f7768e', redDim: '#db4b4b',
+    amber: '#e0af68', amberDim: '#c0a860', purple: '#bb9af7', purpleDim: '#9060c0',
+    blue: '#7aa2f7', blueDim: '#5a7cd0', cyan: '#7dcfff', cyanDim: '#5fb0d0',
+    border: '#414868', borderLight: '#565f89', codeBg: '#16161e',
+    spinFrames: SPIN_FRAMES_DOTS, spinMs: 85, borderStyle: 'round',
+  },
+};
+
+function getTheme(name) {
+  return THEMES[name] || THEMES.dark;
+}
+
+let T = getTheme('dark');
+let globalStore = null;
+global.__zynApplyTheme = (name) => {
+  T = getTheme(name);
+  if (globalStore) {
+    globalStore.themeVersion++;
+    globalStore._emit();
+  }
 };
 
 class UIStore extends EventEmitter {
@@ -84,6 +187,11 @@ class UIStore extends EventEmitter {
     this.lastEscapeAt = 0;
     this.submittedHistory = [];
     this.submittedRedo = [];
+    this.conversationHistory = [];
+    this.conversationRedo = [];
+    this.tokenEstimate = 0;
+    this.contextLimit = 0;
+    this.themeVersion = 0;
     this._idCounter = 0;
     this._scheduled = false;
   }
@@ -125,6 +233,7 @@ class UIStore extends EventEmitter {
   appendAnswer(delta) {
     if (!this.liveAnswer) return;
     this.liveAnswer = { ...this.liveAnswer, text: this.liveAnswer.text + delta };
+    this._updateTokenEstimate(delta);
     this._emit();
   }
 
@@ -132,6 +241,17 @@ class UIStore extends EventEmitter {
     if (!this.liveAnswer) return;
     this.addItem({ type: 'answer', text: this.liveAnswer.text });
     this.liveAnswer = null;
+  }
+
+  _updateTokenEstimate(delta) {
+    if (!delta) return;
+    this.tokenEstimate += Math.ceil(delta.length * 0.25);
+  }
+
+  setTokenEstimate(estimate, limit) {
+    this.tokenEstimate = estimate;
+    this.contextLimit = limit;
+    this._emit();
   }
 
   addEvent(kind, title, detail) {
@@ -213,6 +333,13 @@ class UIStore extends EventEmitter {
     });
   }
 
+  cancelInput() {
+    if (!this.inputRequest) return;
+    this.inputRequest.resolve(null);
+    this.inputRequest = null;
+    this._emit();
+  }
+
   appendInputChar(ch) {
     if (!this.inputRequest) return;
     if (ch === '\x1b' || ch === '\x1b\x1b' || ch === '\x03') {
@@ -244,6 +371,43 @@ class UIStore extends EventEmitter {
     if (this.submittedHistory.length > 200) this.submittedHistory.pop();
     this.submittedRedo = [];
     this._emit();
+  }
+
+  addConversationTurn(userMsg, assistantMsg) {
+    this.conversationHistory.unshift({ user: userMsg, assistant: assistantMsg, timestamp: Date.now() });
+    if (this.conversationHistory.length > 100) this.conversationHistory.pop();
+    this.conversationRedo = [];
+    this._emit();
+  }
+
+  undoConversationTurn() {
+    if (this.conversationHistory.length === 0) return null;
+    const turn = this.conversationHistory.shift();
+    this.conversationRedo.unshift(turn);
+    this._removeLastConversationItems();
+    this._emit();
+    return turn;
+  }
+
+  redoConversationTurn() {
+    if (this.conversationRedo.length === 0) return null;
+    const turn = this.conversationRedo.shift();
+    this.conversationHistory.unshift(turn);
+    this.addItem({ type: 'user', text: turn.user });
+    this.addItem({ type: 'answer', text: turn.assistant });
+    this._emit();
+    return turn;
+  }
+
+  _removeLastConversationItems() {
+    let removed = 0;
+    for (let i = this.items.length - 1; i >= 0 && removed < 2; i--) {
+      if (this.items[i].type === 'user' || this.items[i].type === 'answer') {
+        this.items.splice(i, 1);
+        removed++;
+      }
+    }
+    if (removed > 0) this._emit();
   }
 
   undoSubmittedMessage() {
@@ -342,6 +506,9 @@ function normalizeAssistantDisplayText(text) {
   if (!trimmed) return raw;
 
   const parsed = parseAgentResponse(trimmed);
+  if (parsed?.type === 'tool') {
+    return '';
+  }
   if (parsed?.type === 'final' && typeof parsed.content === 'string' && parsed.content.trim()) {
     return parsed.content.trim();
   }
@@ -642,19 +809,21 @@ function Banner({ model, resumed, width, cwd }) {
 function SpinnerLine({ label, started }) {
   const [frame, setFrame] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const frames = T.spinFrames || SPIN_FRAMES;
+  const ms = T.spinMs || SPIN_MS;
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setFrame(f => (f + 1) % SPIN_FRAMES.length);
+      setFrame(f => (f + 1) % frames.length);
       if (started) setElapsed(Date.now() - started);
-    }, SPIN_MS);
+    }, ms);
     return () => clearInterval(timer);
-  }, [started]);
+  }, [started, frames.length, ms]);
 
   const elapsedStr = elapsed > 1500 ? formatElapsed(elapsed) : '';
 
   return h(Box, { paddingLeft: 5, gap: 1 },
-    h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame]),
+    h(Text, { color: T.accentSoft }, frames[frame]),
     h(Text, { color: T.textMuted }, label),
     elapsedStr ? h(Text, { color: T.textGhost }, elapsedStr) : null,
   );
@@ -717,7 +886,9 @@ function ThinkingBlock({ text, elapsed, live, width }) {
     return () => clearInterval(t);
   }, [live]);
 
-  const pulseChar = live ? SPIN_FRAMES[Math.floor(Date.now() / SPIN_MS) % SPIN_FRAMES.length] : '\u25d0';
+  const frames = T.spinFrames || SPIN_FRAMES;
+  const ms = T.spinMs || SPIN_MS;
+  const pulseChar = live ? frames[Math.floor(Date.now() / ms) % frames.length] : '\u25d0';
 
   const label = live
     ? pulseChar + '  ' + uiText('Thinking...', 'Pensando...')
@@ -768,21 +939,13 @@ function QueuedMessage({ text }) {
 
 function ConfirmBar({ title, detail, lastMessage, draft }) {
   const detailLines = (detail || '').split('\n').filter(l => l.trim()).slice(0, 10);
-
-  return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
-    h(Box, { gap: 1 },
+  return h(Box, { flexDirection: 'column', paddingLeft: 2, paddingRight: 2, marginTop: 1, borderStyle: 'round', borderColor: T.borderLight },
+    h(Box, { paddingLeft: 1, gap: 1 },
       h(Text, { color: T.amber, bold: true }, '\u26a0'),
       h(Text, { color: T.text, bold: true }, title),
     ),
     detailLines.length > 0
-      ? h(Box, {
-          flexDirection: 'column',
-          paddingLeft: 2,
-          marginTop: 0,
-          borderStyle: 'single',
-          borderColor: T.border,
-          paddingRight: 1,
-        },
+      ? h(Box, { flexDirection: 'column', paddingLeft: 2, marginTop: 0 },
           ...detailLines.map((line, i) =>
             h(Text, { key: String(i), color: T.textDim, wrap: 'wrap' }, line),
           ),
@@ -825,17 +988,17 @@ function SelectBar({ request, width }) {
 
   return h(Box, {
     flexDirection: 'column',
-    paddingLeft: 3,
-    paddingRight: 3,
+    paddingLeft: 2,
+    paddingRight: 2,
     marginTop: 1,
     borderStyle: 'round',
-    borderColor: T.border,
+    borderColor: T.borderLight,
   },
-    h(Box, { paddingTop: 0, paddingBottom: 0 },
+    h(Box, { paddingTop: 0, paddingBottom: 0, paddingLeft: 1 },
       h(Text, { color: T.amber, bold: true }, '\u25b8 '),
       h(Text, { color: T.text, bold: true }, request.title || 'Select'),
       request.subtitle
-        ? h(Text, { color: T.textGhost }, '  ' + request.subtitle)
+        ? h(Text, { color: T.textMuted }, '  ' + request.subtitle)
         : null,
     ),
     h(Box, { flexDirection: 'column', paddingTop: 0 },
@@ -848,42 +1011,51 @@ function SelectBar({ request, width }) {
         const activeTag = active ? ' \u25cf' : '  ';
         const number = String(realIdx + 1).padStart(2, ' ');
         const color = isSelected ? T.accent : (active ? T.green : T.textMuted);
-        return h(Box, { key: realIdx, paddingLeft: 1 },
+        return h(Box, { key: realIdx, paddingLeft: 2 },
           h(Text, { color, bold: isSelected }, `${prefix}${number}${activeTag} ${label}`),
         );
       }),
       total > maxVisible
-        ? h(Box, { paddingLeft: 1, marginTop: 0 },
-            h(Text, { color: T.textInvis }, `... ${total} items · scroll with ↑/↓`),
+        ? h(Box, { paddingLeft: 2, marginTop: 0 },
+            h(Text, { color: T.textMuted }, `... ${total} ${uiText('items', 'items')} ` + uiText('scroll ↑/↓', 'desplaza ↑/↓')),
           )
         : null,
     ),
-    h(Box, { paddingTop: 0, paddingBottom: 0, gap: 1 },
-      h(Text, { color: T.textGhost }, '\u2191/\u2193 ' + uiText('navigate', 'navegar')),
-      h(Text, { color: T.textInvis }, '\u00b7'),
-      h(Text, { color: T.textGhost }, uiText('Enter select', 'Enter seleccionar')),
-      h(Text, { color: T.textInvis }, '\u00b7'),
-      h(Text, { color: T.textGhost }, uiText('Esc cancel', 'Esc cancelar')),
+    h(Box, { paddingTop: 0, paddingBottom: 0, paddingLeft: 1, gap: 1 },
+      h(Text, { color: T.textMuted }, '\u2191/\u2193 ' + uiText('navigate', 'navegar')),
+      h(Text, { color: T.textGhost }, '\u00b7'),
+      h(Text, { color: T.textMuted }, uiText('Enter select', 'Enter seleccionar')),
+      h(Text, { color: T.textGhost }, '\u00b7'),
+      h(Text, { color: T.textMuted }, uiText('Esc cancel', 'Esc cancelar')),
     ),
   );
 }
 
-function StatusBar({ model, processing, width, turnCount, tokenEstimate, contextLimit }) {
+function StatusBar({ store, model, processing, width, turnCount }) {
   const [frame, setFrame] = useState(0);
+  const frames = T.spinFrames || SPIN_FRAMES;
+  const ms = T.spinMs || SPIN_MS;
 
   useEffect(() => {
     if (!processing) return;
-    const t = setInterval(() => setFrame(f => (f + 1) % SPIN_FRAMES.length), SPIN_MS);
+    const t = setInterval(() => setFrame(f => (f + 1) % frames.length), ms);
     return () => clearInterval(t);
-  }, [processing]);
+  }, [processing, frames.length, ms]);
 
   const line = '\u2500'.repeat(Math.max(10, Math.min(width - 4, 120)));
   const safeW = Math.max(width - 2, 20);
+  const tokenEstimate = store.tokenEstimate || 0;
+  const contextLimit = store.contextLimit || 0;
 
+  function fmtK(n) {
+    if (n < 1000) return `${n}`;
+    if (n < 100000) return `${(n / 1000).toFixed(1)}K`;
+    return `${(n / 1000).toFixed(0)}K`;
+  }
   const tokenStr = tokenEstimate > 0
     ? (contextLimit > 0
-        ? `${(tokenEstimate / 1000).toFixed(0)}K/${(contextLimit / 1000).toFixed(0)}K`
-        : `${(tokenEstimate / 1000).toFixed(0)}K`)
+        ? `${fmtK(tokenEstimate)}/${fmtK(contextLimit)}`
+        : fmtK(tokenEstimate))
     : '';
   const tokenColor = contextLimit > 0 && tokenEstimate > contextLimit * 0.85
     ? T.amber
@@ -898,7 +1070,7 @@ function StatusBar({ model, processing, width, turnCount, tokenEstimate, context
         h(Text, { color: T.accent }, '\u25cf'),
         h(Text, { color: T.textGhost }, model),
         processing
-          ? h(Text, { color: T.accentSoft }, SPIN_FRAMES[frame])
+          ? h(Text, { color: T.accentSoft }, frames[frame])
           : null,
         turnCount > 0
           ? h(Text, { color: T.textInvis }, '\u00b7 ' + turnCount + ' ' + uiText(turnCount === 1 ? 'turn' : 'turns', turnCount === 1 ? 'turno' : 'turnos'))
@@ -925,11 +1097,11 @@ function PromptBar({ request, width }) {
 
   return h(Box, {
     flexDirection: 'column',
-    paddingLeft: 3,
-    paddingRight: 3,
+    paddingLeft: 2,
+    paddingRight: 2,
     marginTop: 1,
     borderStyle: 'round',
-    borderColor: T.border,
+    borderColor: T.borderLight,
   },
     h(Box, { paddingTop: 0, paddingBottom: 0 },
       h(Text, { color: T.amber, bold: true }, '\u270e '),
@@ -1277,11 +1449,10 @@ function App({ store, state, onSubmit }) {
   global.__zynCurrentLanguage = state?.language || 'en';
   const { exit } = useApp();
   const { width } = useDimensions();
+  const themeVersion = store.themeVersion;
 
   const modelKey   = state?.activeModel || DEFAULT_MODEL_KEY;
-  const modelLabel = state?.concuerdo
-    ? uiText('Concord · ', 'Concuerdo · ') + Object.values(MODELS).map(m => m.label).join(', ')
-    : (MODELS[modelKey]?.label || modelKey).toLowerCase();
+  const modelLabel = (MODELS[modelKey]?.label || modelKey).toLowerCase();
 
   const handleInput = useCallback((text, meta) => {
     if (text === '/exit' || text === '/quit') {
@@ -1304,29 +1475,36 @@ function App({ store, state, onSubmit }) {
         return;
       }
       if (store.inputRequest) {
-        store.appendInputChar('\x1b');
+        const val = store.inputRequest?.value || '';
+        if (val.trim()) {
+          store.inputDraft = val;
+        }
+        store.cancelInput();
         return;
       }
       if (store.processing) {
         const now = Date.now();
-        if (now - store.lastEscapeAt < 1000) {
-          store.lastEscapeAt = 0;
-          if (typeof state.abortCurrentTurn === 'function') {
-            state.abortCurrentTurn();
-          }
-          store.pendingExit = false;
-          store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC x2', 'Interrumpido con ESC x2'));
-        } else {
-          store.lastEscapeAt = now;
-          store.addEvent('info', uiText('press ESC again', 'pulsa ESC otra vez'), uiText('to stop the agent', 'para detener el agente'));
+        if (now - store.lastEscapeAt < 2000) return;
+        store.lastEscapeAt = now;
+        if (typeof state.abortCurrentTurn === 'function') {
+          state.abortCurrentTurn();
         }
+        store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC', 'Interrumpido con ESC'));
         return;
       }
-      if (!store.confirmRequest) { exit(); return; }
+      const now = Date.now();
+      if (now - store.lastEscapeAt < 500) {
+        store.lastEscapeAt = 0;
+        exit();
+        return;
+      }
+      store.lastEscapeAt = now;
+      store.addEvent('info', uiText('press ESC again', 'pulsa ESC otra vez'), uiText('to exit', 'para salir'));
+      return;
     }
     if (store.selectRequest) {
-      if (key.upArrow || input === '\x1b[A') { store.adjustSelect(-1); return; }
-      if (key.downArrow || input === '\x1b[B') { store.adjustSelect(1); return; }
+      if (key.upArrow || input === '\x1b[A' || input === '\x1bOA' || input === '\x1b[[A') { store.adjustSelect(-1); return; }
+      if (key.downArrow || input === '\x1b[B' || input === '\x1bOB' || input === '\x1b[[B') { store.adjustSelect(1); return; }
       if (key.return || input === '\r' || input === '\n') {
         const sel = store.selectRequest;
         const item = sel.items[sel.selected];
@@ -1334,6 +1512,8 @@ function App({ store, state, onSubmit }) {
         store.resolveSelect(value);
         return;
       }
+      if (key.leftArrow || input === '\x1b[D' || input === '\x1bOD' || input === '\x1b[[D') { store.adjustSelect(-1); return; }
+      if (key.rightArrow || input === '\x1b[C' || input === '\x1bOC' || input === '\x1b[[C') { store.adjustSelect(1); return; }
       if (input === 'k') { store.adjustSelect(-1); return; }
       if (input === 'j') { store.adjustSelect(1); return; }
       if (/^[1-9]$/.test(input)) {
@@ -1389,9 +1569,12 @@ function App({ store, state, onSubmit }) {
   }
 
   if (store.liveAnswer) {
-    dynamicArea.push(
-      h(AnswerBlock, { key: 'answer', text: store.liveAnswer.text, live: true, width })
-    );
+    const liveText = normalizeAssistantDisplayText(store.liveAnswer.text);
+    if (liveText) {
+      dynamicArea.push(
+        h(AnswerBlock, { key: 'answer', text: liveText, live: true, width })
+      );
+    }
   }
 
   if (showConfirm) {
@@ -1428,17 +1611,17 @@ function App({ store, state, onSubmit }) {
       ...dynamicArea,
     ),
     h(StatusBar, {
+      store,
       model: modelLabel,
       processing: store.processing,
       width,
       turnCount: store.turnCount,
-      tokenEstimate: estimateContextTokens(state),
-      contextLimit: getContextLimit(state.activeModel),
     }),
   );
 }
 
 function getUiBindings(store, state) {
+  const { countTokens, estimateContextTokens, getContextLimit } = require('../config');
   return {
     beginThinkingStream:    () => store.beginThinking(),
     writeThinkingDelta:     (_st, delta) => store.appendThinking(delta),
@@ -1457,12 +1640,19 @@ function getUiBindings(store, state) {
     },
     pushAction: (st, kind, title, detail) => pushAction(st, kind, title, detail),
     paint: (text) => text,
+    syncTokenEstimate: () => {
+      const estimate = estimateContextTokens(state);
+      const limit = getContextLimit(state.activeModel);
+      store.setTokenEstimate(estimate, limit);
+    },
   };
 }
 
 export async function startTUI(options = {}) {
   const { state, resumed, rehydrated } = await loadOrCreateSessionState(null, options);
+  T = getTheme(state.theme || 'dark');
   const store = new UIStore();
+  globalStore = store;
 
   state.rl = null;
   state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
@@ -1522,6 +1712,43 @@ export async function startTUI(options = {}) {
     store.addItem({ type: 'divider' });
   }
 
+  async function handleSessionsCommand(store, state, input) {
+    const { listSessions, loadSessionState } = require('../utils/sessionStorage');
+    const sessions = await listSessions();
+    if (!sessions || sessions.length === 0) {
+      store.addEvent('info', uiText('no sessions', 'sin sesiones'), '');
+      return;
+    }
+    const selected = await store.requestSelect({
+      title: uiText('Select session', 'Seleccionar sesión'),
+      items: sessions,
+      getLabel: (s) => `${s.title || s.id?.slice(0, 8) || '?'}  [${s.id?.slice(0, 8) || '?'}]  ${s.messageCount || 0} msgs`,
+    });
+    if (!selected) return;
+    const loadedState = await loadSessionState(selected, null);
+    if (!loadedState) {
+      store.addEvent('error', uiText('cannot load session', 'no se pudo cargar sesión'), '');
+      return;
+    }
+    if (Array.isArray(loadedState.history)) {
+      const lines = [];
+      for (const msg of loadedState.history.slice(-20)) {
+        if (msg.role === 'user' && msg.content) lines.push(`🧑 ${msg.content.slice(0, 200)}`);
+        else if (msg.role === 'assistant' && msg.content) lines.push(`🤖 ${msg.content.slice(0, 200)}`);
+      }
+      store.addItem({ type: 'system', text: `📋 ${uiText('Session history', 'Historial de sesión')}:\n${lines.join('\n')}` });
+    }
+    store.addEvent('info', uiText('loaded session', 'sesión cargada'), `"${loadedState.title || selected}"`);
+    state.sessionId = loadedState.sessionId;
+    state.history = loadedState.history || [];
+    state.memorySummary = loadedState.memorySummary || '';
+    state.turnCount = loadedState.turnCount || 0;
+    state.title = loadedState.title || 'New session';
+    const { saveState } = require('../utils/sessionStorage');
+    await saveState(state);
+    if (typeof ui.syncTokenEstimate === 'function') ui.syncTokenEstimate();
+  }
+
   const processInput = async (input) => {
     if (input === '/exit' || input === '/quit') {
       store.pendingExit = true;
@@ -1530,12 +1757,37 @@ export async function startTUI(options = {}) {
     }
 
     if (input === '/undo') {
-      store.undoSubmittedMessage();
+      const turn = store.undoConversationTurn();
+      if (turn && Array.isArray(state.history)) {
+        for (let i = state.history.length - 1; i >= 0; i--) {
+          const m = state.history[i];
+          if ((m.role === 'user' && m.content === turn.user) || (m.role === 'assistant' && m.content === turn.assistant)) {
+            state.history.splice(i, 1);
+          }
+        }
+        const { saveState } = require('../utils/sessionStorage');
+        await saveState(state);
+      }
+      store.addEvent('info', uiText('undo done', 'deshacer hecho'), turn ? shortTextPreview(turn.user, 80) : uiText('nothing to undo', 'nada que deshacer'));
       return;
     }
 
     if (input === '/redo') {
-      store.redoSubmittedMessage();
+      const turn = store.redoConversationTurn();
+      if (turn) {
+        if (Array.isArray(state.history)) {
+          state.history.push({ role: 'user', content: turn.user });
+          state.history.push({ role: 'assistant', content: turn.assistant });
+        }
+        const { saveState } = require('../utils/sessionStorage');
+        await saveState(state);
+      }
+      store.addEvent('info', uiText('redo done', 'rehacer hecho'), turn ? shortTextPreview(turn.user, 80) : uiText('nothing to redo', 'nada que rehacer'));
+      return;
+    }
+
+    if (input === '/sessions' || input === '/session') {
+      await handleSessionsCommand(store, state, input);
       return;
     }
 
@@ -1602,6 +1854,10 @@ export async function startTUI(options = {}) {
       if (!result.rendered && result.content) {
         store.addItem({ type: 'answer', text: result.content });
       }
+      if (result.content) {
+        store.addConversationTurn(input, result.content);
+      }
+      if (typeof ui.syncTokenEstimate === 'function') ui.syncTokenEstimate();
     } catch (err) {
       store.addEvent('error', 'error', err.message);
     } finally {

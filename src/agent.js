@@ -31,7 +31,6 @@ function createAgent(options = {}) {
     model: options.model || DEFAULT_MODEL_KEY,
     language: options.language || DEFAULT_LANGUAGE,
     autoApprove: options.autoApprove !== undefined ? Boolean(options.autoApprove) : true,
-    concuerdo: Boolean(options.concuerdo),
     personaPrompt: options.personaPrompt || '',
     userId: options.userId || 'default',
     resume: options.resume || false,
@@ -51,7 +50,6 @@ function createAgent(options = {}) {
             loaded.activeModel = config.model;
             loaded.language = config.language;
             loaded.autoApprove = config.autoApprove;
-            loaded.concuerdo = config.concuerdo;
             if (config.personaPrompt) loaded.personaPrompt = config.personaPrompt;
             state = loaded;
             return state;
@@ -67,7 +65,6 @@ function createAgent(options = {}) {
         state.activeModel = config.model;
         state.language = config.language;
         state.autoApprove = config.autoApprove;
-        state.concuerdo = config.concuerdo;
         state.personaPrompt = config.personaPrompt;
         await saveState(state);
         return state;
@@ -110,7 +107,6 @@ function createAgent(options = {}) {
         language: s.language,
         personaPrompt: s.personaPrompt,
         autoApprove: s.autoApprove,
-        concuerdo: s.concuerdo,
       });
       return taskId;
     })();

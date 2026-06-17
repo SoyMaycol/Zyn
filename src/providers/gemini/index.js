@@ -1,5 +1,3 @@
-const { parseAgentResponse } = require('../../core/prompts');
-
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 function getApiKey(config) {
@@ -129,8 +127,7 @@ async function gemini(messages, modelId, onChunk = null, options = {}) {
     }
     parser(decoder.decode());
 
-    const text = parseAgentResponse(answer.trim())?.content || answer.trim();
-    return { text, thinking: thinking.trim() };
+    return { status: true, text: answer.trim(), thinking: thinking.trim() };
   } finally {
     if (options.signal) options.signal.removeEventListener('abort', onExternalAbort);
   }

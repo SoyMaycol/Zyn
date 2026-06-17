@@ -33,7 +33,7 @@ async function readJson(filePath) {
 }
 
 function detachBackgroundTurn(options) {
-  const { taskId, sessionId, input, cwd, modelKey, language, personaPrompt, autoApprove, concuerdo } = options;
+  const { taskId, sessionId, input, cwd, modelKey, language, personaPrompt, autoApprove } = options;
   const child = spawn(process.execPath, [getCliEntry(), '--bg-run', taskId], {
     detached: true,
     stdio: 'ignore',

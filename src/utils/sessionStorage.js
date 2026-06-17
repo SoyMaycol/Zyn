@@ -31,10 +31,10 @@ function createState(rl = null) {
     liveResponse: null,
     transcriptPath: '',
     autoApprove: false,
-    concuerdo: false,
     activeModel: DEFAULT_MODEL_KEY,
     language: DEFAULT_LANGUAGE,
     personaPrompt: '',
+    theme: 'dark',
   };
 }
 
@@ -46,8 +46,8 @@ async function loadPersistentConfig() {
     autoApprove: Boolean(data.autoApprove),
     activeModel: typeof data.activeModel === 'string' && data.activeModel.trim() ? data.activeModel : undefined,
     language: normalizeLanguage(data.language || DEFAULT_LANGUAGE),
-    concuerdo: Boolean(data.concuerdo),
     personaPrompt: typeof data.personaPrompt === 'string' ? data.personaPrompt : undefined,
+    theme: typeof data.theme === 'string' && data.theme.trim() ? data.theme : undefined,
   };
 }
 
@@ -57,8 +57,8 @@ async function savePersistentConfig(state) {
     autoApprove: Boolean(state.autoApprove),
     activeModel: state.activeModel || DEFAULT_MODEL_KEY,
     language: state.language || DEFAULT_LANGUAGE,
-    concuerdo: Boolean(state.concuerdo),
     personaPrompt: state.personaPrompt || '',
+    theme: state.theme || 'dark',
   });
 }
 
@@ -193,7 +193,6 @@ function applyLoadedState(state, loaded) {
   state.turnCount = Number(loaded.turnCount ?? 0);
   state.transcriptPath = loaded.transcriptPath || getTranscriptPath(loaded.sessionId);
   state.autoApprove = Boolean(loaded.autoApprove);
-  state.concuerdo = Boolean(loaded.concuerdo);
   state.activeModel = loaded.activeModel || DEFAULT_MODEL_KEY;
   state.language = loaded.language || DEFAULT_LANGUAGE;
   state.personaPrompt = loaded.personaPrompt || '';
@@ -222,10 +221,10 @@ async function saveState(state) {
     turnCount: state.turnCount,
     transcriptPath: state.transcriptPath,
     autoApprove: Boolean(state.autoApprove),
-    concuerdo: Boolean(state.concuerdo),
     activeModel: state.activeModel || DEFAULT_MODEL_KEY,
     language: state.language || DEFAULT_LANGUAGE,
     personaPrompt: state.personaPrompt || '',
+    theme: state.theme || 'dark',
   });
   await setCurrentSessionId(state.sessionId);
   await savePersistentConfig(state);
@@ -239,8 +238,8 @@ async function applyPersistentConfig(state) {
   state.autoApprove = Boolean(persisted.autoApprove);
   state.activeModel = persisted.activeModel || state.activeModel;
   state.language = persisted.language || state.language;
-  state.concuerdo = Boolean(persisted.concuerdo);
   state.personaPrompt = persisted.personaPrompt || state.personaPrompt || '';
+  state.theme = persisted.theme || state.theme || 'dark';
   return true;
 }
 

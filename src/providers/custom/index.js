@@ -1,3 +1,5 @@
+const { REQUEST_TIMEOUT_MS } = require('../../config');
+
 async function custom(messages, model, onChunk = null, options = {}) {
   const config = options.config || {};
   const baseUrl = String(config.baseUrl || '').trim().replace(/\/+$/, '');
@@ -13,10 +15,13 @@ async function custom(messages, model, onChunk = null, options = {}) {
 
   const url = `${baseUrl}/chat/completions`;
   const controller = new AbortController();
+  const onAbort = () => controller.abort();
   if (options.signal) {
     if (options.signal.aborted) controller.abort();
-    else options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    else options.signal.addEventListener('abort', onAbort, { once: true });
   }
+
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     const res = await fetch(url, {
@@ -59,12 +64,17 @@ async function custom(messages, model, onChunk = null, options = {}) {
         try { parsed = JSON.parse(data); } catch { continue; }
         const delta = parsed?.choices?.[0]?.delta;
         if (!delta) continue;
-        const thought = delta.reasoning || delta.reasoning_details?.[0]?.text;
-        if (thought && thought.length > thinking.length) {
-          const newDelta = thought.slice(thinking.length);
-          thinking = thought;
-          if (onChunk) onChunk(newDelta, 'thinking');
+        const fullThought = delta.reasoning_content || delta.reasoning_text || delta.reasoning_details?.[0]?.text;
+        const incrementalThought = delta.reasoning;
+        let newDelta = '';
+        if (fullThought && fullThought.length > thinking.length) {
+          newDelta = fullThought.slice(thinking.length);
+          thinking = fullThought;
+        } else if (incrementalThought) {
+          newDelta = incrementalThought;
+          thinking += incrementalThought;
         }
+        if (newDelta && onChunk) onChunk(newDelta, 'thinking');
         if (delta.content) {
           answer += delta.content;
           if (onChunk) onChunk(delta.content, 'answer');
@@ -74,7 +84,8 @@ async function custom(messages, model, onChunk = null, options = {}) {
 
     return { status: true, text: answer.trim(), thinking: thinking.trim() };
   } finally {
-    if (options.signal) options.signal.removeEventListener('abort', () => controller.abort());
+    clearTimeout(timeoutId);
+    if (options.signal) options.signal.removeEventListener('abort', onAbort);
   }
 }
 

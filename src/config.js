@@ -15,75 +15,95 @@ const BUILTIN_MODELS = {
     label: 'Nemotron 3 Ultra',
     provider: 'zen',
     zenModel: 'nemotron-3-ultra-free',
+    contextLength: 128000,
   },
   'mimo': {
     label: 'Mimo 2.5',
     provider: 'zen',
     zenModel: 'mimo-v2.5-free',
+    contextLength: 128000,
   },
   'north-mini': {
     label: 'North Mini Code',
     provider: 'zen',
     zenModel: 'north-mini-code-free',
+    contextLength: 128000,
   },
-  'deepseek': {
-    label: 'DeepSeek V4 Flash',
+  'deepseek-zen': {
+    label: 'DeepSeek V4 Flash (Zen)',
     provider: 'zen',
     zenModel: 'deepseek-v4-flash-free',
+    contextLength: 128000,
   },
   'qwen-plus': {
     label: 'Qwen Plus',
     provider: 'qwenapi',
     qwenapiModel: 'qwen-plus',
+    contextLength: 131072,
   },
   'qwen-max': {
     label: 'Qwen Max',
     provider: 'qwenapi',
     qwenapiModel: 'qwen-max',
+    contextLength: 32000,
   },
   'qwen-turbo': {
     label: 'Qwen Turbo',
     provider: 'qwenapi',
     qwenapiModel: 'qwen-turbo',
+    contextLength: 1000000,
   },
   'gemini-flash': {
     label: 'Gemini 2.5 Flash',
     provider: 'gemini',
     geminiModel: 'gemini-2.5-flash',
+    contextLength: 1000000,
   },
   'gemini-flash-001': {
     label: 'Gemini 2.5 Flash 001',
     provider: 'gemini',
     geminiModel: 'gemini-2.5-flash-001',
+    contextLength: 1000000,
   },
   'gemini-pro': {
     label: 'Gemini 2.5 Pro',
     provider: 'gemini',
     geminiModel: 'gemini-2.5-pro',
+    contextLength: 1000000,
   },
   'gemini-flash-lite': {
     label: 'Gemini 2.5 Flash Lite',
     provider: 'gemini',
     geminiModel: 'gemini-2.5-flash-lite',
+    contextLength: 1000000,
   },
   'gemini-flash-lite-001': {
     label: 'Gemini 2.5 Flash Lite 001',
     provider: 'gemini',
     geminiModel: 'gemini-2.5-flash-lite-001',
+    contextLength: 1000000,
   },
   'gemma-3': {
     label: 'Gemma 3 27B',
     provider: 'gemini',
     geminiModel: 'gemma-3-27b-it',
+    contextLength: 128000,
   },
   'hf-ling-2.6-1t': {
     label: 'InclusionAI Ling 2.6 1T',
     provider: 'huggingface',
     huggingfaceModel: 'inclusionai/ling-2.6-1t',
+    contextLength: 128000,
+  },
+  'deepseek': {
+    label: 'DeepSeek V4 Flash',
+    provider: 'deepseek',
+    deepseekChatModel: 'default',
+    contextLength: 128000,
   },
 };
 
-const SUPPORTED_MODEL_PROVIDERS = new Set(['qwenapi', 'zen', 'gemini', 'huggingface', 'custom']);
+const SUPPORTED_MODEL_PROVIDERS = new Set(['qwenapi', 'zen', 'gemini', 'huggingface', 'custom', 'deepseek']);
 const GEMINI_MODEL_WARNING = '';
 
 function readJsonFile(filePath) {
@@ -135,29 +155,12 @@ const MAX_TOOL_STEPS = Number.POSITIVE_INFINITY;
 const MAX_OUTPUT_CHARS = 12000;
 const MAX_FILE_LINES = 5000;
 const ACTION_LOG_LIMIT = 40;
-const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 180000);
+const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 900000);
 const MAX_HISTORY_CHARS = 60000;
 const KEEP_RECENT_MESSAGES = 50;
 const AUTO_COMPACT_THRESHOLD = 0.85;
 
 const DEFAULT_CONTEXT_LIMIT = 128000;
-
-const MODEL_CONTEXT_LIMITS = {
-  'nemotron': 128000,
-  'mimo': 128000,
-  'north-mini': 128000,
-  'deepseek': 128000,
-  'qwen-plus': 131072,
-  'qwen-max': 131072,
-  'qwen-turbo': 131072,
-  'gemini-flash': 1000000,
-  'gemini-flash-001': 1000000,
-  'gemini-pro': 1000000,
-  'gemini-flash-lite': 1000000,
-  'gemini-flash-lite-001': 1000000,
-  'gemma-3': 8192,
-  'hf-ling-2.6-1t': 32000,
-};
 
 function countTokens(str) {
   if (!str) return 0;
@@ -176,7 +179,8 @@ function estimateContextTokens(state) {
 }
 
 function getContextLimit(modelKey) {
-  return MODEL_CONTEXT_LIMITS[modelKey] || DEFAULT_CONTEXT_LIMIT;
+  const model = MODELS[modelKey];
+  return (model && model.contextLength) || DEFAULT_CONTEXT_LIMIT;
 }
 
 function stripBase64Images(text) {
@@ -184,8 +188,8 @@ function stripBase64Images(text) {
   const base64LineRe = /^[A-Za-z0-9+/]{200,}={0,2}$/gm;
   return text.replace(base64LineRe, '[base64 image data removed]');
 }
-const PROVIDER_TIMEOUT_RETRY_DELAY_MS = Number(process.env.ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS || 600000);
-const PROVIDER_TIMEOUT_MAX_ATTEMPTS = 3;
+const PROVIDER_TIMEOUT_RETRY_DELAY_MS = Number(process.env.ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS || 5000);
+const PROVIDER_TIMEOUT_MAX_ATTEMPTS = 4;
 const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
 const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
 const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
@@ -247,7 +251,6 @@ module.exports = {
   MAX_HISTORY_CHARS,
   MAX_OUTPUT_CHARS,
   MAX_TOOL_STEPS,
-  MODEL_CONTEXT_LIMITS,
   MODELS,
   MODELS_FILE,
   PROVIDERS_FILE,

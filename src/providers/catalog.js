@@ -143,6 +143,7 @@ function describeProviderConfig(providerKey) {
 const SETTABLE_PROVIDER_FIELDS = new Set([
   'apiKey', 'baseUrl', 'email', 'password', 'model', 'modelId',
   'chatEndpoint', 'modelEndpoint', 'username', 'authHeader', 'authPrefix',
+  'contextLength', 'hifLeim',
 ]);
 
 function setProviderField(providerKey, field, value) {
@@ -216,6 +217,7 @@ function buildModelRecord(providerKey, config, modelId, label, extra = {}) {
   if (config?.apiKey) record.apiKey = config.apiKey;
   if (config?.modelEndpoint) record.modelEndpoint = config.modelEndpoint;
   if (config?.chatEndpoint) record.chatEndpoint = config.chatEndpoint;
+  if (config?.contextLength) record.contextLength = Number(config.contextLength);
   return record;
 }
 
@@ -232,6 +234,7 @@ async function fetchZenModels(config) {
     model.name || titleize(model.id || model.name),
     {
       zenModel: model.id || model.name,
+      contextLength: Number(model.context_length || model.max_tokens || model.max_context_length || 0) || undefined,
       raw: model,
     },
   )).filter(item => item.modelId);
@@ -249,7 +252,11 @@ async function fetchQwenapiModels(config) {
       { ...config, baseUrl },
       model.id,
       model.name || model.id,
-      { qwenapiModel: model.id, raw: model },
+      {
+        qwenapiModel: model.id,
+        contextLength: Number(model.context_length || model.max_tokens || model.max_context_length || 0) || undefined,
+        raw: model,
+      },
     )).filter(item => item.modelId);
   } catch {
     const fallback = [
@@ -273,6 +280,7 @@ async function fetchGeminiModels(config) {
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
   ];
+  const GEMINI_CONTEXT = { 'gemini-2.5-pro': 1000000, 'gemini-2.5-flash': 1000000, 'gemini-2.5-flash-lite': 1000000 };
   return models.map(model => buildModelRecord(
     'gemini',
     config,
@@ -281,6 +289,7 @@ async function fetchGeminiModels(config) {
     {
       geminiModel: model.id,
       static: true,
+      contextLength: GEMINI_CONTEXT[model.id],
     },
   ));
 }
@@ -308,6 +317,7 @@ async function fetchCustomModels(config) {
         model.name || titleize(model.id || model.name || model.model),
         {
           customModel: model.id || model.name || model.model,
+          contextLength: Number(model.context_length || model.max_tokens || model.max_context_length || 0) || undefined,
           raw: model,
         },
       )).filter(item => item.modelId);
@@ -329,6 +339,24 @@ async function fetchCustomModels(config) {
   throw new Error(`No se pudieron listar modelos custom: ${lastError?.message || 'sin respuesta'}`);
 }
 
+async function fetchDeepseekModels(config) {
+  const models = [
+    { id: 'default', label: 'DeepSeek V4 Flash' },
+    { id: 'deepseek-v4', label: 'DeepSeek V4' },
+  ];
+  return models.map(model => buildModelRecord(
+    'deepseek',
+    config,
+    model.id,
+    model.label,
+    {
+      deepseekChatModel: model.id,
+      static: true,
+      contextLength: 128000,
+    },
+  ));
+}
+
 async function fetchHuggingFaceModels(config) {
   const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://router.huggingface.co');
   const apiKey = String(config.apiKey || '').trim();
@@ -344,6 +372,7 @@ async function fetchHuggingFaceModels(config) {
       model.name || titleize(model.id || model.modelId || model.name),
       {
         huggingfaceModel: model.id || model.modelId || model.name,
+        contextLength: Number(model.context_length || model.max_tokens || model.max_context_length || 0) || undefined,
         raw: model,
       },
     )).filter(item => item.modelId);
@@ -363,13 +392,14 @@ async function fetchHuggingFaceModels(config) {
 
 async function fetchProviderModels(providerKey, config = {}) {
   const key = String(providerKey || '').trim();
-  if (!SUPPORTED_MODEL_PROVIDERS.has(key)) throw new Error(`Proveedor no soportado: ${key}. Usa /provider set ${key} para configurar.`);
   if (key === 'qwenapi') return fetchQwenapiModels(config);
   if (key === 'gemini') return fetchGeminiModels(config);
   if (key === 'zen') return fetchZenModels(config);
   if (key === 'huggingface') return fetchHuggingFaceModels(config);
+  if (key === 'deepseek') return fetchDeepseekModels(config);
   if (key === 'custom') return fetchCustomModels(config);
-  throw new Error(`Proveedor no soportado: ${key}`);
+  if (config?.baseUrl) return fetchCustomModels(config);
+  throw new Error(`Proveedor no soportado: ${key}. No tiene baseUrl configurada. Usa /provider set ${key} baseUrl <url> primero.`);
 }
 
 function mergeProviderModels(providerKey, models) {

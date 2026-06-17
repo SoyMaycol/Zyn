@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const { HUGGINGFACE_TOKEN } = require('../../config');
 const { PERSISTENT_CONFIG_FILE } = require('../../config');
+const { REQUEST_TIMEOUT_MS } = require('../../config');
 
 const HF_INFERENCE_URL = 'https://api-inference.huggingface.co';
 
@@ -67,6 +68,8 @@ async function huggingface(messages, modelId, onChunk = null, options = {}) {
     else options.signal.addEventListener('abort', onAbort, { once: true });
   }
 
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     const res = await fetch(baseUrl, {
       method: 'POST',
@@ -116,12 +119,17 @@ async function huggingface(messages, modelId, onChunk = null, options = {}) {
         try { parsed = JSON.parse(data); } catch { continue; }
         const delta = parsed?.choices?.[0]?.delta;
         if (!delta) continue;
-        const thought = delta.reasoning || delta.reasoning_details?.[0]?.text;
-        if (thought && thought.length > thinking.length) {
-          const newDelta = thought.slice(thinking.length);
-          thinking = thought;
-          if (onChunk) onChunk(newDelta, 'thinking');
+        const fullThought = delta.reasoning_content || delta.reasoning_text || delta.reasoning_details?.[0]?.text;
+        const incrementalThought = delta.reasoning;
+        let newDelta = '';
+        if (fullThought && fullThought.length > thinking.length) {
+          newDelta = fullThought.slice(thinking.length);
+          thinking = fullThought;
+        } else if (incrementalThought) {
+          newDelta = incrementalThought;
+          thinking += incrementalThought;
         }
+        if (newDelta && onChunk) onChunk(newDelta, 'thinking');
         if (delta.content) {
           answer += delta.content;
           if (onChunk) onChunk(delta.content, 'answer');
@@ -133,6 +141,7 @@ async function huggingface(messages, modelId, onChunk = null, options = {}) {
 
     return { status: true, text: answer.trim(), thinking: thinking.trim() };
   } finally {
+    clearTimeout(timeoutId);
     if (options.signal) options.signal.removeEventListener('abort', onAbort);
   }
 }

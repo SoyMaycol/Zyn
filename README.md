@@ -1,4 +1,4 @@
-# Zyn Agent
+# Zyn
 
 <p align="center">
   <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
@@ -23,11 +23,12 @@
 
 ## Features
 
-- **CLI + TUI** — full terminal UI with keyboard navigation, command suggestions, and overlay system
-- **Multi-provider** — Zen (free, no config), Gemini, Qwen (DashScope), HuggingFace, custom providers
+- **CLI + TUI** — full terminal UI with keyboard navigation, token display, history compaction, and overlay system
+- **Multi-provider** — Zen (free, no config), Gemini, Qwen (DashScope), HuggingFace, custom providers (any OpenAI-compatible API)
 - **Skills system** — folder-based skills with YAML frontmatter that guide agent behavior
 - **Tool execution** — read/write files, run commands, search code, browse web, glob patterns
-- **Session management** — persistent sessions with full transcript replay, resume, export
+- **Session management** — persistent sessions with auto-compaction, full transcript replay, resume, export
+- **Context tracking** — token estimator with per-model context limits, auto-compaction at 85% threshold
 - **Multi-platform** — embeddable in WhatsApp (Baileys), Discord, and Telegram bots
 - **Background workers** — detach long-running turns to background processes
 - **i18n** — English and Spanish interfaces
@@ -65,41 +66,41 @@ zyn --resume ID      # Resume existing session
 
 ## Models
 
-14 built-in models across 4 providers:
+14 built-in models across 4 providers. Each model has its real context length in the StatusBar (e.g. `10.8K/128K`).
 
 ### Zen (free, no configuration)
 
-| Key | Model |
-|---|---|
-| `nemotron` | Nemotron 3 Ultra |
-| `mimo` | Mimo 2.5 |
-| `north-mini` | North Mini Code |
-| `deepseek` | DeepSeek V4 Flash |
+| Key | Model | Context |
+|---|---|---|
+| `nemotron` | Nemotron 3 Ultra | 128K |
+| `mimo` | Mimo 2.5 | 128K |
+| `north-mini` | North Mini Code | 128K |
+| `deepseek` | DeepSeek V4 Flash | 128K |
 
 ### Gemini (requires API key)
 
-| Key | Model |
-|---|---|
-| `gemini-flash` | Gemini 2.5 Flash |
-| `gemini-flash-001` | Gemini 2.5 Flash 001 |
-| `gemini-pro` | Gemini 2.5 Pro |
-| `gemini-flash-lite` | Gemini 2.5 Flash Lite |
-| `gemini-flash-lite-001` | Gemini 2.5 Flash Lite 001 |
-| `gemma-3` | Gemma 3 27B |
+| Key | Model | Context |
+|---|---|---|
+| `gemini-flash` | Gemini 2.5 Flash | 1M |
+| `gemini-flash-001` | Gemini 2.5 Flash 001 | 1M |
+| `gemini-pro` | Gemini 2.5 Pro | 1M |
+| `gemini-flash-lite` | Gemini 2.5 Flash Lite | 1M |
+| `gemini-flash-lite-001` | Gemini 2.5 Flash Lite 001 | 1M |
+| `gemma-3` | Gemma 3 27B | 128K |
 
 ### Qwen (requires DashScope API key)
 
-| Key | Model |
-|---|---|
-| `qwen-plus` | Qwen Plus |
-| `qwen-max` | Qwen Max |
-| `qwen-turbo` | Qwen Turbo |
+| Key | Model | Context |
+|---|---|---|
+| `qwen-plus` | Qwen Plus | 128K |
+| `qwen-max` | Qwen Max | 32K |
+| `qwen-turbo` | Qwen Turbo | 1M |
 
 ### HuggingFace (requires HF token)
 
-| Key | Model |
-|---|---|
-| `hf-ling-2.6-1t` | InclusionAI Ling 2.6 1T |
+| Key | Model | Context |
+|---|---|---|
+| `hf-ling-2.6-1t` | InclusionAI Ling 2.6 1T | 128K |
 
 Default model: `nemotron` (Zen, no configuration required).
 
@@ -124,10 +125,14 @@ Default model: `nemotron` (Zen, no configuration required).
 | Command | Description |
 |---|---|
 | `/models` | Open model picker (current provider) |
-| `/providers` | Open provider picker → configure → pick model |
+| `/providers` | Open interactive provider picker → configure → pick model |
+| `/provider list` | List configured providers and their fields |
+| `/provider sync <name>` | Fetch models from a provider's API |
+| `/provider set <name> <field> <value>` | Set provider config (apiKey, baseUrl, modelId, contextLength) |
+| `/provider remove <name>` | Remove a provider configuration |
 | `/lang <en\|es>` | Change language |
 | `/auto on\|off` | Toggle auto-approval |
-| `/concuerdo` | Toggle group model mode |
+| `/concuerdo` | Toggle group model mode (queries all configured models) |
 | `/persona set <text>` | Set response persona |
 | `/config show` | Show config |
 | `/git set\|list\|remove` | Manage git credentials |
@@ -155,6 +160,21 @@ Default model: `nemotron` (Zen, no configuration required).
 | `/exit` | Exit |
 
 Press `ESC` twice in the TUI to stop the current task.
+
+## Custom Providers
+
+Add any OpenAI-compatible API:
+
+```bash
+# Interactive: run /providers → select "+ Add custom provider"
+# Or manual:
+/provider set groq baseUrl https://api.groq.com/openai/v1
+/provider set groq apiKey gsk_xxxx
+/provider set groq contextLength 128000
+/provider sync groq
+```
+
+Configurable fields: `apiKey`, `baseUrl`, `modelId`, `contextLength`, `email`, `password`, `modelEndpoint`, `chatEndpoint`.
 
 ## Skills
 
@@ -210,12 +230,15 @@ Install the corresponding `optionalDependencies` only if you need them.
 
 | Variable | Description |
 |---|---|
+| Variable | Description |
+|---|---|
 | `ZYN_DEFAULT_MODEL` | Override default model key |
 | `ZYN_DEFAULT_LANG` | Default language (`en` or `es`) |
 | `ZYN_GEMINI_API_KEY` | Gemini API key |
 | `ZYN_QWEN_API_KEY` | DashScope API key |
 | `ZYN_HUGGINGFACE_TOKEN` | HuggingFace token |
 | `ZYN_REQUEST_TIMEOUT_MS` | Request timeout (default: 180000) |
+| `ZYN_PROVIDER_TIMEOUT_MAX_ATTEMPTS` | Retry attempts on provider failure (default: 3) |
 | `ZYN_GMAIL_CLIENT_SECRET` | Gmail OAuth client secret |
 
 ## License

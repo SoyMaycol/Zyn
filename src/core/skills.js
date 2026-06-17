@@ -31,11 +31,36 @@ function readSkillFolder(folderPath) {
   const { meta, body } = parseFrontmatter(raw);
   const name = meta.name || path.basename(folderPath);
   const description = meta.description || '';
+
+  const extraFiles = [];
+  try {
+    const entries = fs.readdirSync(folderPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name !== 'SKILL.md') {
+        const ext = path.extname(entry.name).toLowerCase();
+        if (['.js', '.py', '.ts', '.mjs', '.sh', '.yaml', '.json', '.txt', '.md'].includes(ext)) {
+          const filePath = path.join(folderPath, entry.name);
+          const content = fs.readFileSync(filePath, 'utf8');
+          extraFiles.push({ name: entry.name, content, ext });
+        }
+      }
+    }
+  } catch {}
+
+  let fullBody = body;
+  if (extraFiles.length > 0) {
+    fullBody += '\n\n## Code Files\nThe following code files are available in this skill folder:\n';
+    for (const f of extraFiles) {
+      fullBody += `\n### ${f.name}\n\`\`\`${f.ext.slice(1)}\n${f.content}\n\`\`\`\n`;
+    }
+  }
+
   return {
     name,
     description,
     title: body.split('\n').find(line => line.startsWith('# '))?.replace(/^#+\s*/, '') || name,
-    body,
+    body: fullBody,
+    extraFiles,
   };
 }
 

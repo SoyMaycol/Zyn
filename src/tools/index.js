@@ -7,6 +7,10 @@ const fsp = fs.promises;
 const {
   MAX_FILE_LINES,
 } = require('../config');
+
+function t(lang, es, en) {
+  return lang === 'es' ? es : en;
+}
 const {
   buildApiHeaders,
   buildCloneUrl,
@@ -238,35 +242,35 @@ function getToolPromptText() {
   ].join('\n');
 }
 
-function printTools() {
-  console.log('Herramientas disponibles:');
+function printTools(lang) {
+  console.log(t(lang, 'Herramientas disponibles:', 'Available tools:'));
   for (const tool of TOOL_DEFINITIONS) {
     console.log(`  ${tool.name} ${tool.usage}`);
   }
 }
 
-function describeToolCall(call) {
+function describeToolCall(call, lang) {
   switch (call.tool) {
     case 'list_dir':
-      return `Listando ${call.args.path ?? '.'}`;
+      return t(lang, `Listando ${call.args.path ?? '.'}`, `Listing ${call.args.path ?? '.'}`);
     case 'read_file':
-      return `Leyendo ${call.args.path}`;
+      return t(lang, `Leyendo ${call.args.path}`, `Reading ${call.args.path}`);
     case 'search_text':
-      return `Buscando "${shortText(call.args.pattern, 40)}" en ${call.args.path ?? '.'}`;
+      return t(lang, `Buscando "${shortText(call.args.pattern, 40)}" en ${call.args.path ?? '.'}`, `Searching "${shortText(call.args.pattern, 40)}" in ${call.args.path ?? '.'}`);
     case 'glob_files':
-      return `Patron ${shortText(call.args.pattern, 50)} en ${call.args.path ?? '.'}`;
+      return t(lang, `Patron ${shortText(call.args.pattern, 50)} en ${call.args.path ?? '.'}`, `Pattern ${shortText(call.args.pattern, 50)} in ${call.args.path ?? '.'}`);
     case 'file_info':
-      return `Inspeccionando ${call.args.path}`;
+      return t(lang, `Inspeccionando ${call.args.path}`, `Inspecting ${call.args.path}`);
     case 'run_command':
-      return `Comando ${shortText(call.args.command, 70)}`;
+      return t(lang, `Comando ${shortText(call.args.command, 70)}`, `Command ${shortText(call.args.command, 70)}`);
     case 'make_dir':
-      return `Creando carpeta ${call.args.path}`;
+      return t(lang, `Creando carpeta ${call.args.path}`, `Creating folder ${call.args.path}`);
     case 'write_file':
-      return `Escribiendo ${call.args.path}`;
+      return t(lang, `Escribiendo ${call.args.path}`, `Writing ${call.args.path}`);
     case 'append_file':
-      return `Anexando ${call.args.path}`;
+      return t(lang, `Anexando ${call.args.path}`, `Appending ${call.args.path}`);
     case 'replace_in_file':
-      return `Editando ${call.args.path}`;
+      return t(lang, `Editando ${call.args.path}`, `Editing ${call.args.path}`);
     case 'fetch_url': {
       const cleanedUrl = cleanUrl(call.args.url || '');
       const sel = call.args.selector ? ` → ${shortText(call.args.selector, 30)}` : '';
@@ -281,21 +285,21 @@ function describeToolCall(call) {
     case 'scrape_site':
       return `Scraping ${shortText(cleanUrl(call.args.url || ''), 50)}`;
     case 'web_search':
-      return `Buscando "${shortText(call.args.query || '', 50)}"`;
+      return t(lang, `Buscando "${shortText(call.args.query || '', 50)}"`, `Searching "${shortText(call.args.query || '', 50)}"`);
     case 'web_read': {
       const readUrl = cleanUrl(call.args.url || '');
-      return `Leyendo ${shortText(readUrl, 60)}`;
+      return t(lang, `Leyendo ${shortText(readUrl, 60)}`, `Reading ${shortText(readUrl, 60)}`);
     }
     case 'upload_file':
-      return `Subiendo ${call.args.path}`;
+      return t(lang, `Subiendo ${call.args.path}`, `Uploading ${call.args.path}`);
     case 'gmail':
       return `Gmail ${call.args.action || 'status'}`;
     case 'create_canvas_image':
-      return `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`;
+      return t(lang, `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`, `Creating image ${call.args.width || '?'}x${call.args.height || '?'}`);
     case 'git':
       return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
     case 'load_skill':
-      return `Cargando skill "${call.args.name || '?'}"`;
+      return t(lang, `Cargando skill "${call.args.name || '?'}"`, `Loading skill "${call.args.name || '?'}"`);
     default:
       return call.tool;
   }
@@ -492,13 +496,13 @@ async function loadSkillTool(args) {
   if (!name) {
     const all = listSkills();
     const list = all.map(s => `- \`${s.name}\` — ${s.description || s.title || ''}`).join('\n');
-    throw new Error(`load_skill requiere name. Skills disponibles:\n${list}`);
+    throw new Error(t(state?.language, `load_skill requiere name. Skills disponibles:\n${list}`, `load_skill requires name. Available skills:\n${list}`));
   }
   const skill = loadSkill(name);
   if (!skill) {
     const all = listSkills();
     const list = all.map(s => `- \`${s.name}\` — ${s.description || s.title || ''}`).join('\n');
-    throw new Error(`Skill "${name}" no encontrada. Skills disponibles:\n${list}`);
+    throw new Error(t(state?.language, `Skill "${name}" no encontrada. Skills disponibles:\n${list}`, `Skill "${name}" not found. Available skills:\n${list}`));
   }
   const maxChars = 12000;
   const body = skill.body.length > maxChars
@@ -526,7 +530,7 @@ async function readFileTool(args, state) {
 
 async function searchTextTool(args, state, ctx) {
   if (!args.pattern || typeof args.pattern !== 'string') {
-    throw new Error('search_text requiere pattern');
+    throw new Error(t(state?.language, 'search_text requiere pattern', 'search_text requires pattern'));
   }
 
   const targetPath = resolveInputPath(args.path ?? '.', state.cwd);
@@ -549,7 +553,7 @@ async function searchTextTool(args, state, ctx) {
   }
 
   if (result.code !== 0) {
-    throw new Error(result.stderr.trim() || `rg fallo con codigo ${result.code}`);
+    throw new Error(result.stderr.trim() || t(state?.language, `rg fallo con codigo ${result.code}`, `rg failed with code ${result.code}`));
   }
 
   return truncateText(result.stdout.trim() || `Sin coincidencias en ${targetPath}`);
@@ -557,7 +561,7 @@ async function searchTextTool(args, state, ctx) {
 
 async function globFilesTool(args, state) {
   if (!args.pattern || typeof args.pattern !== 'string') {
-    throw new Error('glob_files requiere pattern');
+    throw new Error(t(state?.language, 'glob_files requiere pattern', 'glob_files requires pattern'));
   }
 
   const targetPath = resolveInputPath(args.path ?? '.', state.cwd);
@@ -575,7 +579,7 @@ async function globFilesTool(args, state) {
 
 async function fileInfoTool(args, state) {
   if (!args.path || typeof args.path !== 'string') {
-    throw new Error('file_info requiere path');
+    throw new Error(t(state?.language, 'file_info requiere path', 'file_info requires path'));
   }
 
   const targetPath = resolveInputPath(args.path, state.cwd);
@@ -591,7 +595,7 @@ async function fileInfoTool(args, state) {
 
 async function runCommandTool(args, state, paint, ctx) {
   if (!args.command || typeof args.command !== 'string') {
-    throw new Error('run_command requiere command');
+    throw new Error(t(state?.language, 'run_command requiere command', 'run_command requires command'));
   }
 
   const command = cleanCommand(args.command);
@@ -635,7 +639,7 @@ async function runCommandTool(args, state, paint, ctx) {
 
 async function makeDirTool(args, state, paint) {
   if (!args.path || typeof args.path !== 'string') {
-    throw new Error('make_dir requiere path');
+    throw new Error(t(state?.language, 'make_dir requiere path', 'make_dir requires path'));
   }
 
   const targetPath = resolveInputPath(args.path, state.cwd);
@@ -657,11 +661,11 @@ async function makeDirTool(args, state, paint) {
 
 async function writeFileTool(args, state, paint) {
   if (!args.path || typeof args.path !== 'string') {
-    throw new Error('write_file requiere path');
+    throw new Error(t(state?.language, 'write_file requiere path', 'write_file requires path'));
   }
 
   if (typeof args.content !== 'string') {
-    throw new Error('write_file requiere content');
+    throw new Error(t(state?.language, 'write_file requiere content', 'write_file requires content'));
   }
 
   const targetPath = resolveInputPath(args.path, state.cwd);
@@ -686,11 +690,11 @@ async function writeFileTool(args, state, paint) {
 
 async function appendFileTool(args, state, paint) {
   if (!args.path || typeof args.path !== 'string') {
-    throw new Error('append_file requiere path');
+    throw new Error(t(state?.language, 'append_file requiere path', 'append_file requires path'));
   }
 
   if (typeof args.content !== 'string') {
-    throw new Error('append_file requiere content');
+    throw new Error(t(state?.language, 'append_file requiere content', 'append_file requires content'));
   }
 
   const targetPath = resolveInputPath(args.path, state.cwd);
@@ -714,11 +718,11 @@ async function appendFileTool(args, state, paint) {
 
 async function replaceInFileTool(args, state, paint) {
   if (!args.path || typeof args.path !== 'string') {
-    throw new Error('replace_in_file requiere path');
+    throw new Error(t(state?.language, 'replace_in_file requiere path', 'replace_in_file requires path'));
   }
 
   if (typeof args.search !== 'string' || typeof args.replace !== 'string') {
-    throw new Error('replace_in_file requiere search y replace');
+    throw new Error(t(state?.language, 'replace_in_file requiere search y replace', 'replace_in_file requires search and replace'));
   }
 
   const targetPath = resolveInputPath(args.path, state.cwd);
@@ -726,7 +730,7 @@ async function replaceInFileTool(args, state, paint) {
   const matches = content.split(args.search).length - 1;
 
   if (matches === 0) {
-    throw new Error('No encontre el texto a reemplazar');
+    throw new Error(t(state?.language, 'No encontre el texto a reemplazar', 'Text to replace not found'));
   }
 
   const nextContent = args.all
@@ -734,7 +738,7 @@ async function replaceInFileTool(args, state, paint) {
     : content.replace(args.search, args.replace);
 
   if (nextContent === content) {
-    throw new Error('El reemplazo no produjo cambios');
+    throw new Error(t(state?.language, 'El reemplazo no produjo cambios', 'Replacement produced no changes'));
   }
 
   const allowed = await askConfirmation(
@@ -807,7 +811,7 @@ function cleanCommand(raw) {
 
 async function fetchUrlTool(args, state, paint) {
   if (!args.url || typeof args.url !== 'string') {
-    throw new Error('fetch_url requiere url');
+    throw new Error(t(state?.language, 'fetch_url requiere url', 'fetch_url requires url'));
   }
 
   const url = cleanUrl(args.url);
@@ -816,11 +820,11 @@ async function fetchUrlTool(args, state, paint) {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`URL invalida: ${url}`);
+    throw new Error(t(state?.language, `URL invalida: ${url}`, `Invalid URL: ${url}`));
   }
 
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Solo se permite http y https');
+    throw new Error(t(state?.language, 'Solo se permite http y https', 'Only http and https allowed'));
   }
 
   const detail = args.selector
@@ -916,7 +920,7 @@ async function fetchUrlTool(args, state, paint) {
 }
 
 async function fetchHttpTool(args, state, paint) {
-  if (!args.url || typeof args.url !== 'string') throw new Error('fetch_http requiere url');
+  if (!args.url || typeof args.url !== 'string') throw new Error(t(state?.language, 'fetch_http requiere url', 'fetch_http requires url'));
   const method = String(args.method || 'GET').toUpperCase();
   const url = cleanUrl(args.url);
   const detail = `${method} ${url}`;
@@ -1012,14 +1016,14 @@ function guessContentType(filePath) {
 }
 
 async function uploadFileTool(args, state, paint) {
-  if (!args.path || typeof args.path !== 'string') throw new Error('upload_file requiere path');
+  if (!args.path || typeof args.path !== 'string') throw new Error(t(state?.language, 'upload_file requiere path', 'upload_file requires path'));
   const filePath = resolveInputPath(args.path, state.cwd);
   const stats = await fsp.stat(filePath).catch(() => null);
-  if (!stats?.isFile()) throw new Error(`Archivo no encontrado: ${filePath}`);
+  if (!stats?.isFile()) throw new Error(t(state?.language, `Archivo no encontrado: ${filePath}`, `File not found: ${filePath}`));
 
   const maxBytes = 5 * 1024 * 1024;
   if (stats.size > maxBytes) {
-    throw new Error(`El archivo supera el limite de 5 MB (${stats.size} bytes)`);
+    throw new Error(t(state?.language, `El archivo supera el limite de 5 MB (${stats.size} bytes)`, `File exceeds 5 MB limit (${stats.size} bytes)`));
   }
 
   const endpoint = 'https://cdn.soymaycol.icu/upload';
@@ -1049,10 +1053,10 @@ async function uploadFileTool(args, state, paint) {
   let payload = null;
   try { payload = JSON.parse(text); } catch {}
   if (!res.ok) {
-    throw new Error(`Upload fallo (${res.status}): ${shortText(text, 500)}`);
+    throw new Error(t(state?.language, `Upload fallo (${res.status}): ${shortText(text, 500)}`, `Upload failed (${res.status}): ${shortText(text, 500)}`));
   }
   if (!payload || typeof payload.link !== 'string' || !payload.link.trim()) {
-    throw new Error(`Respuesta de upload invalida: ${shortText(text, 500)}`);
+    throw new Error(t(state?.language, `Respuesta de upload invalida: ${shortText(text, 500)}`, `Invalid upload response: ${shortText(text, 500)}`));
   }
 
   return [
@@ -1163,7 +1167,7 @@ async function gmailTool(args = {}, state, paint) {
   }
 
   if (action === 'read') {
-    if (!args.id || typeof args.id !== 'string') throw new Error('gmail read requiere id');
+    if (!args.id || typeof args.id !== 'string') throw new Error(t(state?.language, 'gmail read requiere id', 'gmail read requires id'));
     const message = await gmailApiRequest('GET', `/users/me/messages/${encodeURIComponent(args.id)}`, {
       query: { format: 'full' },
     });
@@ -1177,7 +1181,7 @@ async function gmailTool(args = {}, state, paint) {
   }
 
   if (action === 'send') {
-    if (!args.to || !args.subject || !args.body) throw new Error('gmail send requiere to, subject y body');
+    if (!args.to || !args.subject || !args.body) throw new Error(t(state?.language, 'gmail send requiere to, subject y body', 'gmail send requires to, subject and body'));
     const allowed = await askConfirmation(
       state.rl,
       'Enviar correo por Gmail',
@@ -1192,12 +1196,12 @@ async function gmailTool(args = {}, state, paint) {
     return [`Correo enviado.`, `ID: ${data.id || '-'}`, `Thread: ${data.threadId || '-'}`].join('\n');
   }
 
-  throw new Error('gmail action invalida. Usa status, list, read o send.');
+  throw new Error(t(state?.language, 'gmail action invalida. Usa status, list, read o send.', 'Invalid gmail action. Use status, list, read or send.'));
 }
 
 async function scrapeSiteTool(args, state, paint) {
-  if (!args.url || typeof args.url !== 'string') throw new Error('scrape_site requiere url');
-  if (!args.selectors || typeof args.selectors !== 'object') throw new Error('scrape_site requiere selectors objeto');
+  if (!args.url || typeof args.url !== 'string') throw new Error(t(state?.language, 'scrape_site requiere url', 'scrape_site requires url'));
+  if (!args.selectors || typeof args.selectors !== 'object') throw new Error(t(state?.language, 'scrape_site requiere selectors objeto', 'scrape_site requires selectors object'));
   const url = cleanUrl(args.url);
   const allowed = await askConfirmation(state.rl, 'Scrape site', `GET ${url}`, paint, state);
   if (!allowed) return 'Scraping cancelado.';
@@ -1267,7 +1271,7 @@ function htmlToMarkdown(html) {
 
 async function webfetchTool(args, state, paint) {
   const rawUrl = String(args.url || '').trim();
-  if (!rawUrl) throw new Error('webfetch requiere url');
+  if (!rawUrl) throw new Error(t(state?.language, 'webfetch requiere url', 'webfetch requires url'));
   const url = cleanUrl(rawUrl);
   const allowed = await askConfirmation(state.rl, 'WebFetch HTML → Markdown', `GET ${url}`, paint, state);
   if (!allowed) return 'WebFetch cancelado por el usuario.';
@@ -1289,7 +1293,7 @@ async function webfetchTool(args, state, paint) {
   });
   const ct = String(res.headers['content-type'] || '').toLowerCase();
   if (!ct.includes('text/html')) {
-    throw new Error(`webfetch solo permite HTML. Content-Type recibido: ${ct || 'desconocido'}`);
+    throw new Error(t(state?.language, `webfetch solo permite HTML. Content-Type recibido: ${ct || 'desconocido'}`, `webfetch only allows HTML. Content-Type received: ${ct || 'unknown'}`));
   }
   const html = typeof res.data === 'string' ? res.data : String(res.data || '');
   const markdown = htmlToMarkdown(html);
@@ -1298,7 +1302,7 @@ async function webfetchTool(args, state, paint) {
 
 async function webSearchTool(args, state, paint) {
   const query = (args.query || '').trim();
-  if (!query) throw new Error('web_search requiere query');
+  if (!query) throw new Error(t(state?.language, 'web_search requiere query', 'web_search requires query'));
 
   const allowed = await askConfirmation(
     state.rl, 'Buscar en la web', query, paint, state,
@@ -1336,13 +1340,13 @@ async function webSearchTool(args, state, paint) {
 
 async function webReadTool(args, state, paint) {
   const rawUrl = (args.url || '').trim();
-  if (!rawUrl) throw new Error('web_read requiere url');
+  if (!rawUrl) throw new Error(t(state?.language, 'web_read requiere url', 'web_read requires url'));
 
   const url = cleanUrl(rawUrl);
   let parsed;
-  try { parsed = new URL(url); } catch { throw new Error(`URL invalida: ${url}`); }
+  try { parsed = new URL(url); } catch { throw new Error(t(state?.language, `URL invalida: ${url}`, `Invalid URL: ${url}`)); }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Solo se permite http y https');
+    throw new Error(t(state?.language, 'Solo se permite http y https', 'Only http and https allowed'));
   }
 
   const allowed = await askConfirmation(
@@ -1388,9 +1392,10 @@ async function webReadTool(args, state, paint) {
 
 async function executeToolCall(call, state, ui, options = {}) {
   if (!call || typeof call.tool !== 'string' || !REGISTERED_TOOLS.has(call.tool)) {
-    throw new Error(`Herramienta no registrada: ${call?.tool || 'desconocida'}`);
+    throw new Error(t(state?.language, `Herramienta no registrada: ${call?.tool || 'desconocida'}`, `Unknown tool: ${call?.tool || 'unknown'}`));
   }
-  ui.logEvent(state, 'tool', describeToolCall(call));
+  const toolDesc = describeToolCall(call, state?.language);
+  ui.logEvent(state, 'tool', `Preparando ${toolDesc}`);
 
   const startTime = Date.now();
   let result;
@@ -1466,7 +1471,7 @@ async function executeToolCall(call, state, ui, options = {}) {
         result = await loadSkillTool(call.args);
         break;
       default:
-        throw new Error(`Herramienta no soportada: ${call.tool}`);
+        throw new Error(t(state?.language, `Herramienta no soportada: ${call.tool}`, `Unsupported tool: ${call.tool}`));
     }
   } catch (err) {
     if (options.signal?.aborted || err?.code === 'ABORT_ERR') {
@@ -1477,7 +1482,8 @@ async function executeToolCall(call, state, ui, options = {}) {
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  ui.logEvent(state, 'ok', `Completado en ${elapsed}s`, shortText(result, 100));
+  const completionDesc = describeToolCall(call, state?.language);
+  ui.logEvent(state, 'ok', `Completado ${completionDesc}`, shortText(result, 100));
   return result;
 }
 
@@ -1743,7 +1749,7 @@ async function createCanvasImageTool(args, state, paint) {
   const width = Math.max(1, Number(args.width || 0));
   const height = Math.max(1, Number(args.height || 0));
   if (!width || !height) {
-    throw new Error('create_canvas_image requiere width y height');
+    throw new Error(t(state?.language, 'create_canvas_image requiere width y height', 'create_canvas_image requires width and height'));
   }
 
   const format = String(args.format || 'png').toLowerCase();
@@ -1824,12 +1830,12 @@ async function gitUnifiedTool(args, state, paint) {
   const provider = normalizeProfileName(args.provider || '');
   const name = String(args.name || '').trim();
 
-  if (!action) throw new Error('git requiere action: "api" | "clone"');
+  if (!action) throw new Error(t(state?.language, 'git requiere action: "api" | "clone"', 'git requires action: "api" | "clone"'));
 
   if (action === 'clone') {
     const repoUrl = String(args.repoUrl || '').trim();
-    if (!repoUrl) throw new Error('git action="clone" requiere repoUrl');
-    if (!provider) throw new Error('git action="clone" requiere provider');
+    if (!repoUrl) throw new Error(t(state?.language, 'git action="clone" requiere repoUrl', 'git action="clone" requires repoUrl'));
+    if (!provider) throw new Error(t(state?.language, 'git action="clone" requiere provider', 'git action="clone" requires provider'));
     const profile = resolveGitProfile(provider, name);
     const finalUrl = buildCloneUrl(repoUrl, profile || {});
     const destination = args.destination ? resolveInputPath(args.destination, state.cwd) : '';
@@ -1850,13 +1856,13 @@ async function gitUnifiedTool(args, state, paint) {
   }
 
   if (action === 'api') {
-    if (!provider) throw new Error('git action="api" requiere provider');
+    if (!provider) throw new Error(t(state?.language, 'git action="api" requiere provider', 'git action="api" requires provider'));
     const pathValue = String(args.path || '').trim();
-    if (!pathValue) throw new Error('git action="api" requiere path');
+    if (!pathValue) throw new Error(t(state?.language, 'git action="api" requiere path', 'git action="api" requires path'));
     const profile = resolveGitProfile(provider, name);
-    if (!profile) throw new Error(`Proveedor ${provider}${provider === 'custom' && name ? `:${name}` : ''} no configurado.`);
+    if (!profile) throw new Error(t(state?.language, `Proveedor ${provider}${provider === 'custom' && name ? `:${name}` : ''} no configurado.`, `Provider ${provider}${provider === 'custom' && name ? `:${name}` : ''} not configured.`));
     const baseUrl = getApiBaseUrl(provider, profile);
-    if (!baseUrl) throw new Error(`apiBaseUrl no configurada para ${provider}.`);
+    if (!baseUrl) throw new Error(t(state?.language, `apiBaseUrl no configurada para ${provider}.`, `apiBaseUrl not configured for ${provider}.`));
     const url = `${baseUrl.replace(/\/+$/, '')}/${pathValue.replace(/^\/+/, '')}`;
     const timeoutMs = Math.max(1000, Number.isFinite(Number(args.timeoutMs)) ? Number(args.timeoutMs) : 30000);
     const method = String(args.method || 'GET').toUpperCase();
@@ -1882,5 +1888,5 @@ async function gitUnifiedTool(args, state, paint) {
     return `Status: ${response.status}\n\n${text}`;
   }
 
-  throw new Error(`git action "${action}" no reconocida. Usa: "api" | "clone"`);
+  throw new Error(t(state?.language, `git action "${action}" no reconocida. Usa: "api" | "clone"`, `git action "${action}" not recognized. Use: "api" | "clone"`));
 }

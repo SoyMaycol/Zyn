@@ -1,5 +1,5 @@
-
 const BASE = 'https://opencode.ai/zen/v1';
+const { REQUEST_TIMEOUT_MS } = require('../../config');
 
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -9,73 +9,101 @@ const HEADERS = {
   'Referer': 'https://opencode.ai/',
 };
 
-async function streamCompletion(messages, modelId, onChunk, signal) {
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort, { once: true });
-  }
+const ZEN_STREAM_READ_TIMEOUT_MS = 120000;
+const MAX_ZEN_STREAM_RETRIES = 3;
 
-  try {
-    const res = await fetch(`${BASE}/chat/completions`, {
-      method: 'POST',
-      headers: HEADERS,
-      body: JSON.stringify({
-        model: modelId,
-        messages,
-        stream: true,
-        max_tokens: 8192,
-      }),
-      signal: controller.signal,
-    });
+async function fetchZenCompletionWithRetry(messages, modelId, signal) {
+  let lastError;
+  for (let attempt = 0; attempt <= MAX_ZEN_STREAM_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const readTimeoutId = setTimeout(() => controller.abort(), ZEN_STREAM_READ_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${BASE}/chat/completions`, {
+        method: 'POST',
+        headers: HEADERS,
+        body: JSON.stringify({
+          model: modelId,
+          messages,
+          stream: true,
+          max_tokens: 16384,
+        }),
+        signal: controller.signal,
+      });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Zen ${modelId} fallo (${res.status}): ${text.slice(0, 200)}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Zen ${modelId} fallo (${res.status}): ${text.slice(0, 200)}`);
+      }
+      clearTimeout(readTimeoutId);
+      return res;
+    } catch (err) {
+      clearTimeout(readTimeoutId);
+      lastError = err;
+      if (err?.name === 'AbortError' && signal?.aborted) throw err;
+      if (attempt < MAX_ZEN_STREAM_RETRIES) {
+        const backoff = Math.min(2000 * Math.pow(2, attempt), 15000);
+        await new Promise(r => setTimeout(r, backoff));
+        continue;
+      }
+      throw lastError;
     }
+  }
+}
 
-    let answer = '';
-    let thinking = '';
-    const decoder = new TextDecoder();
-    let buffer = '';
+async function streamCompletion(messages, modelId, onChunk, signal) {
+  const res = await fetchZenCompletionWithRetry(messages, modelId, signal);
 
-    for await (const chunk of res.body) {
-      buffer += decoder.decode(chunk, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
+  let answer = '';
+  let thinking = '';
+  const decoder = new TextDecoder();
+  let buffer = '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
+  for await (const chunk of res.body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
 
-        const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') break;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
 
-        let parsed;
-        try { parsed = JSON.parse(data); } catch { continue; }
+      const data = trimmed.slice(5).trim();
+      if (data === '[DONE]') continue;
 
-        const delta = parsed?.choices?.[0]?.delta;
-        if (!delta) continue;
+      let parsed;
+      try { parsed = JSON.parse(data); } catch { continue; }
 
-        const reasoning = delta.reasoning || delta.reasoning_details?.[0]?.text;
-        if (reasoning && reasoning.length > thinking.length) {
-          const newDelta = reasoning.slice(thinking.length);
-          thinking = reasoning;
-          if (onChunk) onChunk(newDelta, 'thinking');
+      const delta = parsed?.choices?.[0]?.delta;
+      if (!delta) continue;
+
+      const fullReasoning = delta.reasoning_content || delta.reasoning_text || delta.reasoning_details?.[0]?.text || delta.reasoning_final || delta.completion_reasoning || delta.reasoning_summary;
+      const incrementalReasoning = delta.reasoning || delta.reasoning_delta || delta.reasoning_chunk;
+      if ((fullReasoning || incrementalReasoning) && process.env.ZYN_DEBUG_THINKING) {
+        console.error('ZEN_THINKING:', JSON.stringify({ full: fullReasoning?.slice(0, 200), incr: incrementalReasoning?.slice(0, 200), thinkingLen: thinking.length, deltaKeys: Object.keys(delta) }));
+      }
+      let newDelta = '';
+      if (fullReasoning && fullReasoning.length > 0) {
+        if (thinking && fullReasoning.startsWith(thinking)) {
+          newDelta = fullReasoning.slice(thinking.length);
+          thinking = fullReasoning;
+        } else {
+          newDelta = fullReasoning;
+          thinking += fullReasoning;
         }
+      } else if (incrementalReasoning && incrementalReasoning.length > 0) {
+        newDelta = incrementalReasoning;
+        thinking += incrementalReasoning;
+      }
+      if (newDelta && onChunk) onChunk(newDelta, 'thinking');
 
-        if (delta.content) {
-          answer += delta.content;
-          if (onChunk) onChunk(delta.content, 'answer');
-        }
+      if (delta.content) {
+        answer += delta.content;
+        if (onChunk) onChunk(delta.content, 'answer');
       }
     }
-
-    return { text: answer.trim(), thinking: thinking.trim() };
-  } finally {
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
+
+  return { text: answer.trim(), thinking: thinking.trim() };
 }
 
 async function zen(messages, modelId, onChunk = null, options = {}) {

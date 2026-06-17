@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 
 const fsp = fs.promises;
-const { listSkills, SKILLS_DIR } = require('../core/skills');
 const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, MODELS, listProvidersFromModels } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState, listBackgroundResults, consumeBackgroundResult, enqueueBackgroundTask } = require('../utils/sessionStorage');
@@ -10,7 +9,6 @@ const { listGitSecrets, removeGitSecret, upsertGitSecret } = require('../utils/s
 const { clearGmailAuth, getGmailAuthStatus, startGmailOAuthFlow } = require('../utils/gmailAuth');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
 const { resolveInputPath } = require('../utils/pathUtils');
-const { printTools } = require('../tools');
 const { detachBackgroundTurn } = require('../utils/backgroundWorker');
 const {
   describeProviderConfig,
@@ -59,16 +57,14 @@ const SLASH_COMMANDS = [
   { name: 'title', desc: 'rename session', descEs: 'renombrar sesión' },
   { name: 'rename', desc: 'rename session', descEs: 'renombrar sesión' },
   { name: 'models', desc: 'list models', descEs: 'listar modelos' },
-  { name: 'providers', desc: 'list providers', descEs: 'listar proveedores' },
+  { name: 'providers', desc: 'list/select providers', descEs: 'listar/seleccionar proveedores' },
+  { name: 'provider', desc: 'manage providers (sync, set, list, remove)', descEs: 'gestionar proveedores (sync, set, list, remove)' },
   { name: 'git', desc: 'configure git credentials', descEs: 'configurar credenciales git' },
   { name: 'gmail', desc: 'connect Gmail account', descEs: 'conectar cuenta Gmail' },
   { name: 'persona', desc: 'set response tone/personality', descEs: 'definir tono/persona' },
   { name: 'lang', desc: 'change language', descEs: 'cambiar idioma' },
   { name: 'language', desc: 'change language', descEs: 'cambiar idioma' },
   { name: 'auto', desc: 'auto-approval', descEs: 'auto-aprobación' },
-  { name: 'concuerdo', desc: 'group model mode', descEs: 'modo de grupo' },
-  { name: 'tools', desc: 'tools', descEs: 'herramientas' },
-  { name: 'skills', desc: 'agent skills', descEs: 'skills del agente' },
   { name: 'config', desc: 'view/change session settings', descEs: 'ver/cambiar configuración' },
   { name: 'bg', desc: 'background: continue current turn in background', descEs: 'segundo plano: continuar el turno en background' },
   { name: 'undo', desc: 'undo last turn', descEs: 'deshacer último turno' },
@@ -78,6 +74,8 @@ const SLASH_COMMANDS = [
   { name: 'reset', desc: 'reset context', descEs: 'reiniciar contexto' },
   { name: 'clear', desc: 'reset context', descEs: 'reiniciar contexto' },
   { name: 'cwd', desc: 'working directory', descEs: 'directorio de trabajo' },
+  { name: 'compact', desc: 'compact memory', descEs: 'compactar memoria' },
+  { name: 'theme', desc: 'UI theme', descEs: 'tema de la UI' },
   { name: 'transcript', desc: 'view transcript', descEs: 'ver transcripción' },
   { name: 'export', desc: 'export to txt', descEs: 'exportar a txt' },
   { name: 'exit', desc: 'exit', descEs: 'salir' },
@@ -135,7 +133,6 @@ function printHelp(state = {}) {
   console.log(`    ${b('/auto')}                        Show auto-approval status`);
   console.log(`    ${b('/auto on')}                     Enable auto-approval`);
   console.log(`    ${b('/auto off')}                    Disable auto-approval`);
-  console.log(`    ${b('/concuerdo')}                   Toggle group model mode`);
   console.log(`    ${b('/persona set <text>')}          Set response persona/tone`);
   console.log(`    ${b('/persona show')}                Show active persona`);
   console.log(`    ${b('/persona reset')}               Reset to default persona`);
@@ -143,14 +140,11 @@ function printHelp(state = {}) {
   console.log(`    ${b('/config lang <en|es>')}         Change language from config`);
   console.log(`    ${b('/config model <key>')}          Change model from config`);
   console.log(`    ${b('/config auto on|off')}          Toggle auto from config`);
-  console.log(`    ${b('/config group on|off')}         Toggle group mode from config`);
   console.log(`    ${b('/config cwd <path>')}           Change working dir from config`);
   console.log('');
 
   // Tools and Git
   console.log(`  ${paint('── Tools and Git ──', 'dim')}`);
-  console.log(`    ${b('/tools')}                       List available agent tools`);
-  console.log(`    ${b('/skills')}                      List loaded skills`);
   console.log(`    ${b('/git set <provider> <token>')}  Configure git credentials`);
   console.log(`    ${b('/git set <provider> <token> [user] [apiBaseUrl:URL] [cloneBaseUrl:URL] [name:X]')}`);
   console.log(`    ${b('/git list')}                    List configured git profiles`);
@@ -222,8 +216,20 @@ function buildModelListItems() {
 }
 
 function buildProviderListItems() {
-  const providers = listProvidersFromModels(MODELS);
-  return providers.map(p => ({
+  const fromModels = listProvidersFromModels(MODELS);
+  const configured = listConfiguredProviders();
+  const configuredKeys = new Set(configured.map(p => p.provider));
+  const modelKeys = new Set(fromModels.map(p => p.key));
+  for (const p of configured) {
+    if (!modelKeys.has(p.provider)) {
+      fromModels.push({
+        key: p.provider,
+        label: p.provider,
+        models: (p.models || []).map(m => typeof m === 'string' ? { key: m, label: m } : m),
+      });
+    }
+  }
+  return fromModels.map(p => ({
     key: p.key,
     label: `${p.key}  ${p.models.length} model${p.models.length === 1 ? '' : 's'}`,
     models: p.models,
@@ -288,7 +294,16 @@ async function runProviderSelector(state, deps) {
       defaultValue: '',
     });
     if (modelId) setProviderField(name, 'modelId', modelId);
-    console.log(es ? `Proveedor "${name}" agregado. Ejecuta /provider sync ${name} para listar modelos.` : `Provider "${name}" added. Run /provider sync ${name} to list models.`);
+    const ctxLen = await deps.askInput({
+      title: es ? `Contexto máximo (tokens) para ${name}` : `Max context length (tokens) for ${name}`,
+      prompt: es ? 'Ej: 128000 (vacio = 128K)' : 'E.g.: 128000 (empty = 128K)',
+      defaultValue: '',
+    });
+    if (ctxLen && /^\d+$/.test(ctxLen)) setProviderField(name, 'contextLength', ctxLen);
+    console.log(es
+      ? `Proveedor "${name}" agregado. /provider sync ${name} para sincronizar.`
+      : `Provider "${name}" added. /provider sync ${name} to sync models.`);
+    console.log(es ? '  Campos editables: apiKey, baseUrl, modelId, contextLength' : '  Editable fields: apiKey, baseUrl, modelId, contextLength');
     return name;
   }
   return choice || null;
@@ -342,7 +357,6 @@ function printConfig(state) {
   console.log(`  Model    : ${key} (${model?.label || '?'})`);
   console.log(`  Provider : ${provider}`);
   console.log(`  Auto     : ${state.autoApprove ? 'on' : 'off'}`);
-  console.log(`  Group    : ${state.concuerdo ? 'on' : 'off'}`);
   console.log(`  CWD      : ${state.cwd}`);
   console.log('');
   console.log('  Commands:');
@@ -588,16 +602,6 @@ async function handleLocalCommand(input, state, deps) {
       return true;
     }
 
-    if (sub === 'group' || sub === 'concuerdo') {
-      if (value !== 'on' && value !== 'off') {
-        throw new Error('Use /config group on|off');
-      }
-      state.concuerdo = value === 'on';
-      await saveState(state);
-      console.log(state.concuerdo ? 'Group mode enabled.' : 'Group mode disabled.');
-      return true;
-    }
-
     if (sub === 'cwd' || sub === 'pwd') {
       if (!value) {
         throw new Error(t(state.language, 'missingPath'));
@@ -622,6 +626,7 @@ function isProviderConfigured(providerKey) {
   if (providerKey === 'qwenapi') return Boolean(config.apiKey || process.env.ZYN_QWEN_API_KEY);
   if (providerKey === 'gemini') return Boolean(config.apiKey || process.env.ZYN_GEMINI_API_KEY);
   if (providerKey === 'huggingface') return Boolean(config.apiKey || process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN);
+  if (providerKey === 'deepseek') return Boolean(config.apiKey || process.env.ZYN_DEEPSEEK_CHAT_KEY || process.env.DEEPSEEK_CHAT_KEY || process.env.ZYN_CHAT_KEY);
   return true;
 }
 
@@ -634,6 +639,9 @@ async function configureProviderInteractive(state, deps, providerKey) {
     fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'API Key (Google AI Studio)' : 'API Key (Google AI Studio)' });
   } else if (providerKey === 'huggingface') {
     fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'Token (huggingface.co/settings/tokens)' : 'Token (huggingface.co/settings/tokens)' });
+  } else if (providerKey === 'deepseek') {
+    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'Bearer Token (chat.deepseek.com)' : 'Bearer Token (chat.deepseek.com)' });
+    fields.push({ name: 'hifLeim', hidden: true, prompt: es ? 'x-hif-leim header (opcional)' : 'x-hif-leim header (optional)' });
   }
   for (const field of fields) {
     const value = await deps.askInput({
@@ -653,10 +661,25 @@ async function runProvidersFlow(state, deps) {
   
   // Paso 1: Elegir proveedor
   const provider = await runProviderSelector(state, deps);
-  if (!provider || provider === '__add_custom__') return;
+  if (!provider) return;
+  if (provider === '__add_custom__') {
+    // Handled inside runProviderSelector; nothing more to do.
+    return;
+  }
+  // If it's a custom provider that hasn't been synced yet, sync it now
+  const configured = listConfiguredProviders();
+  const isCustom = configured.some(p => p.provider === provider) && !listProvidersFromModels(MODELS).some(p => p.key === provider);
+  if (isCustom) {
+    try {
+      const syncedModels = await syncProvider(provider);
+      for (const m of syncedModels) MODELS[m.key] = m;
+    } catch (_) {
+      // sync may fail silently; user can /provider sync later
+    }
+  }
 
   // Paso 2: Si es opcional y no configurado, preguntar si configurar
-  const optionalProviders = ['qwenapi', 'gemini', 'huggingface'];
+  const optionalProviders = ['qwenapi', 'gemini', 'huggingface', 'deepseek'];
   if (optionalProviders.includes(provider) && !isProviderConfigured(provider)) {
     const configure = await deps.askConfirm({
       title: es ? `Configurar ${provider} ahora?` : `Configure ${provider} now?`,
@@ -705,25 +728,6 @@ async function runModelsFlow(state, deps) {
     console.log(state.autoApprove ? 'Auto approval enabled.' : 'Auto approval disabled.');
     return true;
   }
-
-  if (commandName === 'concuerdo') {
-    state.concuerdo = !state.concuerdo;
-    await saveState(state);
-    const activeKey = state.activeModel || DEFAULT_MODEL_KEY;
-    const allLabels = Object.keys(MODELS).map(k => MODELS[k].label);
-    await appendTranscriptEntry(state.sessionId, {
-      type: 'system',
-      content: `Group mode: ${state.concuerdo ? 'on' : 'off'}`,
-    });
-    if (state.concuerdo) {
-      console.log(`Group mode enabled — ${allLabels.join(' + ')} work together.`);
-      console.log(`  Primary: ${MODELS[activeKey]?.label || activeKey}`);
-    } else {
-      console.log('Group mode disabled.');
-    }
-    return true;
-  }
-
 
   if (commandName === 'gmail') {
     const [subRaw, ...rest] = String(args || 'status').trim().split(/\s+/).filter(Boolean);
@@ -778,7 +782,7 @@ async function runModelsFlow(state, deps) {
     const { input, signal } = state.__bgDetach;
     const sessionId = state.sessionId;
     const taskId = enqueueBackgroundTask({ sessionId, input, detachedAt: new Date().toISOString() });
-    detachBackgroundTurn({ taskId, sessionId, input, cwd: state.cwd, modelKey: state.activeModel, language: state.language, personaPrompt: state.personaPrompt, autoApprove: state.autoApprove, concuerdo: state.concuerdo });
+    detachBackgroundTurn({ taskId, sessionId, input, cwd: state.cwd, modelKey: state.activeModel, language: state.language, personaPrompt: state.personaPrompt, autoApprove: state.autoApprove });
     if (signal && !signal.aborted) signal.abort();
     if (typeof deps.exitAfterBg === 'function') {
       deps.exitAfterBg();
@@ -823,22 +827,6 @@ async function runModelsFlow(state, deps) {
     state.history.push(...restored);
     await saveState(state);
     console.log('Last turn restored.');
-    return true;
-  }
-
-  if (commandName === 'tools') {
-    printTools();
-    return true;
-  }
-
-  if (commandName === 'skills') {
-    const skills = listSkills();
-    console.log(`\n  ${t(state.language, 'skillsLoaded')} (${skills.length}):\n`);
-    for (const s of skills) {
-      console.log(`    \x1b[36m${s.name.padEnd(14)}\x1b[0m ${s.title}`);
-    }
-    console.log(`\n  Directory: \x1b[90m${SKILLS_DIR}\x1b[0m`);
-    console.log('  Edit or add .md files to customize the agent.\n');
     return true;
   }
 
@@ -913,6 +901,146 @@ async function runModelsFlow(state, deps) {
       }
     }
     console.log('');
+    return true;
+  }
+
+  if (commandName === 'provider') {
+    const [sub, ...rest] = args.split(' ').filter(Boolean);
+    const subArg = rest.join(' ').trim();
+
+    if (!sub || sub === 'help') {
+      console.log('');
+      console.log('  /provider list                    list configured providers');
+      console.log('  /provider sync <name>             sync models for a provider');
+      console.log('  /provider set <name> <k> <v>      set a config field');
+      console.log('  /provider remove <name>           remove a provider config');
+      console.log('');
+      console.log('  Configurable fields (via set):');
+      console.log('    apiKey         API key');
+      console.log('    baseUrl        API base URL');
+      console.log('    modelId        Model ID override');
+      console.log('    contextLength  Max context tokens (e.g. 128000)');
+      console.log('    email/password Basic auth');
+      console.log('    modelEndpoint  Custom models endpoint');
+      console.log('    chatEndpoint   Custom chat endpoint');
+      console.log('');
+      console.log('  /providers  interactive provider picker');
+      console.log('');
+      return true;
+    }
+
+    if (sub === 'list') {
+      const configured = listConfiguredProviders();
+      console.log('');
+      if (configured.length === 0) {
+        console.log('  No configured providers. Use /provider set <name> <key> <value> to add one.');
+      } else {
+        for (const p of configured) {
+          const name = p.provider || p.key || '?';
+          const summary = summarizeProviderConfig(name);
+          console.log(`  ${name}`);
+          if (summary?.fields?.length) {
+            for (const f of summary.fields) {
+              console.log(`    ${f.name}: ${f.value}`);
+            }
+          }
+        }
+      }
+      console.log('');
+      return true;
+    }
+
+    if (sub === 'sync') {
+      if (!subArg) {
+        console.log('  Usage: /provider sync <provider-name>');
+        return true;
+      }
+      try {
+        const models = await syncProvider(subArg);
+        for (const k of Object.keys(MODELS)) {
+          if (MODELS[k]?.provider === subArg) delete MODELS[k];
+        }
+        for (const m of models) MODELS[m.key] = m;
+        console.log(`  Synced ${models.length} models for "${subArg}":`);
+        for (const m of models) {
+          console.log(`    ${m.key.padEnd(20)} ${m.label}`);
+        }
+      } catch (err) {
+        console.log(`  Error: ${err.message}`);
+      }
+      return true;
+    }
+
+    if (sub === 'set') {
+      const [providerName, field, ...values] = rest;
+      if (!providerName || !field || values.length === 0) {
+        console.log('  Usage: /provider set <name> <field> <value>');
+        return true;
+      }
+      try {
+        setProviderField(providerName, field, values.join(' '));
+        console.log(`  ${providerName}.${field} = ${values.join(' ')}`);
+      } catch (err) {
+        console.log(`  Error: ${err.message}`);
+      }
+      return true;
+    }
+
+    if (sub === 'remove') {
+      if (!subArg) {
+        console.log('  Usage: /provider remove <name>');
+        return true;
+      }
+      try {
+        removeProviderConfig(subArg);
+        console.log(`  Removed provider "${subArg}"`);
+      } catch (err) {
+        console.log(`  Error: ${err.message}`);
+      }
+      return true;
+    }
+
+    console.log('  Unknown subcommand. Use /provider help');
+    return true;
+  }
+
+  if (commandName === 'compact') {
+    if (!state.history || state.history.length === 0) {
+      console.log('No history to compact.');
+      return true;
+    }
+    const before = state.history.length;
+    const beforeChars = state.history.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+    truncateHistory(state);
+    await saveState(state);
+    const after = state.history.length;
+    if (before === after) {
+      console.log(`Already compact (${before} messages, ${beforeChars} chars). Use /reset to clear.`);
+    } else {
+      console.log(`Compacted: ${before} -> ${after} messages. Summary: ~${countTokens(state.memorySummary)} tokens.`);
+    }
+    return true;
+  }
+
+  if (commandName === 'theme') {
+    const themes = ['dark', 'cappuccino', 'light', 'coffee', 'gruvbox', 'dracula', 'nord', 'solarized', 'monokai', 'tokyoNight'];
+    const current = state.theme || 'dark';
+    if (!args) {
+      console.log(`Current theme: ${current}`);
+      console.log('Available: ' + themes.join(', '));
+      return true;
+    }
+    const theme = args.toLowerCase().replace(/[-\s]/g, '');
+    const themeMap = { tokyonight: 'tokyoNight' };
+    const resolved = themeMap[theme] || theme;
+    if (!themes.includes(resolved)) {
+      console.log(`Unknown theme. Available: ${themes.join(', ')}`);
+      return true;
+    }
+    state.theme = resolved;
+    await saveState(state);
+    console.log(`Theme set to: ${resolved}`);
+    if (global.__zynApplyTheme) global.__zynApplyTheme(resolved);
     return true;
   }
 
