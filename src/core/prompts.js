@@ -78,134 +78,128 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     .map(group => `${group.key}: ${group.models.map(m => m.key).join(', ')}`)
     .join('\n');
 
-  const languageInstructions = language === 'es'
-    ? [
-        'Eres un agente tecnico. Tu salida es SOLO JSON valido.',
-        'No pienses en voz alta. No expliques tu plan.',
-        '',
-        'Cuando el usuario use verbos de accion (haz, crea, hazme, edita, ejecuta, instala, busca, corrige, compila, descarga, configura, prueba), USA HERRAMIENTAS.',
-        'Cuando el usuario pida informacion (que es, como funciona, explica, matematicas, saludo), responde con type=final.',
-        '',
-        'Ejecuta directamente. No des tutoriales ni explicaciones teoricas - solo ejecuta.',
-        'No describas lo que vas a hacer. Solo responde con el JSON de la herramienta.',
-        'Nunca asumas resultados. Espera el output real de la herramienta.',
-      ]
-    : [
-        'You are a technical agent. Your output is ONLY valid JSON.',
-        'Do not think aloud. Do not explain your plan.',
-        '',
-        'When the user uses action verbs (make, create, edit, run, install, search, fix, build, download, config, test), USE TOOLS.',
-        'When the user asks for information (what is, how does, explain, math, greeting), reply with type=final.',
-        '',
-        'Execute directly. Do not give tutorials or theoretical explanations - just execute.',
-        'Do not describe what you will do. Only respond with the tool JSON.',
-        'Never assume results. Wait for the real tool output.',
-      ];
-
-  const skillsToolHint = language === 'es'
-    ? [
-        '',
-        '# Skills (carga bajo demanda)',
-        'El system prompt solo expone el INDICE de skills. Para leer las reglas completas de una skill',
-        'relevante para la tarea actual, llama a load_skill con el nombre exacto.',
-        'Carga la skill UNA vez al inicio del turno si aplica; no la recargues en cada tool call.',
-      ]
-    : [
-        '',
-        '# Skills (on-demand loading)',
-        'The system prompt only exposes the SKILL INDEX. To read the full rules of a skill that is',
-        'relevant to the current task, call load_skill with the exact name.',
-        'Load the skill ONCE at the start of the turn if applicable; do not reload it on every tool call.',
-      ];
-
-  const toolUseEnforcement = language === 'es'
-    ? [
-        '',
-        '# Formato obligatorio de respuesta',
-        'Solo existen DOS formatos de respuesta. NO inventes otros.',
-        'Cada respuesta debe ser UNICAMENTE el JSON. Sin texto antes ni despues.',
-        '',
-        'FORMATO 1 — Para USAR una herramienta:',
-        '{"type":"tool","tool":"write_file","args":{"path":"ejemplo.html","content":"<h1>Hola</h1>"}}',
-        '{"type":"tool","tool":"list_dir","args":{"path":"."}}',
-        '{"type":"tool","tool":"run_command","args":{"command":"npm install","timeoutMs":30000}}',
-        '{"type":"tool","tool":"read_file","args":{"path":"archivo.js"}}',
-        '',
-        'FORMATO 2 — Para responder AL USUARIO:',
-        '{"type":"final","content":"Tu respuesta aqui"}',
-        '',
-        'REGLAS:',
-        '- USA SOLO los nombres de herramientas listados en "# Tool use".',
-        '- NO inventes herramientas como "code_interpreter", "python", "bash", "shell".',
-        '- NO uses <invoke>, function calls, ni tool_use de otros sistemas.',
-        '- NO uses list_dir({}) ni xml <tags>. Usa SOLO el JSON de arriba.',
-        '- Si una herramienta falla 2 veces, cambia de estrategia o usa type=final.',
-        '- Maximo 8 herramientas por turno.',
-        '',
-        '# ACCIÓN = USAR HERRAMIENTA, INFO = type=final',
-        '- ACCIÓN (crear, editar, ejecutar, buscar, instalar, compilar) → USA HERRAMIENTA.',
-        '- INFORMACIÓN (qué es, cómo funciona, matemáticas, saludo) → type=final.',
-        '- NUNCA pongas contenido de archivo en type=final. Usa write_file.',
-      ]
-    : [
-        '',
-        '# Strict response format',
-        'Only TWO response formats are allowed. Do NOT use others.',
-        'Each response must be ONLY the JSON. No text before or after.',
-        '',
-        'FORMAT 1 — To USE a tool:',
-        '{"type":"tool","tool":"write_file","args":{"path":"example.html","content":"<h1>Hello</h1>"}}',
-        '{"type":"tool","tool":"list_dir","args":{"path":"."}}',
-        '{"type":"tool","tool":"run_command","args":{"command":"npm install","timeoutMs":30000}}',
-        '{"type":"tool","tool":"read_file","args":{"path":"file.js"}}',
-        '',
-        'FORMAT 2 — To REPLY to user:',
-        '{"type":"final","content":"Your answer here"}',
-        '',
-        'RULES:',
-        '- ONLY use tool names listed in "# Tool use".',
-        '- Do NOT invent tools like "code_interpreter", "python", "bash", "shell".',
-        '- Do NOT use <invoke>, function calls, or tool_use from other systems.',
-        '- Do NOT use list_dir({}) or xml <tags>. Use ONLY the JSON above.',
-        '- If a tool fails 2 times, change strategy or use type=final.',
-        '- Maximum 8 tools per turn.',
-        '',
-        '# ACTION = USE TOOL, INFO = type=final',
-        '- ACTION (create, edit, run, search, install, build) → USE TOOL.',
-        '- INFO (what is, how does, math, greeting) → type=final.',
-        '- NEVER put file content in type=final. Use write_file.',
-      ];
-
   const parts = [
-    skillsIndex,
+    ...(language === 'es' ? [
+      '# RESPUESTA — SOLO JSON, NADA MAS',
+      'Tu respuesta es UN OBJETO JSON. Sin texto antes ni despues. Sin explicaciones. Sin pensamientos.',
+      '',
+      'Usar herramienta:',
+      '{"type":"tool","tool":"NOMBRE","args":{...}}',
+      'Ejemplos:',
+      '  {"type":"tool","tool":"write_file","args":{"path":"index.html","content":"<h1>Hola</h1>"}}',
+      '  {"type":"tool","tool":"run_command","args":{"command":"npm install express"}}',
+      '  {"type":"tool","tool":"web_search","args":{"query":"clima madrid"}}',
+      '  {"type":"tool","tool":"read_file","args":{"path":"package.json"}}',
+      '  {"type":"tool","tool":"list_dir","args":{"path":"src"}}',
+      '',
+      'Responder al usuario:',
+      '{"type":"final","content":"Tu respuesta aqui"}',
+      '',
+      'REGLAS:',
+      '- SOLO usa nombres de herramientas de la seccion "# TOOLS".',
+      '- NO inventes herramientas. NO uses XML ni function-call syntax.',
+      '- Si una herramienta falla 2 veces, cambia de estrategia.',
+      '- Maximo 8 herramientas por turno.',
+      '- Tienes acceso al historial de la conversacion. Úsalo para responder preguntas sobre conversaciones anteriores.',
+      '- Si el usuario pregunta "que dice al principio" o similar, revisa el historial y responde con lo que dice.',
+      '',
+      '# CLASIFICACION — ACCION vs INFORMACION',
+      '',
+      'ACCION = usa herramienta (type="tool"):',
+      '  verbos: haz, crea, edita, ejecuta, instala, busca, corrige, descarga, configura, borra, mueve',
+      '  datos actuales: clima, noticias, precios, cotizaciones → web_search o fetch_url',
+      '  "busca" / "buscar" / "el clima" → ACCION, nunca asumas datos actuales',
+      '',
+      'INFORMACION = responde directo (type="final"):',
+      '  definiciones, conceptos, matematicas, saludos, opinion',
+      '  "que es X" / "como funciona Y" / "hola" → INFORMACION',
+      '',
+      'PREGUNTAR AL USUARIO = usa ask_user (type="tool"):',
+      '  cuando necesites una decision, preferencia o input del usuario',
+      '  cuando el usuario te pida que le preguntes algo',
+      '  cuando tengas opciones y no sepas cual elegir',
+      '  cuando falte informacion que solo el usuario puede dar',
+      '',
+      'REGLA: Si necesitas datos actuales o del sistema del usuario → ACCION.',
+      'Si puedes responder de memoria → INFORMACION.',
+      'Si necesitas que el usuario decida algo → ask_user.',
+      'Nunca describas lo que vas a hacer. Solo responde el JSON.',
+    ] : [
+      '# RESPONSE — ONLY JSON, NOTHING ELSE',
+      'Your response is A SINGLE JSON OBJECT. No text before or after. No explanations. No thoughts.',
+      '',
+      'Use a tool:',
+      '{"type":"tool","tool":"NAME","args":{...}}',
+      'Examples:',
+      '  {"type":"tool","tool":"write_file","args":{"path":"index.html","content":"<h1>Hello</h1>"}}',
+      '  {"type":"tool","tool":"run_command","args":{"command":"npm install express"}}',
+      '  {"type":"tool","tool":"web_search","args":{"query":"weather london"}}',
+      '  {"type":"tool","tool":"read_file","args":{"path":"package.json"}}',
+      '  {"type":"tool","tool":"list_dir","args":{"path":"src"}}',
+      '',
+      'Reply to user:',
+      '{"type":"final","content":"Your answer here"}',
+      '',
+      'RULES:',
+      '- ONLY use tool names from the "# TOOLS" section below.',
+      '- Do NOT invent tools. Do NOT use XML or function-call syntax.',
+      '- If a tool fails 2 times, change strategy.',
+      '- Maximum 8 tools per turn.',
+      '- You have access to the conversation history. Use it to answer questions about previous conversations.',
+      '- If the user asks "what does it say at the beginning" or similar, check the history and respond with what it says.',
+      '',
+      '# CLASSIFICATION — ACTION vs INFORMATION',
+      '',
+      'ACTION = use a tool (type="tool"):',
+      '  verbs: make, create, edit, run, install, search, fix, download, configure, delete, move',
+      '  current data: weather, news, prices, stocks → web_search or fetch_url',
+      '  "search" / "find" / "the weather" → ACTION, never assume current data',
+      '',
+      'INFORMATION = reply directly (type="final"):',
+      '  definitions, concepts, math, greetings, opinions',
+      '  "what is X" / "how does Y work" / "hello" → INFORMATION',
+      '',
+      'ASK USER = use ask_user (type="tool"):',
+      '  when you need a decision, preference, or input from the user',
+      '  when the user asks you to ask them something',
+      '  when you have options and don\'t know which to choose',
+      '  when missing information only the user can provide',
+      '',
+      'RULE: If you need current data or user system data → ACTION.',
+      'If you can answer from memory → INFORMATION.',
+      'If you need the user to decide something → ask_user.',
+      'Never describe what you will do. Only respond with the JSON.',
+    ]),
     '',
-    ...skillsToolHint,
-    '',
-    '# Tool use',
+    '# TOOLS',
     getToolPromptText(),
-    ...toolUseEnforcement,
     '',
-    '# Environment',
+    ...(language === 'es' ? [
+      '# SKILLS',
+      'Skills en `data/skills/<name>/SKILL.md`. Formato compatible con skills.sh.',
+      'Solo hay un indice aqui. Si necesitas una skill, llama a load_skill con el nombre exacto.',
+      'Carga la skill UNA vez al inicio del turno.',
+      'Si el usuario menciona un repo o skill que no esta en el indice, usa web_search para buscarlo.',
+      '',
+      skillsIndex,
+    ] : [
+      '# SKILLS',
+      'Skills in `data/skills/<name>/SKILL.md`. Format compatible with skills.sh.',
+      'Only the index is shown here. If you need a skill, call load_skill with the exact name.',
+      'Load the skill ONCE at the start of the turn.',
+      'If the user mentions a repo or skill not in the index, use web_search to find it.',
+      '',
+      skillsIndex,
+    ]),
+    '',
+    '# ENVIRONMENT',
     `- Working directory: ${cwd}`,
     `- System: ${platform}`,
     `- Date: ${date}`,
     `- Response language: ${languageLabel(language)}`,
     '',
-    '# Working mode',
-    ...languageInstructions,
-    '',
-    '# Available providers and models',
+    '# PROVIDERS',
     providerGroups,
-    '',
-    '# CRITICAL REMINDER',
-    language === 'es'
-      ? 'TU RESPUESTA DEBE SER EXCLUSIVAMENTE UN OBJETO JSON VÁLIDO. NINGÚN TEXTO EN LENGUAJE NATURAL. NO PENSAMIENTOS. SOLO JSON: {"type":"tool",...} O {"type":"final",...}'
-      : 'YOUR RESPONSE MUST BE EXCLUSIVELY A VALID JSON OBJECT. NO NATURAL LANGUAGE. NO THOUGHTS. ONLY JSON: {"type":"tool",...} OR {"type":"final",...}',
-    '',
-    '# MANDATORY: ALWAYS RETURN FINAL ANSWER',
-    language === 'es'
-      ? 'SI LA PREGUNTA NO REQUIERE HERRAMIENTAS (matemáticas, conocimiento general, saludos, etc.), DEBES RESPONDER INMEDIATAMENTE CON: {"type":"final","content":"tu respuesta directa"}. NO USES HERRAMIENTAS PARA PREGUNTAS SIMPLES. CREAR/EDITAR ARCHIVOS SIEMPRE REQUIERE HERRAMIENTAS (write_file/replace_in_file).'
-      : 'IF THE QUESTION DOES NOT REQUIRE TOOLS (math, general knowledge, greetings, etc.), YOU MUST RESPOND IMMEDIATELY WITH: {"type":"final","content":"your direct answer"}. DO NOT USE TOOLS FOR SIMPLE QUESTIONS. CREATING/EDITING FILES ALWAYS REQUIRES TOOLS (write_file/replace_in_file).',
   ];
 
   if (state.personaPrompt && state.personaPrompt.trim()) {
@@ -252,10 +246,6 @@ function scanJson(text, filterFn) {
     pos = start + 1;
   }
   return null;
-}
-
-function extractJson(text) {
-  return scanJson(text);
 }
 
 function extractToolJson(text) {
@@ -500,11 +490,8 @@ function parseAgentResponse(raw) {
     return { type: 'final', content: malformedFinalContent };
   }
 
-  const xmlTool = extractXmlTool(text);
-  if (xmlTool) return xmlTool;
-
-  const extracted = classifyParsed(extractJson(text));
-  if (extracted) return extracted;
+  const xmlInvoke = extractXmlTool(text);
+  if (xmlInvoke) return xmlInvoke;
 
   const fuzzy = fuzzyExtractTool(text);
   if (fuzzy) return fuzzy;
@@ -574,33 +561,54 @@ function buildConversationMessages(state, turnMessages, systemPrompt) {
   return messages;
 }
 
-function buildToolResultMessage(parsed, result) {
+function buildToolResultMessage(parsed, result, language = 'es') {
   let cleanResult = typeof result === 'string' ? result : String(result || '');
   cleanResult = stripBase64Images(cleanResult);
   const maxResultChars = 8000;
-  const truncatedResult = cleanResult.length > maxResultChars
-    ? `${cleanResult.slice(0, maxResultChars)}\n... [resultado truncado, ${cleanResult.length} caracteres totales]`
+  const truncated = cleanResult.length > maxResultChars
+    ? `${cleanResult.slice(0, maxResultChars)}\n... [${language === 'en' ? 'truncated result' : 'resultado truncado'}, ${cleanResult.length} ${language === 'en' ? 'total chars' : 'caracteres totales'}]`
     : cleanResult;
+  const args = JSON.stringify(sanitizeArgsForModel(parsed), null, 2);
+  if (language === 'en') {
+    return [
+      `Tool: ${parsed.tool}`,
+      `Args: ${args}`,
+      'Result:',
+      truncated,
+      '',
+      'Reply with the next concrete action or the final result.',
+    ].join('\n');
+  }
   return [
     `Herramienta: ${parsed.tool}`,
-    `Argumentos: ${JSON.stringify(sanitizeArgsForModel(parsed), null, 2)}`,
+    `Argumentos: ${args}`,
     'Resultado:',
-    truncatedResult,
+    truncated,
     '',
     'Responde con la siguiente accion concreta o con el resultado final.',
   ].join('\n');
 }
 
-function buildToolErrorMessage(parsed, errorMessage) {
+function buildToolErrorMessage(parsed, errorMessage, language = 'es') {
+  const toolNames = TOOL_DEFINITIONS.map(t => t.name).join(', ');
+  if (language === 'en') {
+    return [
+      `The tool "${parsed.tool}" could not be executed (invalid name or not available).`,
+      `Error: ${errorMessage}`,
+      `Available tools: ${toolNames}.`,
+      'Choose ONE of those tools. Use the exact name. Do not invent tools.',
+    ].join('\n');
+  }
   return [
-    `La herramienta "${parsed.tool}" no se pudo ejecutar (nombre invalido o no disponible en este modo).`,
+    `La herramienta "${parsed.tool}" no se pudo ejecutar (nombre invalido o no disponible).`,
     `Error: ${errorMessage}`,
-    `Las unicas herramientas disponibles son: ${TOOL_DEFINITIONS.map(t => t.name).join(', ')}.`,
+    `Las unicas herramientas disponibles son: ${toolNames}.`,
     'Elige UNA de esas herramientas. Usa el formato exacto del nombre. No inventes herramientas.',
   ].join('\n');
 }
 
 module.exports = {
+  KNOWN_TOOLS,
   buildConversationMessages,
   buildSystemPrompt,
   buildToolErrorMessage,

@@ -9,7 +9,7 @@ const HEADERS = {
   'Referer': 'https://opencode.ai/',
 };
 
-const ZEN_STREAM_READ_TIMEOUT_MS = 120000;
+const ZEN_STREAM_READ_TIMEOUT_MS = 60000;
 const MAX_ZEN_STREAM_RETRIES = 3;
 
 async function fetchZenCompletionWithRetry(messages, modelId, signal) {
@@ -107,7 +107,7 @@ async function streamCompletion(messages, modelId, onChunk, signal) {
 }
 
 async function zen(messages, modelId, onChunk = null, options = {}) {
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 3;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const result = await streamCompletion(messages, modelId, onChunk, options.signal);

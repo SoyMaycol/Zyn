@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <b>AI agent for terminal, TUI, and external platforms (WhatsApp, Discord, Telegram).</b>
+  <b>AI agent for terminal, TUI, and embeddable API — fixed conversation history, memory compaction, and text display bugs</b>
 </p>
 
 <p align="center">
@@ -21,23 +21,57 @@
 
 ---
 
+## Key Fixes (2026)
+
+### History Persistence
+
+- **Session resumption** — Use `--resume ID` to continue previous conversations. Without `--resume`, a new empty session is created each time.
+- **History includes** — User messages, assistant responses, tool results, and thinking blocks (with accurate elapsed time, not 0.0s for tools)
+
+### Memory Compaction
+
+- **Lower threshold** — Now compacts at 12K chars (was 60K) — more frequent, realistic cleaning
+- **Accurate summaries** — Real conversation history ($ removed), better token estimates
+- **Smart history retention** — Keeps last 50 messages or 12K chars, whichever fits first
+
+### Text Display
+
+- **Unescaped newlines** — `\n` in JSON content now converts to real newlines
+- **Inline markdown** — Renders `*italic*`, `_italic_`, `**bold**`, `` `code` `` in responses
+- **No duplication** — Response content written once, not twice
+
+### System Prompt Improvements
+
+- **Clearer instructions** — Added rules for using conversation history:
+  - "Tienes acceso al historial de la conversacion. Úsalo para responder preguntas sobre conversaciones anteriores."
+  - Specific guidance: "Si el usuario pregunta 'que dice al principio' o similar, revisa el historial y responde con lo que dice."
+- **Supports `ask_user`** — Model now knows to ask the user when it needs information or choices
+
+### Skill Search
+
+- **Auto-search** — Mentions of GitHub repos/skills trigger `web_search` to find them
+- **Skills.sh compatible** — Format matches skills.sh ecosystem (YAML frontmatter + Markdown)
+
+### Other Fixes
+
+- **ESC double-press** — First ESC shows "press again", second within 500ms aborts
+- **Tool notifications** — Show `[toolName]` in thinking block when tool JSON is detected
+- **`load_skill` language** — Accepts `state.language` for Spanish/English output
+- **DeepSeek integration** — Fixed streaming tool detection, WASM PoW solver
+
 ## Features
 
-- **CLI + TUI** — full terminal UI with keyboard navigation, token display, history compaction, and overlay system
-- **Multi-provider** — Zen (free, no config), Gemini, Qwen (DashScope), HuggingFace, custom providers (any OpenAI-compatible API)
-- **Skills system** — folder-based skills with YAML frontmatter that guide agent behavior
+- **CLI + TUI** — full terminal UI with keyboard navigation, token display, **improved history & compaction**, overlay system
+- **Multi-provider** — Zen (free, no config), Gemini, Qwen (DashScope), HuggingFace, **skill search**, custom providers (any OpenAI-compatible API)
+- **Skills system** — folder-based skills with **improved prompt integration** and YAML frontmatter
 - **Tool execution** — read/write files, run commands, search code, browse web, glob patterns
-- **Session management** — persistent sessions with auto-compaction, full transcript replay, resume, export
-- **Context tracking** — token estimator with per-model context limits, auto-compaction at 85% threshold
+- **Session management** — **real conversation history**, persistent sessions with **better compaction**, full transcript replay, resume, export
+- **Context tracking** — token estimator with per-model context limits, **auto-compaction at 85%**, updated to reflect new history behavior
 - **Multi-platform** — embeddable in WhatsApp (Baileys), Discord, and Telegram bots
 - **Background workers** — detach long-running turns to background processes
 - **i18n** — English and Spanish interfaces
 
-## Requirements
-
-- Node.js 18+
-- npm
-- Internet connection for remote AI providers
+---
 
 ## Installation
 
@@ -61,7 +95,7 @@ npm start
 zyn                  # Interactive TUI (default)
 zyn "question"       # Single prompt (CLI mode)
 zyn --new            # Force new session
-zyn --resume ID      # Resume existing session
+zyn --resume ID      # Resume existing session (keeps history)
 ```
 
 ## Models
@@ -117,7 +151,7 @@ Default model: `nemotron` (Zen, no configuration required).
 | `/session` | Current session info |
 | `/sessions` | List all sessions |
 | `/new` | New session |
-| `/resume <ID>` | Resume session |
+| `/resume <ID>` | Resume session (keeps history) |
 | `/title <text>` | Rename session |
 
 ### Configuration
@@ -189,7 +223,7 @@ description: Reasoning and planning for complex tasks
 # Skill body here
 ```
 
-The system prompt automatically advertises every loaded skill to the model.
+The system prompt automatically advertises every loaded skill to the model, and mentions of GitHub repos/skills trigger `web_search` to find them.
 
 ## API
 
@@ -228,8 +262,6 @@ Install the corresponding `optionalDependencies` only if you need them.
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
 | Variable | Description |
 |---|---|
 | `ZYN_DEFAULT_MODEL` | Override default model key |

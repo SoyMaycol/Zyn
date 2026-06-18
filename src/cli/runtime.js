@@ -297,7 +297,7 @@ async function runTest() {
   console.log(`  ${dim('─'.repeat(40))}`);
   console.log('');
 
-  console.log(`  ${C.cyan}[1/4]${C.reset} Config y modelos`);
+  console.log(`  ${C.cyan}[1/5]${C.reset} Config y modelos`);
   const modelKeys = Object.keys(MODELS);
   const zenModels = modelKeys.filter(k => MODELS[k].provider === 'zen');
   if (modelKeys.length > 0) {
@@ -308,7 +308,7 @@ async function runTest() {
   }
   console.log('');
 
-  console.log(`  ${C.cyan}[2/4]${C.reset} Modulos cargables`);
+  console.log(`  ${C.cyan}[2/5]${C.reset} Modulos cargables`);
   const modules = [
     ['core/agent', '../core/agent'],
     ['core/prompts', '../core/prompts'],
@@ -327,7 +327,7 @@ async function runTest() {
   }
   console.log('');
 
-  console.log(`  ${C.cyan}[3/4]${C.reset} TUI (ESM import)`);
+  console.log(`  ${C.cyan}[3/5]${C.reset} TUI (ESM import)`);
   try {
     await import('../tui/app.mjs');
     console.log(`    ${ok('tui/app.mjs cargado correctamente')}`);
@@ -336,7 +336,7 @@ async function runTest() {
   }
   console.log('');
 
-  console.log(`  ${C.cyan}[4/4]${C.reset} Zen API — stream en vivo (nemotron)`);
+  console.log(`  ${C.cyan}[4/5]${C.reset} Zen API — stream en vivo (nemotron)`);
   console.log(`    ${dim('Enviando: "que modelo eres?"')}`);
   process.stdout.write(`    ${C.purple}`);
   try {
@@ -357,6 +357,34 @@ async function runTest() {
     console.log(`    ${fail(err.message)}`);
   }
 
+  const { parseAgentResponse } = require('../core/prompts');
+
+  console.log(`  ${C.cyan}[5/5]${C.reset} parseAgentResponse`);
+  const parseTests = [
+    ['Pure JSON tool', '{"type":"tool","tool":"list_dir","args":{"path":"."}}', 'tool', 'list_dir'],
+    ['Pure JSON final', '{"type":"final","content":"Hola"}', 'final', null],
+    ['Text+tool JSON', 'Voy a listar el directorio {"type":"tool","tool":"list_dir","args":{"path":"."}}', 'tool', 'list_dir'],
+    ['Text+final JSON', 'La respuesta es {"type":"final","content":"Hola"}', 'final', null],
+    ['XML invoke', '<invoke name="write_file"><args>{"path":"test.txt","content":"test"}</args></invoke>', 'tool', 'write_file'],
+    ['Malformed final', '{"type":"final","content":"Respuesta truncada', 'final', null],
+    ['Plain text', 'Hola mundo', 'final', null],
+    ['Empty string', '', 'final', null],
+  ];
+  let parseOk = 0;
+  for (const [name, input, expType, expTool] of parseTests) {
+    const result = parseAgentResponse(input);
+    if (result && result.type === expType && (expTool === null || result.tool === expTool)) {
+      parseOk++;
+    } else {
+      console.log(`    ${fail(`${name}: se esperaba ${expType}${expTool ? '/' + expTool : ''}, se obtuvo ${JSON.stringify(result)}`)}`);
+    }
+  }
+  if (parseOk === parseTests.length) {
+    console.log(`    ${ok(`${parseOk}/${parseTests.length} casos correctos`)}`);
+  } else {
+    console.log(`    ${fail(`${parseOk}/${parseTests.length} casos correctos`)}`);
+  }
+
   console.log('');
   console.log(`  ${dim('─'.repeat(40))}`);
   console.log(`  ${title('Test completado')}`);
@@ -368,6 +396,35 @@ async function main() {
 
   if (rawArgs[0] === 'test') {
     await runTest();
+    return;
+  }
+
+  if (rawArgs[0] === 'skills') {
+    const { installSkill, listSkills } = require('../core/skills');
+    const sub = rawArgs[1];
+    if (sub === 'install' && rawArgs[2]) {
+      const repo = rawArgs[2];
+      const skillName = rawArgs[3] || null;
+      console.log(`\n  Instalando skill desde ${repo}...`);
+      try {
+        const result = await installSkill(repo, skillName);
+        console.log(`  ✓ Skill "${result.name}" instalada en ${result.path}`);
+        if (result.description) console.log(`  ${result.description}`);
+      } catch (err) {
+        console.error(`  ✗ Error: ${err.message}`);
+        process.exit(1);
+      }
+    } else if (sub === 'list') {
+      const skills = listSkills();
+      console.log('\n  Skills instaladas:');
+      for (const s of skills) {
+        console.log(`    ${s.name} — ${s.description || s.title || ''}`);
+      }
+    } else {
+      console.log('\n  Uso:');
+      console.log('    node zyn.js skills install <owner/repo> [name]');
+      console.log('    node zyn.js skills list');
+    }
     return;
   }
 

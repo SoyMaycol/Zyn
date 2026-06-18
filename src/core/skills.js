@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const { DATA_ROOT } = require('../config');
 
 const SKILLS_DIR = path.join(DATA_ROOT, 'skills');
@@ -78,6 +79,21 @@ function loadSkill(name) {
   return readSkillFolder(folderPath);
 }
 
+async function installSkill(repo, skillName) {
+  const url = `https://raw.githubusercontent.com/${repo}/main/SKILL.md`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`No se pudo descargar skill de ${url} (${res.status})`);
+  }
+  const text = await res.text();
+  const { meta } = parseFrontmatter(text);
+  const name = skillName || meta.name || repo.split('/').pop();
+  const folder = path.join(SKILLS_DIR, name);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, 'SKILL.md'), text, 'utf8');
+  return { name, description: meta.description || '', path: folder };
+}
+
 function loadAllSkills() {
   return listSkillFolders();
 }
@@ -123,10 +139,10 @@ function buildSkillsIndexPrompt() {
   const skills = listSkills();
   if (skills.length === 0) return '';
   const lines = [
-    '## Available Skills',
-    'Each skill lives in `data/skills/<name>/SKILL.md` with YAML frontmatter (name + description).',
-    'Only the index below is preloaded. The full body of a skill is loaded ON DEMAND via the',
-    '`load_skill` tool — call it with the exact `name` when a skill is relevant to the task.',
+    '## Skills disponibles',
+    'Cada skill es un SKILL.md con YAML frontmatter (name + description). Formato compatible con skills.sh.',
+    'Solo el indice esta precargado. El contenido completo se carga ON DEMAND via `load_skill`.',
+    'Cuando una skill sea relevante para la tarea, llama a `load_skill` con el nombre exacto.',
     '',
   ];
   for (const skill of skills) {
@@ -141,6 +157,7 @@ module.exports = {
   SKILLS_DIR,
   buildSkillsIndexPrompt,
   buildSkillsPrompt,
+  installSkill,
   listSkillFolders,
   listSkills,
   loadAllSkills,

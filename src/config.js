@@ -151,13 +151,14 @@ const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || proce
 const HUGGINGFACE_TOKEN = process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN || '';
 const GEMINI_API_KEY = process.env.ZYN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 
-const MAX_TOOL_STEPS = Number.POSITIVE_INFINITY;
-const MAX_OUTPUT_CHARS = 12000;
-const MAX_FILE_LINES = 5000;
-const ACTION_LOG_LIMIT = 40;
-const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 900000);
-const MAX_HISTORY_CHARS = 60000;
+const MAX_TOOL_STEPS = Number(process.env.ZYN_MAX_TOOL_STEPS || 20);
+
+const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 120000);
+const ACTION_LOG_LIMIT = 100;
+const MAX_HISTORY_CHARS = 12000;
+const MAX_FILE_LINES = 2000;
 const KEEP_RECENT_MESSAGES = 50;
+const MAX_OUTPUT_CHARS = 8000;
 const AUTO_COMPACT_THRESHOLD = 0.85;
 
 const DEFAULT_CONTEXT_LIMIT = 128000;

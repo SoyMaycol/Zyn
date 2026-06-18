@@ -227,6 +227,8 @@ async function deepseekChat(messages, modelId, onChunk = null, options = {}) {
       if (!trimmed.startsWith('{')) {
         if (trimmed.includes('"type":"final"') || trimmed.includes('"type": "final"')) {
           trimmed = '{' + trimmed;
+        } else if (trimmed.includes('"type":"tool"') || trimmed.includes('"type": "tool"')) {
+          trimmed = '{' + trimmed;
         } else {
           return false;
         }
@@ -240,6 +242,10 @@ async function deepseekChat(messages, modelId, onChunk = null, options = {}) {
           if (onChunk) onChunk(newContent, 'answer');
           lastEmittedLen = parsed.content.length;
         }
+        return true;
+      }
+      if (parsed.type === 'tool' && parsed.tool) {
+        if (onChunk) onChunk(JSON.stringify(parsed), 'answer');
         return true;
       }
       return false;

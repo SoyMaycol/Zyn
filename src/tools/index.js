@@ -1,6 +1,18 @@
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
+
+let _shellCommand = null;
+function detectShell() {
+  if (_shellCommand) return _shellCommand;
+  try {
+    execSync('bash --version', { stdio: 'ignore', timeout: 2000 });
+    _shellCommand = 'bash';
+  } catch {
+    _shellCommand = 'sh';
+  }
+  return _shellCommand;
+}
 
 const fsp = fs.promises;
 
@@ -53,6 +65,7 @@ const TOOL_DEFINITIONS = [
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
   { name: 'load_skill', usage: '{ name }' },
+  { name: 'ask_user', usage: '{ question, options }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
 
@@ -227,6 +240,16 @@ function getToolPromptText() {
     '',
     '  Control total: repos, issues, PRs, releases, webhooks, users, etc. Segun permisos del token.',
     '  No hay acciones fijas. Elige method y path libremente.',
+    '',
+    '## Preguntar al usuario',
+    '',
+    'ask_user { question, options }',
+    '  Muestra una pregunta al usuario con opciones predefinidas para escoger.',
+    '  question: string con la pregunta.',
+    '  options: array de strings con las opciones que el usuario puede escoger.',
+    '  El usuario tambien puede escribir una respuesta personalizada.',
+    '  Retorna la respuesta seleccionada o escrita por el usuario.',
+    '  Ejemplo: {"type":"tool","tool":"ask_user","args":{"question":"Que lenguaje prefieres?","options":["JavaScript","Python","Go","Rust"]}}',
     '',
     '## Skills (carga bajo demanda)',
     '',
@@ -470,6 +493,46 @@ async function requireIpConsent(urlValue, state, paint) {
   return answer === 's' || answer === 'si' || answer === 'y' || answer === 'yes';
 }
 
+async function askUserTool(args, state, paint, ctx) {
+  const lang = state?.language || 'es';
+  const question = String(args.question || '').trim();
+  const options = Array.isArray(args.options) ? args.options.map(String) : [];
+
+  if (!question) {
+    throw new Error(t(lang, 'ask_user requiere question', 'ask_user requires question'));
+  }
+  if (options.length === 0) {
+    throw new Error(t(lang, 'ask_user requiere al menos 1 opcion en options', 'ask_user requires at least 1 option in options'));
+  }
+
+  const customLabel = lang === 'es' ? 'Respuesta personalizada...' : 'Custom answer...';
+  const allItems = [...options, customLabel];
+
+  if (state?.tuiAskUser) {
+    return await state.tuiAskUser(question, allItems, customLabel);
+  }
+
+  if (!state?.rl) {
+    throw new Error(t(lang, 'ask_user requiere interfaz interactiva', 'ask_user requires interactive interface'));
+  }
+
+  console.error('');
+  console.error(`  ${paint('\u270e', 'yellow')} ${question}`);
+  console.error('');
+  for (let i = 0; i < options.length; i++) {
+    console.error(`    ${paint(`${i + 1}.`, 'yellow')} ${options[i]}`);
+  }
+  console.error(`    ${paint(`${options.length + 1}.`, 'yellow')} ${customLabel}`);
+  console.error('');
+
+  const answer = await state.rl.question(`  ${paint('>', 'yellow')} `);
+  const num = parseInt(answer, 10);
+  if (num >= 1 && num <= options.length) {
+    return options[num - 1];
+  }
+  return answer.trim() || options[0];
+}
+
 async function listDirTool(args, state) {
   const targetPath = resolveInputPath(args.path ?? '.', state.cwd);
   const entries = await fsp.readdir(targetPath, { withFileTypes: true });
@@ -491,18 +554,19 @@ async function listDirTool(args, state) {
   return `Ruta: ${targetPath}\n${formatted || '[vacio]'}`;
 }
 
-async function loadSkillTool(args) {
+async function loadSkillTool(args, state) {
+  const lang = state?.language || 'es';
   const name = String(args?.name || '').trim();
   if (!name) {
     const all = listSkills();
     const list = all.map(s => `- \`${s.name}\` — ${s.description || s.title || ''}`).join('\n');
-    throw new Error(t(state?.language, `load_skill requiere name. Skills disponibles:\n${list}`, `load_skill requires name. Available skills:\n${list}`));
+    throw new Error(t(lang, `load_skill requiere name. Skills disponibles:\n${list}`, `load_skill requires name. Available skills:\n${list}`));
   }
   const skill = loadSkill(name);
   if (!skill) {
     const all = listSkills();
     const list = all.map(s => `- \`${s.name}\` — ${s.description || s.title || ''}`).join('\n');
-    throw new Error(t(state?.language, `Skill "${name}" no encontrada. Skills disponibles:\n${list}`, `Skill "${name}" not found. Available skills:\n${list}`));
+    throw new Error(t(lang, `Skill "${name}" no encontrada. Skills disponibles:\n${list}`, `Skill "${name}" not found. Available skills:\n${list}`));
   }
   const maxChars = 12000;
   const body = skill.body.length > maxChars
@@ -614,7 +678,8 @@ async function runCommandTool(args, state, paint, ctx) {
 
 
   const timeoutMs = Number(args.timeoutMs ?? 120000);
-  const result = await runProcess('bash', ['-lc', command], {
+  const shell = detectShell();
+  const result = await runProcess(shell, ['-lc', command], {
     cwd: state.cwd,
     timeoutMs,
     signal: ctx?.signal,
@@ -1468,7 +1533,10 @@ async function executeToolCall(call, state, ui, options = {}) {
         result = await gitUnifiedTool(call.args, state, ui.paint, ctx);
         break;
       case 'load_skill':
-        result = await loadSkillTool(call.args);
+        result = await loadSkillTool(call.args, state);
+        break;
+      case 'ask_user':
+        result = await askUserTool(call.args, state, ui.paint, ctx);
         break;
       default:
         throw new Error(t(state?.language, `Herramienta no soportada: ${call.tool}`, `Unsupported tool: ${call.tool}`));

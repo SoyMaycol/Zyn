@@ -14,6 +14,7 @@ const {
 } = require('../config');
 const { chat } = require('../providers/scraperClient');
 const {
+  KNOWN_TOOLS,
   buildConversationMessages,
   buildSystemPrompt,
   buildToolErrorMessage,
@@ -51,12 +52,6 @@ function waitForRetry(ms, signal) {
     }
     if (signal) signal.addEventListener('abort', onAbort, { once: true });
   });
-}
-
-function looksLikeActionRequest(text) {
-  const sample = normalizeText(String(text || '')).toLowerCase();
-  if (!sample) return false;
-  return /(haz|hacer|hazme|make|instala|install|run|ejecuta|crea|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|delete|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|import|aplica|apply|deploy|despliega|init|npm|git|docker|qemu)/i.test(sample);
 }
 
 async function requestModel(messages, state, ui, options = {}) {
@@ -97,16 +92,26 @@ async function requestModel(messages, state, ui, options = {}) {
             ui.writeThinkingDelta(state, delta);
             return;
           }
-          if (thinkingStarted) {
+          if (thinkingStarted && !answerStarted) {
             ui.endThinkingStream(state);
             thinkingStarted = false;
           }
           if (streamOutput && !answerStarted) {
-            answerChunks += delta;
+             answerChunks += delta;
             const trimmed = answerChunks.trim();
             if (trimmed.startsWith('{')) {
               const isToolCall = /"type"\s*:\s*"tool"/.test(trimmed);
-              if (isToolCall) return;
+              if (isToolCall) {
+                const toolMatch = trimmed.match(/"tool"\s*:\s*"([\w-]+)"/);
+                const toolName = toolMatch ? toolMatch[1] : '...';
+                if (!state.__toolNameShown) {
+                  if (typeof ui.logEvent === 'function') {
+                    ui.logEvent(state, 'tool', toolName);
+                  }
+                  state.__toolNameShown = true;
+                }
+                return;
+              }
               const isFinalComplete = /"type"\s*:\s*"final"\s*,\s*"content"\s*:\s*"/.test(trimmed);
               if (isFinalComplete && trimmed.endsWith('"}')) {
                 const contentMatch = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
@@ -114,7 +119,6 @@ async function requestModel(messages, state, ui, options = {}) {
                   stopThinking();
                   ui.beginAssistantStream(state);
                   answerStarted = true;
-                  ui.writeAssistantDelta(state, contentMatch[1]);
                   return;
                 }
               }
@@ -122,10 +126,6 @@ async function requestModel(messages, state, ui, options = {}) {
                 stopThinking();
                 ui.beginAssistantStream(state);
                 answerStarted = true;
-                const contentMatch = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                if (contentMatch) {
-                  ui.writeAssistantDelta(state, contentMatch[1]);
-                }
                 return;
               }
               return;
@@ -146,19 +146,7 @@ async function requestModel(messages, state, ui, options = {}) {
         },
       });
       ui.pushAction(state, 'ok', state.language === 'es' ? 'Respuesta recibida' : 'Answer received');
-      let answer = result.answer ?? '';
-      if (!answer && result.thinking) {
-        const thinkingTrimmed = result.thinking.trim();
-        if (/^\s*\{/.test(thinkingTrimmed) && /"type"\s*:\s*"(tool|final)"/.test(thinkingTrimmed)) {
-          answer = thinkingTrimmed;
-        } else {
-          const extracted = thinkingTrimmed.match(/\{[\s\S]*"type"\s*:\s*"(tool|final)"[\s\S]*\}/);
-          if (extracted) {
-            answer = extracted[0];
-          }
-        }
-      }
-      return answer;
+      return result.answer ?? '';
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
@@ -198,29 +186,27 @@ async function persistSessionState(state, ui) {
   await saveState(state);
 }
 
-async function answerFromToolResult(input, call, result, state, ui) {
+async function answerFromToolResult(input, call, result, state, ui, language) {
+  const systemPrompt = buildSystemPrompt(state.cwd, state, { input, language });
   const messages = [
-    {
-      role: 'system',
-      content: `Eres Zyn. Responde de forma técnica y directa basada únicamente en el resultado de la herramienta. Directorio: ${state.cwd}`,
-    },
-    {
-      role: 'user',
-      content: `Solicitud: ${input}\n\nResultado de ${call.tool}:\n${result}`,
-    },
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: input },
+    { role: 'assistant', content: JSON.stringify({ type: 'tool', tool: call.tool, args: call.args }) },
+    { role: 'user', content: buildToolResultMessage(call, result, language) },
   ];
 
   const output = await requestModel(messages, state, ui, {
-    label: state.language === 'es' ? 'Procesando resultado' : 'Processing result',
+    label: language === 'es' ? 'Procesando resultado' : 'Processing result',
   });
   const parsed = parseAgentResponse(output);
   const answer = parsed.type === 'final' ? normalizeText(parsed.content) : normalizeText(output);
-  return answer || '(procesado)';
+  return answer || (language === 'es' ? '(procesado)' : '(processed)');
 }
 
 async function runAgentTurn(input, state, ui, options = {}) {
   const signal = options.signal;
   state.turnCount += 1;
+  state.__toolNameShown = false;
   if (state.turnCount === 1 && state.title === 'New session') {
     state.title = shortText(input, 60) || state.title;
   }
@@ -231,7 +217,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
     const result = await executeToolCall(directAction, state, ui, { signal });
     const cleanResult = stripBase64Images(String(result || ''));
     await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: directAction.tool, args: directAction.args, result: cleanResult });
-    const finalAnswer = await answerFromToolResult(input, directAction, cleanResult, state, ui);
+    const finalAnswer = await answerFromToolResult(input, directAction, cleanResult, state, ui, turnLanguage);
     state.history.push({ role: 'user', content: input }, { role: 'assistant', content: finalAnswer });
     await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: finalAnswer });
     await persistSessionState(state, ui);
@@ -243,9 +229,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
   let step = 0;
   let toolUsedThisTurn = false;
-  let finalWithoutToolRetries = 0;
-  let lastFingerprint = '';
-  let repeatCount = 0;
   const turnLanguage = detectLanguage(input, state.language);
 
   while (true) {
@@ -279,33 +262,23 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
     let parsed = parseAgentResponse(raw);
 
+    if (parsed.type === 'tool' && !KNOWN_TOOLS.has(parsed.tool)) {
+      const invalidToolMsg = turnLanguage === 'en'
+        ? `The tool "${parsed.tool}" does not exist. Available tools: ${[...KNOWN_TOOLS].join(', ')}. Use ONE of these exact names.`
+        : `La herramienta "${parsed.tool}" no existe. Herramientas disponibles: ${[...KNOWN_TOOLS].join(', ')}. Usa UNO de estos nombres exactos.`;
+      turnMessages.push({ role: 'assistant', content: JSON.stringify({ type: 'tool', tool: parsed.tool, args: parsed.args }) });
+      turnMessages.push({ role: 'user', content: invalidToolMsg });
+      step++;
+      continue;
+    }
+
     if (parsed.type === 'final') {
       const safeContent = (parsed.content || '').trim() || '(respuesta vacía)';
-      if (looksLikeActionRequest(input) && !toolUsedThisTurn && finalWithoutToolRetries < 2) {
-        finalWithoutToolRetries++;
-        turnMessages.push({ role: 'assistant', content: safeContent });
-        turnMessages.push({ role: 'user', content: 'No has ejecutado ninguna herramienta técnica para esta solicitud de acción. Por favor, usa las herramientas necesarias para obtener resultados reales antes de concluir.' });
-        step++;
-        continue;
-      }
       turnMessages.push({ role: 'assistant', content: safeContent });
       state.history.push(...turnMessages);
       await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: safeContent });
       await persistSessionState(state, ui);
       return { content: safeContent, rendered: useStream };
-    }
-
-    const fingerprint = `${parsed.tool}:${parsed.args?.path || ''}:${shortText(JSON.stringify(parsed.args || {}), 50)}`;
-    if (fingerprint === lastFingerprint) {
-      repeatCount++;
-      if (repeatCount >= 3) {
-        turnMessages.push({ role: 'user', content: 'Estas en un bucle con la misma herramienta y argumentos. Cambia de estrategia o finaliza con el estado actual.' });
-        step++;
-        continue;
-      }
-    } else {
-      lastFingerprint = fingerprint;
-      repeatCount = 0;
     }
 
     turnMessages.push({ role: 'assistant', content: JSON.stringify({ type: 'tool', tool: parsed.tool, args: sanitizeArgsForModel(parsed) }) });
@@ -314,12 +287,12 @@ async function runAgentTurn(input, state, ui, options = {}) {
       toolUsedThisTurn = true;
       const result = await executeToolCall(parsed, state, ui, { signal });
       await appendTranscriptEntry(state.sessionId, { type: 'tool', tool: parsed.tool, args: parsed.args, result });
-      turnMessages.push({ role: 'user', content: `TOOL_RESULT\n${buildToolResultMessage(parsed, result)}` });
+      turnMessages.push({ role: 'user', content: `TOOL_RESULT\n${buildToolResultMessage(parsed, result, turnLanguage)}` });
     } catch (err) {
       if (err?.message === 'aborted' && signal?.aborted) {
         throw new Error('aborted');
       }
-      turnMessages.push({ role: 'user', content: buildToolErrorMessage(parsed, err.message) });
+      turnMessages.push({ role: 'user', content: buildToolErrorMessage(parsed, err.message, turnLanguage) });
     }
 
     step++;

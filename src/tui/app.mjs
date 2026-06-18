@@ -184,7 +184,7 @@ class UIStore extends EventEmitter {
     this.turnCount = 0;
     this.messageQueue = [];
     this.pendingExit = false;
-    this.lastEscapeAt = 0;
+    this.lastEscapeAt = -1;
     this.submittedHistory = [];
     this.submittedRedo = [];
     this.conversationHistory = [];
@@ -221,8 +221,10 @@ class UIStore extends EventEmitter {
   endThinking() {
     if (!this.liveThinking) return;
     const elapsed = ((Date.now() - this.liveThinking.started) / 1000).toFixed(1);
-    this.addItem({ type: 'thinking', text: this.liveThinking.text, elapsed });
+    const text = this.liveThinking.text.trim();
     this.liveThinking = null;
+    if (!text) return;
+    this.addItem({ type: 'thinking', text, elapsed });
   }
 
   beginAnswer() {
@@ -338,6 +340,26 @@ class UIStore extends EventEmitter {
     this.inputRequest.resolve(null);
     this.inputRequest = null;
     this._emit();
+  }
+
+  async requestAskUser(question, allItems, customLabel) {
+    const selectResult = await this.requestSelect({
+      title: question,
+      items: allItems,
+      getLabel: (item) => String(item),
+      getValue: (item) => item,
+    });
+
+    if (selectResult === null) return null;
+    if (selectResult === customLabel) {
+      const customResult = await this.requestInput({
+        title: question,
+        subtitle: '',
+        prompt: '>',
+      });
+      return customResult || null;
+    }
+    return String(selectResult);
   }
 
   appendInputChar(ch) {
@@ -480,7 +502,7 @@ function useDimensions() {
 
 function parseInline(text) {
   const parts = [];
-  const regex = /(\*\*(.+?)\*\*)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
+  const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(_(.+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
   let lastIndex = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
@@ -488,8 +510,10 @@ function parseInline(text) {
       parts.push({ t: 'text', v: text.slice(lastIndex, match.index) });
     }
     if (match[2]) parts.push({ t: 'bold', v: match[2] });
-    else if (match[4]) parts.push({ t: 'code', v: match[4] });
-    else if (match[6] && match[7]) parts.push({ t: 'link', text: match[6], url: match[7] });
+    else if (match[4]) parts.push({ t: 'italic', v: match[4] });
+    else if (match[6]) parts.push({ t: 'italic', v: match[6] });
+    else if (match[8]) parts.push({ t: 'code', v: match[8] });
+    else if (match[10] && match[11]) parts.push({ t: 'link', text: match[10], url: match[11] });
     lastIndex = regex.lastIndex;
   }
   if (lastIndex < text.length) {
@@ -502,7 +526,7 @@ function parseInline(text) {
 
 function normalizeAssistantDisplayText(text) {
   const raw = String(text || '');
-  const trimmed = raw.trim();
+  let trimmed = raw.trim();
   if (!trimmed) return raw;
 
   const parsed = parseAgentResponse(trimmed);
@@ -510,10 +534,10 @@ function normalizeAssistantDisplayText(text) {
     return '';
   }
   if (parsed?.type === 'final' && typeof parsed.content === 'string' && parsed.content.trim()) {
-    return parsed.content.trim();
+    return parsed.content.trim().replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
   }
 
-  return raw;
+  return trimmed.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 }
 
 function InlineLine({ text, color }) {
@@ -522,6 +546,7 @@ function InlineLine({ text, color }) {
   return h(Box, { flexWrap: 'wrap' },
     ...parts.map((p, i) => {
       if (p.t === 'bold') return h(Text, { key: String(i), color: base, bold: true }, p.v);
+      if (p.t === 'italic') return h(Text, { key: String(i), color: T.textMuted, italic: true }, p.v);
       if (p.t === 'code') return h(Text, { key: String(i), color: T.cyan, backgroundColor: T.codeBg }, ' ' + p.v + ' ');
       if (p.t === 'link') return h(Box, { key: String(i), flexWrap: 'wrap' },
         h(Text, { color: T.accent, underline: true }, p.text),
@@ -1484,16 +1509,20 @@ function App({ store, state, onSubmit }) {
       }
       if (store.processing) {
         const now = Date.now();
-        if (now - store.lastEscapeAt < 2000) return;
-        store.lastEscapeAt = now;
-        if (typeof state.abortCurrentTurn === 'function') {
-          state.abortCurrentTurn();
+        if (store.lastEscapeAt !== -1 && now - store.lastEscapeAt < 500) {
+          store.lastEscapeAt = 0;
+          if (typeof state.abortCurrentTurn === 'function') {
+            state.abortCurrentTurn();
+          }
+          store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC', 'Interrumpido con ESC'));
+          return;
         }
-        store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC', 'Interrumpido con ESC'));
+        store.lastEscapeAt = now;
+        store.addEvent('info', uiText('press ESC again', 'pulsa ESC otra vez'), uiText('to stop', 'para detener'));
         return;
       }
       const now = Date.now();
-      if (now - store.lastEscapeAt < 500) {
+      if (store.lastEscapeAt !== -1 && now - store.lastEscapeAt < 500) {
         store.lastEscapeAt = 0;
         exit();
         return;
@@ -1658,6 +1687,7 @@ export async function startTUI(options = {}) {
   state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
   state.tuiSelect = (options) => store.requestSelect(options);
   state.tuiInput = (options) => store.requestInput(options);
+  state.tuiAskUser = (question, allItems, customLabel) => store.requestAskUser(question, allItems, customLabel);
   state.getQueuedMessages = () => {
     const msgs = store.messageQueue.splice(0);
     if (msgs.length) store._emit();
@@ -1851,11 +1881,14 @@ export async function startTUI(options = {}) {
       state.__bgDetach = { input, signal: controller.signal };
       const ui = getUiBindings(store, state);
       const result = await runAgentTurn(input, state, ui, { signal: controller.signal });
-      if (!result.rendered && result.content) {
-        store.addItem({ type: 'answer', text: result.content });
-      }
       if (result.content) {
-        store.addConversationTurn(input, result.content);
+        if (!result.rendered) {
+          store.addItem({ type: 'answer', text: result.content });
+        }
+        store.conversationHistory.unshift({ user: input, assistant: result.content, timestamp: Date.now() });
+        if (store.conversationHistory.length > 100) store.conversationHistory.pop();
+        store.conversationRedo = [];
+        store._emit();
       }
       if (typeof ui.syncTokenEstimate === 'function') ui.syncTokenEstimate();
     } catch (err) {
