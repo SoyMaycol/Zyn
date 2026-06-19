@@ -1,4 +1,4 @@
-# Zyn
+# Zyn Agent
 
 <p align="center">
   <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <b>AI agent for terminal, TUI, and embeddable API — fixed conversation history, memory compaction, and text display bugs</b>
+  <b>A complete CLI Agent for production and enterprise level, with incredible results.</b>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 ---
 
-## Key Fixes (2026)
+## Key Fixes (1.4.0)
 
 ### History Persistence
 
@@ -275,4 +275,4 @@ Install the corresponding `optionalDependencies` only if you need them.
 
 ## License
 
-MIT
+MIT - Maycol B.T
