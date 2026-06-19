@@ -21,44 +21,6 @@
 
 ---
 
-## Key Fixes (1.4.0)
-
-### History Persistence
-
-- **Session resumption** — Use `--resume ID` to continue previous conversations. Without `--resume`, a new empty session is created each time.
-- **History includes** — User messages, assistant responses, tool results, and thinking blocks (with accurate elapsed time, not 0.0s for tools)
-
-### Memory Compaction
-
-- **Lower threshold** — Now compacts at 12K chars (was 60K) — more frequent, realistic cleaning
-- **Accurate summaries** — Real conversation history ($ removed), better token estimates
-- **Smart history retention** — Keeps last 50 messages or 12K chars, whichever fits first
-
-### Text Display
-
-- **Unescaped newlines** — `\n` in JSON content now converts to real newlines
-- **Inline markdown** — Renders `*italic*`, `_italic_`, `**bold**`, `` `code` `` in responses
-- **No duplication** — Response content written once, not twice
-
-### System Prompt Improvements
-
-- **Clearer instructions** — Added rules for using conversation history:
-  - "Tienes acceso al historial de la conversacion. Úsalo para responder preguntas sobre conversaciones anteriores."
-  - Specific guidance: "Si el usuario pregunta 'que dice al principio' o similar, revisa el historial y responde con lo que dice."
-- **Supports `ask_user`** — Model now knows to ask the user when it needs information or choices
-
-### Skill Search
-
-- **Auto-search** — Mentions of GitHub repos/skills trigger `web_search` to find them
-- **Skills.sh compatible** — Format matches skills.sh ecosystem (YAML frontmatter + Markdown)
-
-### Other Fixes
-
-- **ESC double-press** — First ESC shows "press again", second within 500ms aborts
-- **Tool notifications** — Show `[toolName]` in thinking block when tool JSON is detected
-- **`load_skill` language** — Accepts `state.language` for Spanish/English output
-- **DeepSeek integration** — Fixed streaming tool detection, WASM PoW solver
-
 ## Features
 
 - **CLI + TUI** — full terminal UI with keyboard navigation, token display, **improved history & compaction**, overlay system
@@ -67,7 +29,7 @@
 - **Tool execution** — read/write files, run commands, search code, browse web, glob patterns
 - **Session management** — **real conversation history**, persistent sessions with **better compaction**, full transcript replay, resume, export
 - **Context tracking** — token estimator with per-model context limits, **auto-compaction at 85%**, updated to reflect new history behavior
-- **Multi-platform** — embeddable in WhatsApp (Baileys), Discord, and Telegram bots
+- **Multi-platform** — embeddable in WhatsApp (Baileys), Discord, and Telegram bots, Although this function is not complete (It is under development)
 - **Background workers** — detach long-running turns to background processes
 - **i18n** — English and Spanish interfaces
 
