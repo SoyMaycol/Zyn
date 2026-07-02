@@ -1,7 +1,7 @@
 # Zyn Agent
 
 <p align="center">
-  <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn logo" width="180" />
+  <img src="https://i.ibb.co/46VHVKb/47-sin-t-tulo-20260702143433.png" alt="Zyn logo" width="180" />
 </p>
 
 <p align="center">
@@ -61,6 +61,14 @@ zyn "question"       # Single prompt (CLI mode)
 zyn --new            # Force new session
 zyn --resume ID      # Resume existing session (keeps history)
 ```
+
+## Presentation
+
+
+
+https://github.com/user-attachments/assets/8f1020ea-a883-4489-8ced-37cc4860c052
+
+
 
 ## Providers
 
