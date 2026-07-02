@@ -216,7 +216,7 @@ The system prompt automatically advertises every loaded skill to the model.
 | `ZYN_REQUEST_TIMEOUT_MS` | `120000` | Request timeout |
 | `ZYN_PROVIDER_TIMEOUT_MAX_ATTEMPTS` | `4` | Retry attempts on provider failure |
 | `ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS` | `5000` | Delay between retries |
-| `ZYN_MAX_TOOL_STEPS` | `100` | Maximum tool call steps per turn |
+| `ZYN_MAX_TOOL_STEPS` | `500` | Maximum tool call steps per turn |
 | `ZYN_MAX_HISTORY_CHARS` | `200000` | Max history characters retained |
 | `ZYN_MAX_FILE_LINES` | `10000` | Max file lines read at once |
 | `ZYN_MAX_OUTPUT_CHARS` | `50000` | Max output chars per tool result |
