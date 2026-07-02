@@ -97,7 +97,7 @@ function createAgent(options = {}) {
     return (async () => {
       const s = await ensureState();
       const userKey = userId || config.userId;
-      const taskId = enqueueBackgroundTask({ sessionId: s.sessionId, input: String(text), detachedAt: new Date().toISOString() });
+      const taskId = await enqueueBackgroundTask({ sessionId: s.sessionId, input: String(text), detachedAt: new Date().toISOString() });
       detachBackgroundTurn({
         taskId,
         sessionId: s.sessionId,
@@ -141,6 +141,7 @@ function createAgent(options = {}) {
     s.actionLog = [];
     s.turnCount = 0;
     s.memorySummary = '';
+    s.sessionMemory = {};
     await saveState(s);
     return true;
   };

@@ -2,9 +2,10 @@ const fs = require('fs');
 const path = require('path');
 
 const fsp = fs.promises;
-const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, MODELS, listProvidersFromModels } = require('../config');
+const { DEFAULT_LANGUAGE, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, MODELS, listProvidersFromModels, countTokens } = require('../config');
 const { languageLabel, normalizeLanguage, t } = require('../i18n');
 const { createNewSessionState, listSessions, loadSessionState, saveState, listBackgroundResults, consumeBackgroundResult, enqueueBackgroundTask } = require('../utils/sessionStorage');
+const { truncateHistory } = require('../core/prompts');
 const { listGitSecrets, removeGitSecret, upsertGitSecret } = require('../utils/secretStorage');
 const { clearGmailAuth, getGmailAuthStatus, startGmailOAuthFlow } = require('../utils/gmailAuth');
 const { exportTranscriptText, formatTranscriptPreview } = require('../utils/transcriptStorage');
@@ -246,7 +247,7 @@ async function runModelSelector(state, deps) {
     subtitle: state.language === 'es' ? '↑/↓ navega · Enter elige · Esc cancela' : '↑/↓ move · Enter pick · Esc cancel',
     items,
     initialIndex: initialIndex >= 0 ? initialIndex : 0,
-    getLabel: (item) => `${item.active ? '● ' : '  '}${item.label}`,
+    getLabel: (item) => item.label,
     getValue: (item) => item.key,
     isActive: (item) => item.active,
   });
@@ -310,24 +311,69 @@ async function runProviderSelector(state, deps) {
 }
 
 async function runProviderModelsSelector(state, deps, providerKey) {
+  const es = state.language === 'es';
   const providerGroup = listProvidersFromModels(MODELS).find(p => p.key === providerKey);
-  if (!providerGroup) return null;
-  const items = providerGroup.models.map(m => ({
+  const items = (providerGroup?.models || []).map(m => ({
     key: m.key,
     label: `${m.key.padEnd(22)} ${m.label}`,
     active: m.key === (state.activeModel || DEFAULT_MODEL_KEY),
   }));
+
+  items.push({
+    key: '__custom__',
+    label: es ? '(Escribir un model ID manualmente)' : '(Type a model ID manually)',
+    active: false,
+  });
+
   if (items.length === 0) return null;
   const initialIndex = Math.max(0, items.findIndex(it => it.active));
-  return deps.askSelect({
-    title: state.language === 'es' ? `Modelos de ${providerKey}` : `Models in ${providerKey}`,
-    subtitle: state.language === 'es' ? 'Elige un modelo · Esc vuelve' : 'Pick a model · Esc back',
+  const selected = await deps.askSelect({
+    title: es ? `Modelos de ${providerKey}` : `Models in ${providerKey}`,
+    subtitle: es ? 'Elige un modelo · Esc vuelve' : 'Pick a model · Esc back',
     items,
     initialIndex,
-    getLabel: (item) => `${item.active ? '● ' : '  '}${item.label}`,
+    getLabel: (item) => item.label,
     getValue: (item) => item.key,
     isActive: (item) => item.active,
   });
+
+  if (selected === '__custom__') {
+    const customModelId = await deps.askInput({
+      title: es ? `Model ID para ${providerKey}` : `Model ID for ${providerKey}`,
+      prompt: es
+        ? `ID exacto del modelo (puede fallar si no existe en ${providerKey})`
+        : `Exact model ID (may fail if not in ${providerKey})`,
+      defaultValue: '',
+    });
+    if (!customModelId) return null;
+
+    const customKey = `custom-${providerKey}-${customModelId.replace(/[^a-z0-9]/gi, '-').slice(0, 40)}`;
+    const extraFields = {};
+    const providerFieldMap = {
+      qwenapi: 'qwenapiModel', gemini: 'geminiModel', deepseek: 'deepseekChatModel',
+      huggingface: 'huggingfaceModel', zen: 'zenModel',
+    };
+    const fieldName = providerFieldMap[providerKey] || 'modelId';
+    extraFields[fieldName] = customModelId;
+    extraFields.modelId = customModelId;
+
+    MODELS[customKey] = {
+      label: customModelId,
+      provider: providerKey,
+      contextLength: 128000,
+      ...extraFields,
+    };
+
+    if (es) {
+      console.log(`\n  ! Aviso: "${customModelId}" se usara tal cual. Si falla, verifica que el modelo exista en ${providerKey}.\n`);
+    } else {
+      console.log(`\n  ! Warning: "${customModelId}" will be used as-is. If it fails, verify the model exists on ${providerKey}.\n`);
+    }
+
+    return customKey;
+  }
+
+  return selected;
 }
 
 async function switchActiveModel(state, deps, key) {
@@ -622,30 +668,129 @@ async function handleLocalCommand(input, state, deps) {
 
 function isProviderConfigured(providerKey) {
   const config = describeProviderConfig(providerKey);
-  if (!config) return false;
-  if (providerKey === 'qwenapi') return Boolean(config.apiKey || process.env.ZYN_QWEN_API_KEY);
-  if (providerKey === 'gemini') return Boolean(config.apiKey || process.env.ZYN_GEMINI_API_KEY);
-  if (providerKey === 'huggingface') return Boolean(config.apiKey || process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN);
-  if (providerKey === 'deepseek') return Boolean(config.apiKey || process.env.ZYN_DEEPSEEK_CHAT_KEY || process.env.DEEPSEEK_CHAT_KEY || process.env.ZYN_CHAT_KEY);
-  return true;
+  const hasEnv = (key) => Boolean(process.env[key]);
+  switch (providerKey) {
+    case 'openai': return Boolean(config?.apiKey || hasEnv('OPENAI_API_KEY'));
+    case 'anthropic': return Boolean(config?.apiKey || hasEnv('ANTHROPIC_API_KEY'));
+    case 'groq': return Boolean(config?.apiKey || hasEnv('GROQ_API_KEY'));
+    case 'together': return Boolean(config?.apiKey || hasEnv('TOGETHER_API_KEY'));
+    case 'openrouter': return Boolean(config?.apiKey || hasEnv('OPENROUTER_API_KEY'));
+    case 'mistral': return Boolean(config?.apiKey || hasEnv('MISTRAL_API_KEY'));
+    case 'xai': return Boolean(config?.apiKey || hasEnv('XAI_API_KEY'));
+    case 'cohere': return Boolean(config?.apiKey || hasEnv('COHERE_API_KEY'));
+    case 'fireworks': return Boolean(config?.apiKey || hasEnv('FIREWORKS_API_KEY'));
+    case 'perplexity': return Boolean(config?.apiKey || hasEnv('PERPLEXITY_API_KEY'));
+    case 'qwenapi': return Boolean(config?.apiKey || hasEnv('ZYN_QWEN_API_KEY') || hasEnv('QWEN_API_KEY') || hasEnv('DASHSCOPE_API_KEY'));
+    case 'gemini': return Boolean(config?.apiKey || hasEnv('ZYN_GEMINI_API_KEY') || hasEnv('GEMINI_API_KEY') || hasEnv('GOOGLE_API_KEY'));
+    case 'huggingface': return Boolean(config?.apiKey || hasEnv('ZYN_HUGGINGFACE_TOKEN') || hasEnv('HF_TOKEN'));
+    case 'deepseek': return Boolean(config?.apiKey || hasEnv('ZYN_DEEPSEEK_CHAT_KEY') || hasEnv('DEEPSEEK_CHAT_KEY'));
+    case 'ollama': return true;
+    case 'ollamaCloud': return Boolean(config?.apiKey || hasEnv('OLLAMA_API_KEY'));
+    case 'github': return Boolean(config?.apiKey || hasEnv('GITHUB_TOKEN'));
+    case 'azure': return Boolean(config?.apiKey || hasEnv('AZURE_OPENAI_API_KEY'));
+    case 'bedrock': return Boolean(config?.apiKey || hasEnv('BEDROCK_API_KEY'));
+    case 'vertex': return Boolean(config?.apiKey || hasEnv('GOOGLE_CLOUD_API_KEY') || hasEnv('GEMINI_API_KEY'));
+    case 'replicate': return Boolean(config?.apiKey || hasEnv('REPLICATE_API_TOKEN'));
+    case 'cloudflare': return Boolean(config?.apiKey || hasEnv('CLOUDFLARE_API_TOKEN'));
+    case 'lmstudio': return true;
+    case 'novita': return Boolean(config?.apiKey || hasEnv('NOVITA_API_KEY'));
+    case 'chutes': return Boolean(config?.apiKey || hasEnv('CHUTES_API_KEY'));
+    case 'inference': return Boolean(config?.apiKey || hasEnv('INFERENCE_API_KEY'));
+    default: return true;
+  }
 }
 
 async function configureProviderInteractive(state, deps, providerKey) {
   const es = state?.language === 'es';
   const fields = [];
-  if (providerKey === 'qwenapi') {
-    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'API Key (dashscope)' : 'API Key (DashScope)' });
-  } else if (providerKey === 'gemini') {
-    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'API Key (Google AI Studio)' : 'API Key (Google AI Studio)' });
-  } else if (providerKey === 'huggingface') {
-    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'Token (huggingface.co/settings/tokens)' : 'Token (huggingface.co/settings/tokens)' });
-  } else if (providerKey === 'deepseek') {
-    fields.push({ name: 'apiKey', hidden: true, prompt: es ? 'Bearer Token (chat.deepseek.com)' : 'Bearer Token (chat.deepseek.com)' });
-    fields.push({ name: 'hifLeim', hidden: true, prompt: es ? 'x-hif-leim header (opcional)' : 'x-hif-leim header (optional)' });
+  const skip = es ? 'Enter para saltar' : 'Enter to skip';
+
+  switch (providerKey) {
+    case 'openai':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'anthropic':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'groq':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'together':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'openrouter':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'mistral':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'xai':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'cohere':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'fireworks':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'perplexity':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'qwenapi':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `DashScope API Key (${skip})` });
+      break;
+    case 'gemini':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `Google AI API Key (${skip})` });
+      break;
+    case 'huggingface':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `HuggingFace Token (${skip})` });
+      break;
+    case 'deepseek':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'ollamaCloud':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'github':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `GitHub PAT (${skip})` });
+      break;
+    case 'azure':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      fields.push({ name: 'resource', hidden: false, prompt: es ? 'Resource name' : 'Resource name' });
+      break;
+    case 'bedrock':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      fields.push({ name: 'region', hidden: false, prompt: 'Region (us-east-1)' });
+      break;
+    case 'vertex':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      fields.push({ name: 'project', hidden: false, prompt: 'Project ID' });
+      fields.push({ name: 'location', hidden: false, prompt: 'Region (us-central1)' });
+      break;
+    case 'replicate':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Token (${skip})` });
+      break;
+    case 'cloudflare':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Token (${skip})` });
+      fields.push({ name: 'accountId', hidden: false, prompt: 'Account ID' });
+      break;
+    case 'novita':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'chutes':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    case 'inference':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
+    default:
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
   }
+
   for (const field of fields) {
     const value = await deps.askInput({
-      title: es ? `Configurar ${field.name} de ${providerKey}` : `Set ${field.name} for ${providerKey}`,
+      title: `${providerKey} / ${field.name}`,
       prompt: field.prompt,
       hidden: field.hidden,
       defaultValue: '',
@@ -679,11 +824,10 @@ async function runProvidersFlow(state, deps) {
   }
 
   // Paso 2: Si es opcional y no configurado, preguntar si configurar
-  const optionalProviders = ['qwenapi', 'gemini', 'huggingface', 'deepseek'];
-  if (optionalProviders.includes(provider) && !isProviderConfigured(provider)) {
+  if (!isProviderConfigured(provider)) {
     const configure = await deps.askConfirm({
-      title: es ? `Configurar ${provider} ahora?` : `Configure ${provider} now?`,
-      detail: es ? 'Puedes configurarlo despues con variables de entorno' : 'You can configure later with env vars',
+      title: es ? `Configurar ${provider}?` : `Configure ${provider}?`,
+      detail: es ? 'Necesita API key para funcionar' : 'Requires API key to work',
     });
     if (configure) {
       await configureProviderInteractive(state, deps, provider);
@@ -781,7 +925,7 @@ async function runModelsFlow(state, deps) {
     }
     const { input, signal } = state.__bgDetach;
     const sessionId = state.sessionId;
-    const taskId = enqueueBackgroundTask({ sessionId, input, detachedAt: new Date().toISOString() });
+    const taskId = await enqueueBackgroundTask({ sessionId, input, detachedAt: new Date().toISOString() });
     detachBackgroundTurn({ taskId, sessionId, input, cwd: state.cwd, modelKey: state.activeModel, language: state.language, personaPrompt: state.personaPrompt, autoApprove: state.autoApprove });
     if (signal && !signal.aborted) signal.abort();
     if (typeof deps.exitAfterBg === 'function') {
@@ -835,6 +979,7 @@ async function runModelsFlow(state, deps) {
     state.actionLog = [];
     state.turnCount = 0;
     state.memorySummary = '';
+    state.sessionMemory = {};
     await saveState(state);
     await appendTranscriptEntry(state.sessionId, {
       type: 'system',

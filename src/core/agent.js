@@ -78,6 +78,7 @@ async function requestModel(messages, state, ui, options = {}) {
 
     try {
       let answerChunks = '';
+      let streamStarted = false;
       const result = await chat({
         messages,
         modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
@@ -92,50 +93,53 @@ async function requestModel(messages, state, ui, options = {}) {
             ui.writeThinkingDelta(state, delta);
             return;
           }
-          if (thinkingStarted && !answerStarted) {
+          if (thinkingStarted && !streamStarted) {
             ui.endThinkingStream(state);
             thinkingStarted = false;
           }
-          if (streamOutput && !answerStarted) {
-             answerChunks += delta;
-            const trimmed = answerChunks.trim();
-            if (trimmed.startsWith('{')) {
-              const isToolCall = /"type"\s*:\s*"tool"/.test(trimmed);
-              if (isToolCall) {
-                const toolMatch = trimmed.match(/"tool"\s*:\s*"([\w-]+)"/);
-                const toolName = toolMatch ? toolMatch[1] : '...';
-                if (!state.__toolNameShown) {
-                  if (typeof ui.logEvent === 'function') {
-                    ui.logEvent(state, 'tool', toolName);
-                  }
-                  state.__toolNameShown = true;
-                }
-                return;
+          answerChunks += delta;
+          const trimmed = answerChunks.trim();
+          if (!streamStarted && trimmed.startsWith('{')) {
+            const isToolCall = /"type"\s*:\s*"tool"/.test(trimmed);
+            if (isToolCall) {
+              const toolMatch = trimmed.match(/"tool"\s*:\s*"([\w-]+)"/);
+              const toolName = toolMatch ? toolMatch[1] : '...';
+              if (!state.__toolNameShown) {
+                ui.logEvent(state, 'tool', toolName);
+                state.__toolNameShown = true;
               }
-              const isFinalComplete = /"type"\s*:\s*"final"\s*,\s*"content"\s*:\s*"/.test(trimmed);
-              if (isFinalComplete && trimmed.endsWith('"}')) {
-                const contentMatch = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                if (contentMatch) {
-                  stopThinking();
-                  ui.beginAssistantStream(state);
-                  answerStarted = true;
-                  return;
-                }
-              }
-              if (trimmed.length > 50) {
+              return;
+            }
+            const hasFinalKey = /"type"\s*:\s*"final"/.test(trimmed);
+            if (hasFinalKey) {
+              const contentMatch = trimmed.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+              if (contentMatch) {
                 stopThinking();
                 ui.beginAssistantStream(state);
+                streamStarted = true;
+                answerStarted = true;
+                ui.writeAssistantDelta(state, contentMatch[1]);
+                return;
+              }
+              if (trimmed.length > 80) {
+                stopThinking();
+                ui.beginAssistantStream(state);
+                streamStarted = true;
                 answerStarted = true;
                 return;
               }
               return;
             }
-            stopThinking();
-            ui.beginAssistantStream(state);
-            answerStarted = true;
+            if (trimmed.length > 80) {
+              stopThinking();
+              ui.beginAssistantStream(state);
+              streamStarted = true;
+              answerStarted = true;
+              return;
+            }
+            return;
           }
-          if (streamOutput && answerStarted) {
-            answerChunks += delta;
+          if (streamStarted && answerStarted) {
             const contentMatch = answerChunks.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
             if (contentMatch) {
               ui.writeAssistantDelta(state, contentMatch[1]);
@@ -145,6 +149,9 @@ async function requestModel(messages, state, ui, options = {}) {
           }
         },
       });
+      if (streamStarted) {
+        ui.endAssistantStream(state);
+      }
       ui.pushAction(state, 'ok', state.language === 'es' ? 'Respuesta recibida' : 'Answer received');
       return result.answer ?? '';
     } catch (err) {
@@ -211,6 +218,8 @@ async function runAgentTurn(input, state, ui, options = {}) {
     state.title = shortText(input, 60) || state.title;
   }
 
+  const turnLanguage = detectLanguage(input, state.language);
+
   const directAction = parseDirectAction(input);
   if (directAction) {
     await appendTranscriptEntry(state.sessionId, { type: 'user', content: input });
@@ -229,7 +238,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
 
   let step = 0;
   let toolUsedThisTurn = false;
-  const turnLanguage = detectLanguage(input, state.language);
 
   while (true) {
     if (signal?.aborted) {
@@ -259,6 +267,14 @@ async function runAgentTurn(input, state, ui, options = {}) {
       signal,
       streamOutput: useStream,
     });
+
+    if (signal?.aborted) {
+      if (turnMessages.length > 0) {
+        state.history.push(...turnMessages);
+        await persistSessionState(state, ui);
+      }
+      throw new Error('Aborted');
+    }
 
     let parsed = parseAgentResponse(raw);
 

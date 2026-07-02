@@ -1,7 +1,7 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsIndexPrompt, buildSkillsPrompt } = require('./skills');
 const { getToolPromptText, TOOL_DEFINITIONS } = require('../tools');
-const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY, MAX_HISTORY_CHARS, KEEP_RECENT_MESSAGES, countTokens, stripBase64Images } = require('../config');
+const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY, MAX_HISTORY_CHARS, MAX_OUTPUT_CHARS, KEEP_RECENT_MESSAGES, countTokens, stripBase64Images } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const os = require('os');
 const fs = require('fs');
@@ -97,11 +97,20 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '',
       'REGLAS:',
       '- SOLO usa nombres de herramientas de la seccion "# TOOLS".',
-      '- NO inventes herramientas. NO uses XML ni function-call syntax.',
+      '- NO inventes herramientas.',
       '- Si una herramienta falla 2 veces, cambia de estrategia.',
-      '- Maximo 8 herramientas por turno.',
+      '- Usa tantas herramientas como necesites. No hay limite.',
       '- Tienes acceso al historial de la conversacion. Úsalo para responder preguntas sobre conversaciones anteriores.',
       '- Si el usuario pregunta "que dice al principio" o similar, revisa el historial y responde con lo que dice.',
+      '',
+      'PROHIBIDO — NUNCA hagas esto:',
+      '  <toolcall><invoke name="run_command"><args>{"command":"ls"}</args></invoke></toolcall>',
+      '  <invoke name="run_command"><args>...',
+      '  ```json\n{"type":"tool",...}\n```',
+      '  "Voy a ejecutar el comando..." y luego el JSON',
+      '  Explicaciones antes o despues del JSON',
+      '',
+      'Tu respuesta DEBE SER UNICAMENTE el JSON. Sin <>, sin ```, sin texto.',
       '',
       '# CLASIFICACION — ACCION vs INFORMACION',
       '',
@@ -123,6 +132,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       'REGLA: Si necesitas datos actuales o del sistema del usuario → ACCION.',
       'Si puedes responder de memoria → INFORMACION.',
       'Si necesitas que el usuario decida algo → ask_user.',
+      'Si el usuario te pide que recuerdes algo → memory save.',
       'Nunca describas lo que vas a hacer. Solo responde el JSON.',
     ] : [
       '# RESPONSE — ONLY JSON, NOTHING ELSE',
@@ -142,11 +152,20 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '',
       'RULES:',
       '- ONLY use tool names from the "# TOOLS" section below.',
-      '- Do NOT invent tools. Do NOT use XML or function-call syntax.',
+      '- Do NOT invent tools.',
       '- If a tool fails 2 times, change strategy.',
-      '- Maximum 8 tools per turn.',
+      '- Use as many tools as you need. There is no limit.',
       '- You have access to the conversation history. Use it to answer questions about previous conversations.',
       '- If the user asks "what does it say at the beginning" or similar, check the history and respond with what it says.',
+      '',
+      'PROHIBITED — NEVER do this:',
+      '  <toolcall><invoke name="run_command"><args>{"command":"ls"}</args></invoke></toolcall>',
+      '  <invoke name="run_command"><args>...',
+      '  ```json\n{"type":"tool",...}\n```',
+      '  "I will run the command..." followed by the JSON',
+      '  Explanations before or after the JSON',
+      '',
+      'Your response MUST BE ONLY the JSON. No <>, no ```, no text.',
       '',
       '# CLASSIFICATION — ACTION vs INFORMATION',
       '',
@@ -168,6 +187,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       'RULE: If you need current data or user system data → ACTION.',
       'If you can answer from memory → INFORMATION.',
       'If you need the user to decide something → ask_user.',
+      'If the user asks you to remember something → memory save.',
       'Never describe what you will do. Only respond with the JSON.',
     ]),
     '',
@@ -201,6 +221,18 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     '# PROVIDERS',
     providerGroups,
   ];
+
+  const mem = state.sessionMemory && typeof state.sessionMemory === 'object' ? state.sessionMemory : {};
+  const memEntries = Object.entries(mem);
+  if (memEntries.length > 0) {
+    const memBlock = memEntries.map(([k, v]) => `${k}: ${v}`).join('\n');
+    parts.push(
+      '',
+      '# YOUR MEMORY',
+      'Use this information to personalize your responses. Update it with the memory tool when needed.',
+      memBlock,
+    );
+  }
 
   if (state.personaPrompt && state.personaPrompt.trim()) {
     parts.push(
@@ -258,23 +290,40 @@ function extractXmlTool(text) {
   const invokeMatch = text.match(
     /<invoke\s+name="([\w-]+)"\s*>\s*<args>\s*([\s\S]*?)\s*<\/args>\s*<\/invoke>/i,
   );
-  if (!invokeMatch) return null;
+  if (invokeMatch) {
+    const tool = normalizeToolName(invokeMatch[1]);
+    if (KNOWN_TOOLS.has(tool)) {
+      const rawArgs = invokeMatch[2].trim();
+      if (!rawArgs) return { type: 'tool', tool, args: {} };
+      try {
+        const args = JSON.parse(rawArgs);
+        return { type: 'tool', tool, args: args && typeof args === 'object' ? args : {} };
+      } catch {
+        const fuzzy = fuzzyExtractTool(`{"tool":"${tool}","args":${rawArgs}}`);
+        if (fuzzy) return fuzzy;
+        return { type: 'tool', tool, args: {} };
+      }
+    }
+  }
 
-  const tool = normalizeToolName(invokeMatch[1]);
-  if (!KNOWN_TOOLS.has(tool)) return null;
+  const toolcallMatch = text.match(
+    /<toolcall>\s*<invoke\s+name="([\w-]+)"\s*>\s*<args>\s*([\s\S]*?)\s*<\/args>\s*<\/invoke>\s*<\/toolcall>/i,
+  );
+  if (toolcallMatch) {
+    const tool = normalizeToolName(toolcallMatch[1]);
+    if (KNOWN_TOOLS.has(tool)) {
+      const rawArgs = toolcallMatch[2].trim();
+      if (!rawArgs) return { type: 'tool', tool, args: {} };
+      try {
+        const args = JSON.parse(rawArgs);
+        return { type: 'tool', tool, args: args && typeof args === 'object' ? args : {} };
+      } catch {
+        return { type: 'tool', tool, args: {} };
+      }
+    }
+  }
 
-  const rawArgs = invokeMatch[2].trim();
-  if (!rawArgs) return { type: 'tool', tool, args: {} };
-
-  try {
-    const args = JSON.parse(rawArgs);
-    return { type: 'tool', tool, args: args && typeof args === 'object' ? args : {} };
-  } catch {}
-
-  const fuzzy = fuzzyExtractTool(`{"tool":"${tool}","args":${rawArgs}}`);
-  if (fuzzy) return fuzzy;
-
-  return { type: 'tool', tool, args: {} };
+  return null;
 }
 
 function classifyParsed(parsed) {
@@ -501,14 +550,8 @@ function parseAgentResponse(raw) {
 
 function sanitizeArgsForModel(parsed) {
   const args = { ...(parsed.args || {}) };
-  if (typeof args.content === 'string' && args.content.length > 2000) {
-    args.content = `${args.content.slice(0, 2000)}\n... [truncado]`;
-  }
-  if (typeof args.replace === 'string' && args.replace.length > 2000) {
-    args.replace = `${args.replace.slice(0, 2000)}\n... [truncado]`;
-  }
-  if (typeof args.command === 'string' && args.command.length > 1000) {
-    args.command = `${args.command.slice(0, 1000)} ...`;
+  if (typeof args.command === 'string' && args.command.length > 4000) {
+    args.command = `${args.command.slice(0, 4000)} ...`;
   }
   return args;
 }
@@ -564,7 +607,7 @@ function buildConversationMessages(state, turnMessages, systemPrompt) {
 function buildToolResultMessage(parsed, result, language = 'es') {
   let cleanResult = typeof result === 'string' ? result : String(result || '');
   cleanResult = stripBase64Images(cleanResult);
-  const maxResultChars = 8000;
+  const maxResultChars = MAX_OUTPUT_CHARS || 50000;
   const truncated = cleanResult.length > maxResultChars
     ? `${cleanResult.slice(0, maxResultChars)}\n... [${language === 'en' ? 'truncated result' : 'resultado truncado'}, ${cleanResult.length} ${language === 'en' ? 'total chars' : 'caracteres totales'}]`
     : cleanResult;

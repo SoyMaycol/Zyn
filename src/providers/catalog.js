@@ -390,6 +390,307 @@ async function fetchHuggingFaceModels(config) {
   }
 }
 
+async function fetchOpenAIModels(config) {
+  const apiKey = String(config.apiKey || process.env.OPENAI_API_KEY || '').trim();
+  if (!apiKey) throw new Error('OpenAI requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.openai.com/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.filter(m => m.id && m.id.startsWith('gpt-')).map(model => buildModelRecord(
+    'openai', config, model.id, model.id, { modelId: model.id, contextLength: 128000 },
+  ));
+}
+
+async function fetchAnthropicModels(config) {
+  const models = [
+    { id: 'claude-opus-4-8-20260813', label: 'Claude Opus 4.8', contextLength: 200000 },
+    { id: 'claude-opus-4-7-20260605', label: 'Claude Opus 4.7', contextLength: 200000 },
+    { id: 'claude-opus-4-6-20260409', label: 'Claude Opus 4.6', contextLength: 200000 },
+    { id: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5', contextLength: 200000 },
+    { id: 'claude-opus-4-20250514', label: 'Claude Opus 4', contextLength: 200000 },
+    { id: 'claude-sonnet-4-6-20260305', label: 'Claude Sonnet 4.6', contextLength: 200000 },
+    { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5', contextLength: 200000 },
+    { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', contextLength: 200000 },
+    { id: 'claude-3-7-sonnet-20250219', label: 'Claude 3.7 Sonnet', contextLength: 200000 },
+    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet v2', contextLength: 200000 },
+    { id: 'claude-3-5-sonnet-20240620', label: 'Claude 3.5 Sonnet', contextLength: 200000 },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', contextLength: 200000 },
+    { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', contextLength: 200000 },
+    { id: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku', contextLength: 200000 },
+    { id: 'claude-3-opus-20240229', label: 'Claude 3 Opus', contextLength: 200000 },
+  ];
+  return models.map(m => buildModelRecord('anthropic', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchGroqModels(config) {
+  const apiKey = String(config.apiKey || process.env.GROQ_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Groq requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.groq.com/openai/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'groq', config, model.id, model.id, { modelId: model.id, contextLength: model.context_window || 128000 },
+  ));
+}
+
+async function fetchTogetherModels(config) {
+  const apiKey = String(config.apiKey || process.env.TOGETHER_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Together AI requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.together.xyz/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.filter(m => m.type === 'chat').map(model => buildModelRecord(
+    'together', config, model.id, model.display_name || model.id, { modelId: model.id, contextLength: model.context_length || 128000 },
+  ));
+}
+
+async function fetchOpenRouterModels(config) {
+  const apiKey = String(config.apiKey || process.env.OPENROUTER_API_KEY || '').trim();
+  const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+  const data = await fetchJson('https://openrouter.ai/api/v1/models', { headers });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'openrouter', config, model.id, model.name || model.id, { modelId: model.id, contextLength: model.context_length || 128000 },
+  ));
+}
+
+async function fetchMistralModels(config) {
+  const apiKey = String(config.apiKey || process.env.MISTRAL_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Mistral requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.mistral.ai/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'mistral', config, model.id, model.name || model.id, { modelId: model.id, contextLength: model.max_context_length || 128000 },
+  ));
+}
+
+async function fetchXAIModels(config) {
+  const models = [
+    { id: 'grok-4.3', label: 'Grok 4.3', contextLength: 1000000 },
+    { id: 'grok-4.20', label: 'Grok 4.20', contextLength: 1000000 },
+    { id: 'grok-4', label: 'Grok 4', contextLength: 1000000 },
+    { id: 'grok-4-fast-reasoning', label: 'Grok 4 Fast Reasoning', contextLength: 1000000 },
+    { id: 'grok-4-fast-non-reasoning', label: 'Grok 4 Fast Non-Reasoning', contextLength: 1000000 },
+    { id: 'grok-3', label: 'Grok 3', contextLength: 131072 },
+    { id: 'grok-3-fast', label: 'Grok 3 Fast', contextLength: 131072 },
+    { id: 'grok-3-mini', label: 'Grok 3 Mini', contextLength: 131072 },
+    { id: 'grok-3-mini-fast', label: 'Grok 3 Mini Fast', contextLength: 131072 },
+    { id: 'grok-2', label: 'Grok 2', contextLength: 131072 },
+    { id: 'grok-2-vision', label: 'Grok 2 Vision', contextLength: 131072 },
+  ];
+  return models.map(m => buildModelRecord('xai', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchCohereModels(config) {
+  const models = [
+    { id: 'command-a-plus', label: 'Command A+', contextLength: 128000 },
+    { id: 'command-a', label: 'Command A', contextLength: 128000 },
+    { id: 'command-a-translate', label: 'Command A Translate', contextLength: 128000 },
+    { id: 'command-a-vision', label: 'Command A Vision', contextLength: 128000 },
+    { id: 'command-r-plus', label: 'Command R+', contextLength: 128000 },
+    { id: 'command-r', label: 'Command R', contextLength: 128000 },
+    { id: 'command-r7b', label: 'Command R7B', contextLength: 128000 },
+  ];
+  return models.map(m => buildModelRecord('cohere', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchFireworksModels(config) {
+  const apiKey = String(config.apiKey || process.env.FIREWORKS_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Fireworks AI requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.fireworks.ai/inference/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'fireworks', config, model.id, model.id, { modelId: model.id, contextLength: 128000 },
+  ));
+}
+
+async function fetchPerplexityModels(config) {
+  const models = [
+    { id: 'sonar-pro', label: 'Sonar Pro', contextLength: 200000 },
+    { id: 'sonar', label: 'Sonar', contextLength: 200000 },
+    { id: 'sonar-reasoning-pro', label: 'Sonar Reasoning Pro', contextLength: 200000 },
+    { id: 'sonar-reasoning', label: 'Sonar Reasoning', contextLength: 200000 },
+  ];
+  return models.map(m => buildModelRecord('perplexity', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchOllamaModels(config) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'http://localhost:11434/v1');
+  try {
+    const data = await fetchJson(`${baseUrl}/models`);
+    const list = Array.isArray(data?.data) ? data.data : [];
+    return list.map(model => buildModelRecord(
+      'ollama', config, model.id, model.id, { modelId: model.id, contextLength: 128000 },
+    ));
+  } catch {
+    throw new Error('Ollama no esta corriendo. Instala Ollama: https://ollama.com');
+  }
+}
+
+async function fetchOllamaCloudModels(config) {
+  const apiKey = String(config.apiKey || process.env.OLLAMA_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Ollama Cloud requiere apiKey de ollama.com');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://ollama.com/api');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'ollamaCloud', config, model.id, model.id, { modelId: model.id, contextLength: 128000 },
+  ));
+}
+
+async function fetchGitHubModels(config) {
+  const token = String(config.apiKey || process.env.GITHUB_TOKEN || '').trim();
+  if (!token) throw new Error('GitHub Models requiere GitHub PAT con scope models:read');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://models.github.ai/inference');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2026-03-10',
+    },
+  });
+  const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+  return list.map(model => buildModelRecord(
+    'github', config, model.id, model.name || model.id, { modelId: model.id, contextLength: model.context_length || 128000 },
+  ));
+}
+
+async function fetchAzureModels(config) {
+  const models = [
+    { id: 'gpt-5.5', label: 'GPT-5.5', contextLength: 1048576 },
+    { id: 'gpt-5.4', label: 'GPT-5.4', contextLength: 1048576 },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini', contextLength: 1048576 },
+    { id: 'gpt-5.2', label: 'GPT-5.2', contextLength: 1048576 },
+    { id: 'gpt-5.1', label: 'GPT-5.1', contextLength: 1048576 },
+    { id: 'gpt-5', label: 'GPT-5', contextLength: 1048576 },
+    { id: 'gpt-4.1', label: 'GPT-4.1', contextLength: 1047576 },
+    { id: 'gpt-4o', label: 'GPT-4o', contextLength: 128000 },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini', contextLength: 128000 },
+    { id: 'o4-mini', label: 'o4-mini', contextLength: 200000 },
+    { id: 'o3', label: 'o3', contextLength: 200000 },
+  ];
+  return models.map(m => buildModelRecord('azure', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchBedrockModels(config) {
+  const models = [
+    { id: 'anthropic.claude-opus-4-20250514-v1:0', label: 'Claude Opus 4', contextLength: 200000 },
+    { id: 'anthropic.claude-sonnet-4-20250514-v1:0', label: 'Claude Sonnet 4', contextLength: 200000 },
+    { id: 'anthropic.claude-3-7-sonnet-20250219-v1:0', label: 'Claude 3.7 Sonnet', contextLength: 200000 },
+    { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet', contextLength: 200000 },
+    { id: 'meta.llama4-maverick-17b-128e-instruct-v1:0', label: 'Llama 4 Maverick', contextLength: 131072 },
+    { id: 'meta.llama3-3-70b-instruct-v1:0', label: 'Llama 3.3 70B', contextLength: 131072 },
+    { id: 'meta.llama3-1-405b-instruct-v1:0', label: 'Llama 3.1 405B', contextLength: 131072 },
+    { id: 'mistral.mistral-large-2402-v1:0', label: 'Mistral Large', contextLength: 128000 },
+    { id: 'mistral.mistral-medium-2402-v1:0', label: 'Mistral Medium', contextLength: 32768 },
+    { id: 'ai21.jamba-1-5-large-v1:0', label: 'Jamba 1.5 Large', contextLength: 256000 },
+    { id: 'ai21.jamba-1-5-mini-v1:0', label: 'Jamba 1.5 Mini', contextLength: 256000 },
+  ];
+  return models.map(m => buildModelRecord('bedrock', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchVertexModels(config) {
+  const models = [
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', contextLength: 1000000 },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', contextLength: 1000000 },
+    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', contextLength: 1000000 },
+    { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', contextLength: 2000000 },
+    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', contextLength: 1000000 },
+  ];
+  return models.map(m => buildModelRecord('vertex', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
+async function fetchCloudflareModels(config) {
+  const token = String(config.apiKey || process.env.CLOUDFLARE_API_TOKEN || '').trim();
+  const accountId = String(config.accountId || process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+  if (!token || !accountId) throw new Error('Cloudflare requiere apiKey y accountId');
+  const data = await fetchJson(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const list = Array.isArray(data?.result) ? data.result : [];
+  return list.filter(m => m.task?.name === 'Text Generation').map(model => buildModelRecord(
+    'cloudflare', config, model.id, model.name || model.id, { modelId: model.id, contextLength: 128000 },
+  ));
+}
+
+async function fetchLMStudioModels(config) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'http://localhost:1234/v1');
+  try {
+    const data = await fetchJson(`${baseUrl}/models`);
+    const list = Array.isArray(data?.data) ? data.data : [];
+    return list.map(model => buildModelRecord(
+      'lmstudio', config, model.id, model.id, { modelId: model.id, contextLength: 128000 },
+    ));
+  } catch {
+    throw new Error('LM Studio no esta corriendo. Inicia LM Studio: https://lmstudio.ai');
+  }
+}
+
+async function fetchNovitaModels(config) {
+  const apiKey = String(config.apiKey || process.env.NOVITA_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Novita AI requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.novita.ai/openai/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'novita', config, model.id, model.id, { modelId: model.id, contextLength: model.context_length || 128000 },
+  ));
+}
+
+async function fetchChutesModels(config) {
+  const apiKey = String(config.apiKey || process.env.CHUTES_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Chutes AI requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://llm.chutes.ai/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'chutes', config, model.id, model.id, { modelId: model.id, contextLength: model.context_length || 32768 },
+  ));
+}
+
+async function fetchInferenceModels(config) {
+  const apiKey = String(config.apiKey || process.env.INFERENCE_API_KEY || '').trim();
+  if (!apiKey) throw new Error('Inference.net requiere apiKey');
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://api.inference.net/v1');
+  const data = await fetchJson(`${baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => buildModelRecord(
+    'inference', config, model.id, model.id, { modelId: model.id, contextLength: 128000 },
+  ));
+}
+
+async function fetchReplicateModels(config) {
+  const models = [
+    { id: 'meta/meta-llama-3.3-70b-instruct', label: 'Llama 3.3 70B', contextLength: 131072 },
+    { id: 'meta/meta-llama-3.1-405b-instruct', label: 'Llama 3.1 405B', contextLength: 131072 },
+    { id: 'meta/meta-llama-3.1-8b-instruct', label: 'Llama 3.1 8B', contextLength: 131072 },
+    { id: 'meta/meta-llama-3-70b-instruct', label: 'Llama 3 70B', contextLength: 8192 },
+    { id: 'meta/meta-llama-3-8b-instruct', label: 'Llama 3 8B', contextLength: 8192 },
+  ];
+  return models.map(m => buildModelRecord('replicate', config, m.id, m.label, { modelId: m.id, contextLength: m.contextLength }));
+}
+
 async function fetchProviderModels(providerKey, config = {}) {
   const key = String(providerKey || '').trim();
   if (key === 'qwenapi') return fetchQwenapiModels(config);
@@ -398,6 +699,28 @@ async function fetchProviderModels(providerKey, config = {}) {
   if (key === 'huggingface') return fetchHuggingFaceModels(config);
   if (key === 'deepseek') return fetchDeepseekModels(config);
   if (key === 'custom') return fetchCustomModels(config);
+  if (key === 'openai') return fetchOpenAIModels(config);
+  if (key === 'anthropic') return fetchAnthropicModels(config);
+  if (key === 'groq') return fetchGroqModels(config);
+  if (key === 'together') return fetchTogetherModels(config);
+  if (key === 'openrouter') return fetchOpenRouterModels(config);
+  if (key === 'mistral') return fetchMistralModels(config);
+  if (key === 'xai') return fetchXAIModels(config);
+  if (key === 'cohere') return fetchCohereModels(config);
+  if (key === 'fireworks') return fetchFireworksModels(config);
+  if (key === 'perplexity') return fetchPerplexityModels(config);
+  if (key === 'ollama') return fetchOllamaModels(config);
+  if (key === 'ollamaCloud') return fetchOllamaCloudModels(config);
+  if (key === 'github') return fetchGitHubModels(config);
+  if (key === 'azure') return fetchAzureModels(config);
+  if (key === 'bedrock') return fetchBedrockModels(config);
+  if (key === 'vertex') return fetchVertexModels(config);
+  if (key === 'cloudflare') return fetchCloudflareModels(config);
+  if (key === 'lmstudio') return fetchLMStudioModels(config);
+  if (key === 'novita') return fetchNovitaModels(config);
+  if (key === 'chutes') return fetchChutesModels(config);
+  if (key === 'inference') return fetchInferenceModels(config);
+  if (key === 'replicate') return fetchReplicateModels(config);
   if (config?.baseUrl) return fetchCustomModels(config);
   throw new Error(`Proveedor no soportado: ${key}. No tiene baseUrl configurada. Usa /provider set ${key} baseUrl <url> primero.`);
 }

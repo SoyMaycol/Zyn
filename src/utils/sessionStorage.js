@@ -25,6 +25,7 @@ function createState(rl = null) {
     cwd: process.cwd(),
     history: [],
     memorySummary: '',
+    sessionMemory: {},
     rl,
     actionLog: [],
     turnCount: 0,
@@ -189,6 +190,7 @@ function applyLoadedState(state, loaded) {
   state.cwd = loaded.cwd;
   state.history = Array.isArray(loaded.history) ? loaded.history : [];
   state.memorySummary = loaded.memorySummary ?? '';
+  state.sessionMemory = loaded.sessionMemory && typeof loaded.sessionMemory === 'object' ? loaded.sessionMemory : {};
   state.actionLog = Array.isArray(loaded.actionLog) ? loaded.actionLog : [];
   state.turnCount = Number(loaded.turnCount ?? 0);
   state.transcriptPath = loaded.transcriptPath || getTranscriptPath(loaded.sessionId);
@@ -217,6 +219,7 @@ async function saveState(state) {
     cwd: state.cwd,
     history: state.history,
     memorySummary: state.memorySummary,
+    sessionMemory: state.sessionMemory || {},
     actionLog: state.actionLog,
     turnCount: state.turnCount,
     transcriptPath: state.transcriptPath,

@@ -65,6 +65,7 @@ const TOOL_DEFINITIONS = [
   { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
   { name: 'load_skill', usage: '{ name }' },
+  { name: 'memory', usage: '{ action, key?, value?, query? }' },
   { name: 'ask_user', usage: '{ question, options }' },
 ];
 const REGISTERED_TOOLS = new Set(TOOL_DEFINITIONS.map(tool => tool.name));
@@ -77,7 +78,7 @@ function getToolPromptText() {
     '  Lista archivos y carpetas ordenados. Sin path usa directorio actual.',
     '',
     'read_file { path, startLine?, endLine?, offset?, limit? }',
-    '  Lee contenido con numeros de linea. Max 5000 lineas por llamada.',
+    '  Lee contenido con numeros de linea. Max 10000 lineas por llamada.',
     '  startLine/endLine: lineas 1-indexadas. offset/limit: 0-indexados.',
     '  Ej: {"offset":0,"limit":50} lee primeras 50 lineas.',
     '',
@@ -111,14 +112,14 @@ function getToolPromptText() {
     '',
     '## Ejecucion',
     '',
-    'run_command { command, timeoutMs? }',
-    '  Ejecuta comando en bash. Timeout: 2 min (ajustable con timeoutMs).',
+    'run_command { command, timeoutMs }',
+    '  Ejecuta comando en bash. timeoutMs es OBLIGATORIO.',
+    '  Timeout recomendados: 5000 (rapido), 30000 (normal), 60000 (largo), 120000 (muy largo).',
+    '  Para servidores usa timeoutMs: 10000 y verifica si quedo vivo con otro comando.',
     '  Retorna exit code, stdout y stderr.',
-    '  Ejecuta la accion directamente. No expliques pasos al usuario salvo que sea estrictamente necesario.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
-    '  Ejemplo instalar: {"type":"tool","tool":"run_command","args":{"command":"apt-get update && apt-get install -y curl"}}',
-    '  Ejemplo git: {"type":"tool","tool":"run_command","args":{"command":"git log --oneline -10"}}',
-    '  Ejemplo npm: {"type":"tool","tool":"run_command","args":{"command":"npm install express --save"}}',
+    '  Ejemplo: {"type":"tool","tool":"run_command","args":{"command":"ls -la","timeoutMs":5000}}',
+    '  Ejemplo servidor: {"type":"tool","tool":"run_command","args":{"command":"node server.js &","timeoutMs":10000}}',
     '',
     '## Web',
     '',
@@ -176,49 +177,14 @@ function getToolPromptText() {
     '  Crea imagenes desde cero usando Jimp con composicion por elementos.',
     '  width/height son obligatorios. background puede ser color HEX (#RRGGBB o #RRGGBBAA).',
     '  elements permite combinar rect, circle/ellipse, line, text e image.',
-    '  Usa este flujo profesional: definir lienzo -> capas base -> tipografia -> detalles -> exportacion.',
+    '  Para tutoriales y plantillas, carga la skill: jimp-advanced',
     '',
     '  Tipos de elementos soportados:',
-    '    rect: { type:"rect", x, y, w, h, fill?, radius?, stroke? } — rectangulos y tarjetas',
+    '    rect: { type:"rect", x, y, w, h, fill?, radius?, stroke? }',
     '    circle/ellipse: { type:"circle", x, y, r } o { type:"ellipse", x, y, rx, ry, fill }',
-    '    line: { type:"line", x1, y1, x2, y2, stroke } — lineas y separadores',
-    '    image: { type:"image", src, x, y, w?, h? } — insertar imagenes externas o locales',
-    '    text: { type:"text", x, y, text, fontSize?, maxWidth? } — texto libre',
-    '',
-    '  === TUTORIALES DE USO ===',
-    '',
-    '  POST DE NOTICIA (1200x630 — formato Facebook/LinkedIn):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":630,"background":"#1a1a2e","format":"jpg","outputPath":"generated/news-post.jpg","elements":[{"type":"rect","x":0,"y":0,"w":1200,"h":8,"fill":"#e94560"},{"type":"rect","x":60,"y":40,"w":1080,"h":550,"radius":16,"fill":"#16213e"},{"type":"text","x":100,"y":80,"fontSize":32,"text":"BREAKING NEWS"},{"type":"rect","x":100,"y":125,"w":200,"h":4,"fill":"#e94560"},{"type":"text","x":100,"y":160,"fontSize":64,"maxWidth":1000,"text":"Nuevo avance en inteligencia artificial revoluciona la industria"},{"type":"text","x":100,"y":400,"fontSize":24,"text":"Fuente: Tech Daily — Hace 2 horas"},{"type":"rect","x":0,"y":580,"w":1200,"h":50,"fill":"#0f3460"},{"type":"text","x":100,"y":590,"fontSize":16,"text":"@noticias_tech"}]}}',
-    '',
-    '  POST DE TWITTER/X (1600x900):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1600,"height":900,"background":"#000000","format":"png","outputPath":"generated/twitter-post.png","elements":[{"type":"rect","x":80,"y":80,"w":1440,"h":740,"radius":32,"fill":"#111111"},{"type":"rect","x":120,"y":120,"w":60,"h":60,"radius":30,"fill":"#1da1f2"},{"type":"text","x":200,"y":130,"fontSize":32,"text":"@usuario"},{"type":"text","x":120,"y":240,"fontSize":48,"maxWidth":1360,"text":"Este es un ejemplo de tweet con imagen generada automaticamente"},{"type":"text","x":120,"y":600,"fontSize":24,"text":"10:30 AM · 5 May 2026"},{"type":"rect","x":120,"y":680,"w":200,"h":40,"radius":20,"fill":"#1da1f2"},{"type":"text","x":160,"y":688,"fontSize":16,"text":"♡ 1.2K  ↗ 340"}]}}',
-    '',
-    '  INSTAGRAM POST CUADRADO (1080x1080):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1080,"height":1080,"background":"#f8f0e3","format":"jpg","outputPath":"generated/instagram-post.jpg","elements":[{"type":"rect","x":40,"y":40,"w":1000,"h":1000,"radius":20,"fill":"#ffffff"},{"type":"rect","x":80,"y":80,"w":920,"h":600,"radius":12,"fill":"#e8d5b7"},{"type":"text","x":120,"y":140,"fontSize":56,"maxWidth":840,"text":"Tips de productividad para developers"},{"type":"text","x":120,"y":740,"fontSize":36,"maxWidth":840,"text":"1. Usa Pomodoro\\n2. Bloquea distracciones\\n3. Planifica tu dia"},{"type":"text","x":120,"y":960,"fontSize":24,"text":"@dev_tips"}]}}',
-    '',
-    '  THUMBNAIL DE YOUTUBE (1280x720):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1280,"height":720,"background":"#ff0000","format":"jpg","outputPath":"generated/youtube-thumb.jpg","elements":[{"type":"rect","x":0,"y":0,"w":1280,"h":720,"fill":"#1a1a1a"},{"type":"rect","x":60,"y":60,"w":1160,"h":600,"radius":24,"fill":"#2a2a2a"},{"type":"text","x":100,"y":120,"fontSize":72,"maxWidth":1080,"text":"APRENDER JAVASCRIPT"},{"type":"text","x":100,"y":220,"fontSize":48,"maxWidth":1080,"text":"en 10 minutos"},{"type":"rect","x":100,"y":480,"w":300,"h":80,"radius":40,"fill":"#ff0000"},{"type":"text","x":160,"y":500,"fontSize":32,"text":"▶ PLAY"}]}}',
-    '',
-    '  BANNER DE GITHUB/REPO (1280x320):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1280,"height":320,"background":"#24292e","format":"png","outputPath":"generated/repo-banner.png","elements":[{"type":"rect","x":0,"y":0,"w":1280,"h":4,"fill":"#0366d6"},{"type":"text","x":80,"y":80,"fontSize":64,"text":"mi-proyecto"},{"type":"text","x":80,"y":170,"fontSize":28,"text":"Una descripcion genial del proyecto en pocas palabras"},{"type":"rect","x":80,"y":230,"w":16,"h":16,"radius":8,"fill":"#2ea44f"},{"type":"text","x":106,"y":230,"fontSize":20,"text":"MIT License"}]}}',
-    '',
-    '  CARTEL DE EVENTO (800x1000):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":800,"height":1000,"background":"#0d1b2a","format":"png","outputPath":"generated/evento.png","elements":[{"type":"rect","x":40,"y":40,"w":720,"h":920,"radius":24,"fill":"#1b2838"},{"type":"text","x":80,"y":100,"fontSize":48,"text":"MEETUP TECH"},{"type":"rect","x":80,"y":170,"w":200,"h":4,"fill":"#00d4ff"},{"type":"text","x":80,"y":220,"fontSize":36,"text":"Inteligencia Artificial"},{"type":"text","x":80,"y":280,"fontSize":24,"text":"y Desarrollo Moderno"},{"type":"text","x":80,"y":500,"fontSize":28,"text":"20 de Mayo 2026"},{"type":"text","x":80,"y":560,"fontSize":24,"text":"18:00 hrs"},{"type":"text","x":80,"y":640,"fontSize":20,"text":"Centro de Innovacion"},{"type":"rect","x":80,"y":780,"w":640,"h":80,"radius":40,"fill":"#00d4ff"},{"type":"text","x":240,"y":800,"fontSize":28,"text":"REGISTRATE"}]}}',
-    '',
-    '  DIBUJO SIMPLE — PAISAJE GEOMETRICO (800x600):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":800,"height":600,"background":"#87CEEB","format":"png","outputPath":"generated/paisaje.png","elements":[{"type":"rect","x":0,"y":400,"w":800,"h":200,"fill":"#228B22"},{"type":"circle","x":650,"y":100,"r":60,"fill":"#FFD700"},{"type":"rect","x":100,"y":250,"w":80,"h":150,"fill":"#8B4513"},{"type":"circle","x":140,"y":230,"r":60,"fill":"#006400"},{"type":"rect","x":300,"y":200,"w":60,"h":200,"fill":"#8B4513"},{"type":"circle","x":330,"y":180,"r":70,"fill":"#006400"},{"type":"rect","x":500,"y":280,"w":70,"h":120,"fill":"#8B4513"},{"type":"circle","x":535,"y":260,"r":55,"fill":"#006400"},{"type":"rect","x":0,"y":450,"w":800,"h":60,"fill":"#4169E1"}]}}',
-    '',
-    '  TARJETA DE PERFIL (600x350):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":600,"height":350,"background":"#f0f0f0","format":"png","outputPath":"generated/profile-card.png","elements":[{"type":"rect","x":0,"y":0,"w":600,"h":120,"fill":"#4a90d9"},{"type":"circle","x":300,"y":120,"r":70,"fill":"#ffffff"},{"type":"text","x":300,"y":210,"fontSize":28,"text":"Nombre Apellido"},{"type":"text","x":300,"y":250,"fontSize":16,"text":"Software Developer"},{"type":"text","x":300,"y":280,"fontSize":14,"text":"username@email.com"}]}}',
-    '',
-    '  INFOGRAFIA SIMPLE (800x1200):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":800,"height":1200,"background":"#1e1e2e","format":"png","outputPath":"generated/infografia.png","elements":[{"type":"rect","x":40,"y":40,"w":720,"h":100,"radius":16,"fill":"#333355"},{"type":"text","x":80,"y":70,"fontSize":40,"text":"ESTADISTICAS 2026"},{"type":"rect","x":40,"y":180,"w":720,"h":120,"radius":12,"fill":"#2a2a4a"},{"type":"circle","x":100,"y":240,"r":30,"fill":"#4fc3f7"},{"type":"text","x":150,"y":220,"fontSize":36,"text":"85%"},{"type":"text","x":150,"y":260,"fontSize":18,"text":"desarrolladores usan IA"},{"type":"rect","x":40,"y":340,"w":720,"h":120,"radius":12,"fill":"#2a2a4a"},{"type":"circle","x":100,"y":400,"r":30,"fill":"#81c784"},{"type":"text","x":150,"y":380,"fontSize":36,"text":"3.2x"},{"type":"text","x":150,"y":420,"fontSize":18,"text":"mas rapido con herramientas"},{"type":"rect","x":40,"y":500,"w":720,"h":120,"radius":12,"fill":"#2a2a4a"},{"type":"circle","x":100,"y":560,"r":30,"fill":"#ffb74d"},{"type":"text","x":150,"y":540,"fontSize":36,"text":"120k"},{"type":"text","x":150,"y":580,"fontSize":18,"text":"proyectos creados este mes"}]}}',
-    '',
-    '  POST DE CITAS/FRASES (1080x1080):',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1080,"height":1080,"background":"#000000","format":"jpg","outputPath":"generated/quote.jpg","elements":[{"type":"rect","x":100,"y":100,"w":880,"h":880,"radius":0,"fill":"#111111"},{"type":"rect","x":200,"y":300,"w":680,"h":4,"fill":"#ffffff"},{"type":"text","x":150,"y":200,"fontSize":80,"text":"\\""},{"type":"text","x":150,"y":340,"fontSize":48,"maxWidth":780,"text":"El codigo es poesia que las maquinas pueden leer."},{"type":"text","x":150,"y":700,"fontSize":32,"text":"— Autor Desconocido"}]}}',
-    '',
-    '  Ejemplo basico:',
-    '  {"type":"tool","tool":"create_canvas_image","args":{"width":1200,"height":628,"background":"#0f172a","format":"png","outputPath":"generated/cover.png","elements":[{"type":"rect","x":48,"y":48,"w":1104,"h":532,"radius":24,"fill":"#111827"},{"type":"text","x":96,"y":120,"fontSize":32,"text":"Quarterly Business Report"}]}}',
+    '    line: { type:"line", x1, y1, x2, y2, stroke }',
+    '    image: { type:"image", src, x, y, w?, h? }',
+    '    text: { type:"text", x, y, text, fontSize?, maxWidth? }',
     '',
     '## Git - Control total de API',
     '',
@@ -261,6 +227,17 @@ function getToolPromptText() {
     '  Si name esta vacio, la herramienta devuelve la lista completa de skills disponibles.',
     '  Ejemplo: {"type":"tool","tool":"load_skill","args":{"name":"testing"}}',
     '  Ejemplo (listar): {"type":"tool","tool":"load_skill","args":{"name":""}}',
+    '',
+    '## Memoria persistente',
+    '',
+    'memory { action, key?, value?, query? }',
+    '  Memoria persistente entre sesiones. Guarda y recuerda informacion importante.',
+    '  actions: save, get, list, delete, clear',
+    '  save: guarda un par clave-valor. get: recupera un valor por clave.',
+    '  list: lista todas las claves. delete: elimina una clave. clear: limpia toda la memoria.',
+    '  Ejemplo save: {"type":"tool","tool":"memory","args":{"action":"save","key":"proyecto","value":"Usamos React + TypeScript"}}',
+    '  Ejemplo get: {"type":"tool","tool":"memory","args":{"action":"get","key":"proyecto"}}',
+    '  Ejemplo list: {"type":"tool","tool":"memory","args":{"action":"list"}}',
     '',
   ].join('\n');
 }
@@ -573,6 +550,61 @@ async function loadSkillTool(args, state) {
     ? `${skill.body.slice(0, maxChars)}\n\n[...contenido truncado, total ${skill.body.length} caracteres]`
     : skill.body;
   return `Skill: ${skill.name}\nTitle: ${skill.title}\nDescription: ${skill.description}\n\n${body}`;
+}
+
+async function memoryTool(args, state) {
+  const lang = state?.language || 'es';
+  const action = String(args?.action || 'list').trim().toLowerCase();
+  if (!state.sessionMemory || typeof state.sessionMemory !== 'object') {
+    state.sessionMemory = {};
+  }
+  const mem = state.sessionMemory;
+
+  if (action === 'save') {
+    const key = String(args?.key || '').trim();
+    const value = String(args?.value || '').trim();
+    if (!key) throw new Error(t(lang, 'memory save requiere key', 'memory save requires key'));
+    if (!value) throw new Error(t(lang, 'memory save requiere value', 'memory save requires value'));
+    mem[key] = value;
+    const count = Object.keys(mem).length;
+    return t(lang, `Guardado "${key}". Memoria: ${count} entradas.`, `Saved "${key}". Memory: ${count} entries.`);
+  }
+
+  if (action === 'get') {
+    const key = String(args?.key || '').trim();
+    if (!key) throw new Error(t(lang, 'memory get requiere key', 'memory get requires key'));
+    const value = mem[key];
+    if (value === undefined) {
+      return t(lang, `No hay valor para "${key}".`, `No value for "${key}".`);
+    }
+    return `${key}: ${value}`;
+  }
+
+  if (action === 'list') {
+    const entries = Object.entries(mem);
+    if (entries.length === 0) {
+      return t(lang, 'Memoria vacia.', 'Memory empty.');
+    }
+    return entries.map(([k, v]) => `${k}: ${v}`).join('\n');
+  }
+
+  if (action === 'delete') {
+    const key = String(args?.key || '').trim();
+    if (!key) throw new Error(t(lang, 'memory delete requiere key', 'memory delete requires key'));
+    if (!(key in mem)) {
+      return t(lang, `No hay valor para "${key}".`, `No value for "${key}".`);
+    }
+    delete mem[key];
+    return t(lang, `Eliminado "${key}".`, `Deleted "${key}".`);
+  }
+
+  if (action === 'clear') {
+    const count = Object.keys(mem).length;
+    for (const key of Object.keys(mem)) delete mem[key];
+    return t(lang, `Memoria limpiada (${count} entradas eliminadas).`, `Memory cleared (${count} entries removed).`);
+  }
+
+  throw new Error(t(lang, `memory action "${action}" no valido. Usa: save, get, list, delete, clear`, `memory action "${action}" invalid. Use: save, get, list, delete, clear`));
 }
 
 async function readFileTool(args, state) {
@@ -1535,6 +1567,9 @@ async function executeToolCall(call, state, ui, options = {}) {
       case 'load_skill':
         result = await loadSkillTool(call.args, state);
         break;
+      case 'memory':
+        result = await memoryTool(call.args, state);
+        break;
       case 'ask_user':
         result = await askUserTool(call.args, state, ui.paint, ctx);
         break;
@@ -1810,10 +1845,22 @@ function drawLine(image, x1, y1, x2, y2, color) {
 }
 
 async function createCanvasImageTool(args, state, paint) {
-  const { Jimp, loadFont } = require('jimp');
-  const pluginPrintMain = require.resolve('@jimp/plugin-print');
-  const fontsPath = path.join(path.dirname(pluginPrintMain), 'fonts.js');
-  const fonts = require(fontsPath);
+  let Jimp, loadFont;
+  try {
+    ({ Jimp, loadFont } = require('jimp'));
+  } catch {
+    throw new Error(t(state?.language,
+      'create_canvas_image requiere jimp instalado. Instala con: npm install jimp@0.16.1',
+      'create_canvas_image requires jimp. Install with: npm install jimp@0.16.1'));
+  }
+  let fonts;
+  try {
+    const pluginPrintMain = require.resolve('@jimp/plugin-print');
+    const fontsPath = path.join(path.dirname(pluginPrintMain), 'fonts.js');
+    fonts = require(fontsPath);
+  } catch {
+    fonts = {};
+  }
   const width = Math.max(1, Number(args.width || 0));
   const height = Math.max(1, Number(args.height || 0));
   if (!width || !height) {
@@ -1893,7 +1940,7 @@ async function createCanvasImageTool(args, state, paint) {
 }
 
 
-async function gitUnifiedTool(args, state, paint) {
+async function gitUnifiedTool(args, state, paint, ctx) {
   const action = String(args.action || '').trim().toLowerCase();
   const provider = normalizeProfileName(args.provider || '');
   const name = String(args.name || '').trim();

@@ -30,7 +30,7 @@ function getTuiLang() {
 function uiText(en, es) {
   return getTuiLang() === 'es' ? es : en;
 }
-const MAX_THINKING_LINES = 20;
+const MAX_THINKING_LINES = 40;
 const SPIN_MS = 80;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
@@ -44,7 +44,7 @@ const THEMES = {
   dark: {
     bg: '#212823', surface: '#1a1a1a', surfaceHi: '#222222',
     text: '#ffffff', textDim: '#cccccc', textMuted: '#999999',
-    textGhost: '#666666', textInvis: '#333333',
+    textGhost: '#888888', textInvis: '#555555',
     accent: '#d4a054', accentSoft: '#c49450', accentDim: '#8a6a3a',
     green: '#6aab6a', greenDim: '#3a6a3a', red: '#cc5555', redDim: '#6a3333',
     amber: '#ccaa44', amberDim: '#6a5522', purple: '#aa88cc', purpleDim: '#5a446a',
@@ -55,7 +55,7 @@ const THEMES = {
   cappuccino: {
     bg: '#f5efe6', surface: '#f0e6d6', surfaceHi: '#e8dcc8',
     text: '#3b2f2f', textDim: '#5a4a4a', textMuted: '#7a6a6a',
-    textGhost: '#9a8a7a', textInvis: '#bfb0a0',
+    textGhost: '#b0a090', textInvis: '#d0c0b0',
     accent: '#a0522d', accentSoft: '#b0623d', accentDim: '#c0724d',
     green: '#2e8b57', greenDim: '#5cb85c', red: '#c0392b', redDim: '#e74c3c',
     amber: '#d4a017', amberDim: '#f0c040', purple: '#8e44ad', purpleDim: '#a855c0',
@@ -66,7 +66,7 @@ const THEMES = {
   light: {
     bg: '#ffffff', surface: '#f8f9fa', surfaceHi: '#e9ecef',
     text: '#212529', textDim: '#495057', textMuted: '#6c757d',
-    textGhost: '#adb5bd', textInvis: '#dee2e6',
+    textGhost: '#8494a0', textInvis: '#c0cad0',
     accent: '#d35400', accentSoft: '#e67e22', accentDim: '#f39c12',
     green: '#28a745', greenDim: '#5cb85c', red: '#dc3545', redDim: '#e74c3c',
     amber: '#ffc107', amberDim: '#f0c040', purple: '#6f42c1', purpleDim: '#8a55c0',
@@ -77,7 +77,7 @@ const THEMES = {
   coffee: {
     bg: '#2c1e10', surface: '#241a0c', surfaceHi: '#3a2a18',
     text: '#e8d5b8', textDim: '#c4a882', textMuted: '#a08868',
-    textGhost: '#7a6848', textInvis: '#544830',
+    textGhost: '#9a8860', textInvis: '#745838',
     accent: '#d4a054', accentSoft: '#c49450', accentDim: '#8a6a3a',
     green: '#6aab6a', greenDim: '#3a6a3a', red: '#cc5555', redDim: '#6a3333',
     amber: '#ccaa44', amberDim: '#6a5522', purple: '#aa88cc', purpleDim: '#5a446a',
@@ -88,7 +88,7 @@ const THEMES = {
   gruvbox: {
     bg: '#282828', surface: '#3c3836', surfaceHi: '#504945',
     text: '#ebdbb2', textDim: '#d5c4a1', textMuted: '#bdae93',
-    textGhost: '#928374', textInvis: '#7c6f64',
+    textGhost: '#b2a394', textInvis: '#9c8f84',
     accent: '#fe8019', accentSoft: '#fabd2f', accentDim: '#b8bb26',
     green: '#b8bb26', greenDim: '#98971a', red: '#fb4934', redDim: '#cc241d',
     amber: '#fabd2f', amberDim: '#d79921', purple: '#d3869b', purpleDim: '#b16286',
@@ -99,7 +99,7 @@ const THEMES = {
   dracula: {
     bg: '#282a36', surface: '#343746', surfaceHi: '#44475a',
     text: '#f8f8f2', textDim: '#cccac2', textMuted: '#aaa8a0',
-    textGhost: '#6272a4', textInvis: '#44475a',
+    textGhost: '#8292c4', textInvis: '#64677a',
     accent: '#ff79c6', accentSoft: '#bd93f9', accentDim: '#6272a4',
     green: '#50fa7b', greenDim: '#00b956', red: '#ff5555', redDim: '#cc3333',
     amber: '#f1fa8c', amberDim: '#d4d4aa', purple: '#bd93f9', purpleDim: '#8a6fd0',
@@ -110,7 +110,7 @@ const THEMES = {
   nord: {
     bg: '#2e3440', surface: '#3b4252', surfaceHi: '#434c5e',
     text: '#eceff4', textDim: '#d8dee9', textMuted: '#aeb6c2',
-    textGhost: '#616e88', textInvis: '#4c566a',
+    textGhost: '#819eb0', textInvis: '#6c768a',
     accent: '#88c0d0', accentSoft: '#81a1c1', accentDim: '#5e81ac',
     green: '#a3be8c', greenDim: '#8faa7b', red: '#bf616a', redDim: '#a3555a',
     amber: '#ebcb8b', amberDim: '#d4a96a', purple: '#b48ead', purpleDim: '#9a7a9a',
@@ -121,7 +121,7 @@ const THEMES = {
   solarized: {
     bg: '#002b36', surface: '#073642', surfaceHi: '#0a4a5a',
     text: '#839496', textDim: '#93a1a1', textMuted: '#657b83',
-    textGhost: '#586e75', textInvis: '#073642',
+    textGhost: '#789ea5', textInvis: '#275662',
     accent: '#b58900', accentSoft: '#cb4b16', accentDim: '#dc322f',
     green: '#859900', greenDim: '#586e75', red: '#dc322f', redDim: '#cb4b16',
     amber: '#b58900', amberDim: '#93a1a1', purple: '#6c71c4', purpleDim: '#586e75',
@@ -132,7 +132,7 @@ const THEMES = {
   monokai: {
     bg: '#272822', surface: '#3e3d32', surfaceHi: '#49483e',
     text: '#f8f8f2', textDim: '#cfcfc2', textMuted: '#a0a090',
-    textGhost: '#75715e', textInvis: '#49483e',
+    textGhost: '#95917e', textInvis: '#69685e',
     accent: '#f92672', accentSoft: '#ae81ff', accentDim: '#66d9ef',
     green: '#a6e22e', greenDim: '#7aaf20', red: '#f92672', redDim: '#cc3355',
     amber: '#e6db74', amberDim: '#c4be60', purple: '#ae81ff', purpleDim: '#9060c0',
@@ -143,7 +143,7 @@ const THEMES = {
   tokyoNight: {
     bg: '#1a1b26', surface: '#24283b', surfaceHi: '#414868',
     text: '#c0caf5', textDim: '#a9b1d6', textMuted: '#565f89',
-    textGhost: '#3b4261', textInvis: '#1f2335',
+    textGhost: '#5b6281', textInvis: '#3f4355',
     accent: '#ff9e64', accentSoft: '#bb9af7', accentDim: '#7dcfff',
     green: '#9ece6a', greenDim: '#73daca', red: '#f7768e', redDim: '#db4b4b',
     amber: '#e0af68', amberDim: '#c0a860', purple: '#bb9af7', purpleDim: '#9060c0',
@@ -189,6 +189,7 @@ class UIStore extends EventEmitter {
     this.submittedRedo = [];
     this.conversationHistory = [];
     this.conversationRedo = [];
+    this.thinkingHistory = [];
     this.tokenEstimate = 0;
     this.contextLimit = 0;
     this.themeVersion = 0;
@@ -224,6 +225,8 @@ class UIStore extends EventEmitter {
     const text = this.liveThinking.text.trim();
     this.liveThinking = null;
     if (!text) return;
+    this.thinkingHistory.push({ text, elapsed, timestamp: Date.now() });
+    if (this.thinkingHistory.length > 20) this.thinkingHistory.shift();
     this.addItem({ type: 'thinking', text, elapsed });
   }
 
@@ -813,7 +816,7 @@ function Banner({ model, resumed, width, cwd }) {
     h(Text, { color: T.border }, topLine),
     h(Box, {},
       h(Text, { color: T.border }, '  \u2502 '),
-      h(Text, { color: T.accent, bold: true }, '\u25cf '),
+      h(Text, { color: T.accent, bold: true }, '> '),
       h(Text, { color: T.text, bold: true }, pad(APP_NAME)),
       h(Text, { color: T.border }, ' \u2502'),
     ),
@@ -859,9 +862,9 @@ function EventLine({ kind, title, detail }) {
     info:    { sym: '\u00b7', color: T.textGhost },
     think:   { sym: '\u25d0', color: T.textGhost },
     tool:    { sym: '\u2933', color: T.purple },
-    ok:      { sym: '\u2713', color: T.green },
+    ok:      { sym: '>', color: T.green },
     warn:    { sym: '\u25b2', color: T.amber },
-    error:   { sym: '\u2715', color: T.red },
+    error:   { sym: 'x', color: T.red },
   };
   const { sym, color } = cfg[kind] || cfg.info;
 
@@ -888,7 +891,7 @@ function UserMessage({ text }) {
   return h(Box, { paddingLeft: 3, paddingRight: 3, marginTop: 1, marginBottom: 0, flexDirection: 'row' },
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
-        h(Text, { color: T.accent, bold: true }, '\u29bf'),
+        h(Text, { color: T.accent, bold: true }, '>'),
         h(Text, { color: T.textDim, bold: true }, uiText('You', 'Tú')),
       ),
       h(Box, { paddingLeft: 2, flexDirection: 'column' },
@@ -924,7 +927,7 @@ function ThinkingBlock({ text, elapsed, live, width }) {
     lines.length > 0
       ? h(Box, { flexDirection: 'column', paddingLeft: 1 },
           ...lines.map((line, i) =>
-            h(Text, { key: String(i), color: T.textInvis, wrap: 'wrap' }, line),
+            h(Text, { key: String(i), color: T.textMuted, wrap: 'wrap' }, line),
           ),
           more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' ' + uiText('more lines', 'líneas más')) : null,
         )
@@ -1003,7 +1006,7 @@ function SelectBar({ request, width }) {
   const items = Array.isArray(request.items) ? request.items : [];
   const total = items.length;
   const w = width || 100;
-  const maxVisible = Math.max(3, Math.min(12, Math.floor((w - 6) / 1.5)));
+  const maxVisible = Math.max(5, Math.min(20, Math.floor(w / 5)));
   const safeIdx = Math.max(0, Math.min(request.selected || 0, total - 1));
   const half = Math.floor(maxVisible / 2);
   let start = Math.max(0, safeIdx - half);
@@ -1013,14 +1016,14 @@ function SelectBar({ request, width }) {
 
   return h(Box, {
     flexDirection: 'column',
-    paddingLeft: 2,
-    paddingRight: 2,
+    paddingLeft: 1,
+    paddingRight: 1,
     marginTop: 1,
     borderStyle: 'round',
     borderColor: T.borderLight,
   },
     h(Box, { paddingTop: 0, paddingBottom: 0, paddingLeft: 1 },
-      h(Text, { color: T.amber, bold: true }, '\u25b8 '),
+      h(Text, { color: T.amber, bold: true }, '> '),
       h(Text, { color: T.text, bold: true }, request.title || 'Select'),
       request.subtitle
         ? h(Text, { color: T.textMuted }, '  ' + request.subtitle)
@@ -1033,25 +1036,26 @@ function SelectBar({ request, width }) {
         const label = request.getLabel ? request.getLabel(item, realIdx) : String(request.getValue ? request.getValue(item) : item);
         const active = request.isActive && request.isActive(item);
         const prefix = isSelected ? '\u25b8 ' : '  ';
-        const activeTag = active ? ' \u25cf' : '  ';
         const number = String(realIdx + 1).padStart(2, ' ');
         const color = isSelected ? T.accent : (active ? T.green : T.textMuted);
         return h(Box, { key: realIdx, paddingLeft: 2 },
-          h(Text, { color, bold: isSelected }, `${prefix}${number}${activeTag} ${label}`),
+          h(Text, { color, bold: isSelected }, `${prefix}${number} ${label}`),
         );
       }),
       total > maxVisible
-        ? h(Box, { paddingLeft: 2, marginTop: 0 },
-            h(Text, { color: T.textMuted }, `... ${total} ${uiText('items', 'items')} ` + uiText('scroll ↑/↓', 'desplaza ↑/↓')),
+        ? h(Box, { paddingLeft: 2, marginTop: 0, flexDirection: 'row', gap: 1 },
+            h(Text, { color: T.textMuted }, `[${start + 1}-${end} / ${total}]`),
+            h(Text, { color: T.textGhost }, '\u00b7'),
+            h(Text, { color: T.textMuted }, '\u2191/\u2193'),
           )
         : null,
     ),
-    h(Box, { paddingTop: 0, paddingBottom: 0, paddingLeft: 1, gap: 1 },
-      h(Text, { color: T.textMuted }, '\u2191/\u2193 ' + uiText('navigate', 'navegar')),
+    h(Box, { paddingTop: 0, paddingBottom: 0, paddingLeft: 1, gap: 2 },
+      h(Text, { color: T.textMuted }, '\u2191/\u2193'),
       h(Text, { color: T.textGhost }, '\u00b7'),
-      h(Text, { color: T.textMuted }, uiText('Enter select', 'Enter seleccionar')),
+      h(Text, { color: T.textMuted }, uiText('Enter', 'Enter')),
       h(Text, { color: T.textGhost }, '\u00b7'),
-      h(Text, { color: T.textMuted }, uiText('Esc cancel', 'Esc cancelar')),
+      h(Text, { color: T.textMuted }, uiText('Esc', 'Esc')),
     ),
   );
 }
@@ -1092,7 +1096,7 @@ function StatusBar({ store, model, processing, width, turnCount }) {
     ),
     h(Box, { paddingLeft: 1, paddingTop: 0, gap: 1, justifyContent: 'space-between', width: safeW },
       h(Box, { gap: 1 },
-        h(Text, { color: T.accent }, '\u25cf'),
+        h(Text, { color: T.accent }, '>'),
         h(Text, { color: T.textGhost }, model),
         processing
           ? h(Text, { color: T.accentSoft }, frames[frame])
@@ -1129,7 +1133,7 @@ function PromptBar({ request, width }) {
     borderColor: T.borderLight,
   },
     h(Box, { paddingTop: 0, paddingBottom: 0 },
-      h(Text, { color: T.amber, bold: true }, '\u270e '),
+      h(Text, { color: T.amber, bold: true }, '> '),
       h(Text, { color: T.text, bold: true }, request.title || 'Input'),
       request.subtitle
         ? h(Text, { color: T.textGhost }, '  ' + request.subtitle)
@@ -1137,8 +1141,8 @@ function PromptBar({ request, width }) {
     ),
     h(Box, { paddingTop: 0, paddingBottom: 0 },
       h(Text, { color: T.textGhost }, (request.prompt || '>') + ' '),
-      h(Text, { color: T.text, inverse: true }, displayValue.length > 0 ? displayValue.slice(-1) : ' '),
       h(Text, { color: T.textMuted }, displayValue.slice(0, -1) || ''),
+      h(Text, { color: T.text, inverse: true }, displayValue.length > 0 ? displayValue.slice(-1) : ' '),
     ),
     h(Box, { paddingTop: 0, paddingBottom: 0, gap: 1 },
       h(Text, { color: T.textGhost }, uiText('Type to enter', 'Escribe para ingresar')),
@@ -1514,6 +1518,13 @@ function App({ store, state, onSubmit }) {
           if (typeof state.abortCurrentTurn === 'function') {
             state.abortCurrentTurn();
           }
+          store.processing = false;
+          store.liveThinking = '';
+          store.thinkingAnswer = '';
+          store.currentThinking = '';
+          store.lastStreamingText = '';
+          store.streamBuffer = '';
+          store._emit();
           store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC', 'Interrumpido con ESC'));
           return;
         }
@@ -1721,22 +1732,18 @@ export async function startTUI(options = {}) {
 
   if (rehydrated && Array.isArray(state.__resumedHistory) && state.__resumedHistory.length > 0) {
     const sessionTag = state.sessionId ? ` ${state.sessionId.slice(0, 8)}` : '';
-    store.addItem({ type: 'system', text: uiText(`Resuming session${sessionTag} · ${state.__resumedHistory.length} messages replayed`, `Reanudando sesion${sessionTag} · ${state.__resumedHistory.length} mensajes completos`) });
+    store.addItem({ type: 'system', text: uiText(`Resuming session${sessionTag} · ${state.__resumedHistory.length} messages`, `Reanudando sesion${sessionTag} · ${state.__resumedHistory.length} mensajes`) });
     for (const msg of state.__resumedHistory) {
       if (!msg || typeof msg !== 'object') continue;
       if (msg.role === 'user' && msg.content) {
         store.addItem({ type: 'user', text: String(msg.content) });
       } else if (msg.role === 'assistant' && msg.content) {
-        const text = String(msg.content);
-        const clean = text.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
-        if (clean) store.addItem({ type: 'answer', text: clean });
-      } else if (msg.role === 'tool' && msg.tool) {
-        store.addEvent('info', msg.tool, String(msg.result || '').slice(0, 240));
+        const text = String(msg.content).trim();
+        if (text) store.addItem({ type: 'answer', text });
+      } else if (msg.role === 'tool') {
+        store.addEvent('info', msg.tool || 'tool', String(msg.result || '').slice(0, 200));
       } else if (msg.role === 'system' && msg.content) {
-        store.addItem({ type: 'system', text: '· ' + String(msg.content) });
-      } else {
-        const fallback = String(msg.content || JSON.stringify(msg)).slice(0, 200);
-        if (fallback) store.addItem({ type: 'system', text: `${msg.role || 'msg'}: ${fallback}` });
+        store.addItem({ type: 'system', text: String(msg.content) });
       }
     }
     store.addItem({ type: 'divider' });
@@ -1752,31 +1759,52 @@ export async function startTUI(options = {}) {
     const selected = await store.requestSelect({
       title: uiText('Select session', 'Seleccionar sesión'),
       items: sessions,
-      getLabel: (s) => `${s.title || s.id?.slice(0, 8) || '?'}  [${s.id?.slice(0, 8) || '?'}]  ${s.messageCount || 0} msgs`,
+      getLabel: (s) => `${s.title || s.sessionId?.slice(0, 8) || '?'}  [${s.sessionId?.slice(0, 8) || '?'}]  ${s.turnCount || 0} turns`,
     });
     if (!selected) return;
-    const loadedState = await loadSessionState(selected, null);
+    const sessionId = typeof selected === 'string' ? selected : selected.sessionId;
+    const loadedState = await loadSessionState(sessionId, null);
     if (!loadedState) {
-      store.addEvent('error', uiText('cannot load session', 'no se pudo cargar sesión'), '');
+      const { createNewSessionState } = require('../utils/sessionStorage');
+      const newState = await createNewSessionState(null);
+      Object.assign(state, {
+        sessionId: newState.sessionId,
+        sessionPath: newState.sessionPath,
+        history: newState.history || [],
+        memorySummary: newState.memorySummary || '',
+        turnCount: newState.turnCount || 0,
+        title: newState.title || 'New session',
+      });
+      await saveState(state);
+      store.addEvent('warn', uiText('session not found, created new', 'sesión no encontrada, creando nueva'), sessionId);
       return;
     }
     if (Array.isArray(loadedState.history)) {
       const lines = [];
       for (const msg of loadedState.history.slice(-20)) {
-        if (msg.role === 'user' && msg.content) lines.push(`🧑 ${msg.content.slice(0, 200)}`);
-        else if (msg.role === 'assistant' && msg.content) lines.push(`🤖 ${msg.content.slice(0, 200)}`);
+        if (msg.role === 'user' && msg.content) {
+          lines.push(`${String(msg.content).slice(0, 120)}`);
+        } else if (msg.role === 'assistant' && msg.content) {
+          const text = String(msg.content).trim();
+          if (text) lines.push(`  ${text.slice(0, 120)}`);
+        } else if (msg.role === 'tool') {
+          lines.push(`  ${msg.tool || 'tool'}`);
+        }
       }
-      store.addItem({ type: 'system', text: `📋 ${uiText('Session history', 'Historial de sesión')}:\n${lines.join('\n')}` });
+      if (lines.length > 0) {
+        store.addItem({ type: 'system', text: lines.join('\n') });
+      }
     }
     store.addEvent('info', uiText('loaded session', 'sesión cargada'), `"${loadedState.title || selected}"`);
     state.sessionId = loadedState.sessionId;
+    state.sessionPath = loadedState.sessionPath;
     state.history = loadedState.history || [];
     state.memorySummary = loadedState.memorySummary || '';
+    state.sessionMemory = loadedState.sessionMemory || {};
     state.turnCount = loadedState.turnCount || 0;
     state.title = loadedState.title || 'New session';
     const { saveState } = require('../utils/sessionStorage');
     await saveState(state);
-    if (typeof ui.syncTokenEstimate === 'function') ui.syncTokenEstimate();
   }
 
   const processInput = async (input) => {

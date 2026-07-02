@@ -11,8 +11,8 @@ function pad(text, width) {
 }
 
 function renderOption(index, item, isSelected, isActive, width) {
-  const prefix = isSelected ? '▶' : ' ';
-  const activeTag = isActive ? ' ●' : '  ';
+  const prefix = isSelected ? '>' : ' ';
+  const activeTag = isActive ? ' *' : '  ';
   const label = `${prefix}${activeTag} ${item}`;
   return pad(label, width);
 }
@@ -30,7 +30,7 @@ async function classicSelect({ title, items, getValue, getLabel, isActive, width
     console.log(`\n  ${title}`);
     items.forEach((item, i) => {
       const label = getLabel ? getLabel(item, i) : String(getValue ? getValue(item) : item);
-      const tag = isActive && isActive(item) ? ' ●' : '';
+      const tag = isActive && isActive(item) ? ' *' : '';
       console.log(`    ${i + 1}) ${label}${tag}`);
     });
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
