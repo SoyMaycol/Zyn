@@ -21,19 +21,29 @@
 
 ---
 
+## Why Zyn?
+
+- One binary.
+- Works with 28 AI providers.
+- Built-in memory.
+- Native TUI.
+- Background workers.
+- Runs locally or in the cloud.
+- OpenAI-compatible APIs.
+
 ## Features
 
-- **CLI + TUI** â€” full terminal UI with keyboard navigation, token display, real-time streaming, theme support (10 themes), auto-compaction
-- **28 providers, 217+ models** â€” OpenAI, Anthropic, Google (Gemini/Vertex), Groq, Together, OpenRouter, Mistral, xAI, Cohere, Fireworks, Perplexity, DeepSeek, Qwen (DashScope), HuggingFace, Replicate, Cloudflare Workers AI, Azure OpenAI, AWS Bedrock, GitHub Models, LM Studio (local), Ollama (local + cloud), Novita, Chutes, Inference.net, Zen (free, no config), and any custom OpenAI-compatible API
-- **Persistent memory** â€” agent-managed memory tool (`memory save/list/get/delete/clear`) with session persistence, visible in system prompt as compact reference
-- **Skills system** â€” folder-based skills with YAML frontmatter and automatic prompt integration
-- **Tool execution** â€” read/write files, run commands (with mandatory timeout), search code, browse web, glob patterns, git operations, image processing (via Jimp)
-- **Session management** â€” persistent sessions with full history replay, resume, export, transcript, auto-title
-- **Background workers** â€” detach long-running turns to background processes
+- **CLI + TUI**” full terminal UI with keyboard navigation, token display, real-time streaming, theme support (10 themes), auto-compaction
+- **28 providers, 217+ models**” OpenAI, Anthropic, Google (Gemini/Vertex), Groq, Together, OpenRouter, Mistral, xAI, Cohere, Fireworks, Perplexity, DeepSeek, Qwen (DashScope), HuggingFace, Replicate, Cloudflare Workers AI, Azure OpenAI, AWS Bedrock, GitHub Models, LM Studio (local), Ollama (local + cloud), Novita, Chutes, Inference.net, Zen (free, no config), and any custom OpenAI-compatible API
+- **Persistent memory**” agent-managed memory tool (`memory save/list/get/delete/clear`) with session persistence, visible in system prompt as compact reference
+- **Skills system**” folder-based skills with YAML frontmatter and automatic prompt integration
+- **Tool execution**” read/write files, run commands (with mandatory timeout), search code, browse web, glob patterns, git operations, image processing (via Jimp)
+- **Session management**” persistent sessions with full history replay, resume, export, transcript, auto-title
+- **Background workers**” detach long-running turns to background processes
 - **i18n** â€” English and Spanish interfaces with auto-detection
-- **Streaming** â€” real-time token streaming, live thinking visibility, tool call detection during streaming, cancelable with ESC
-- **No hard-coded limits** â€” all limits configurable via env vars (tool steps, history chars, file lines, output chars)
-- **Multi-platform** â€” embeddable in WhatsApp (Baileys), Discord, and Telegram bots (under development)
+- **Streaming**” real-time token streaming, live thinking visibility, tool call detection during streaming, cancelable with ESC
+- **No hard-coded limits**” all limits configurable via env vars (tool steps, history chars, file lines, output chars)
+- **Multi-platform*”" embeddable in WhatsApp (Baileys), Discord, and Telegram bots (under development)
 
 ---
 
@@ -52,6 +62,7 @@ cd Zyn
 npm install
 npm start
 ```
+> No configuration required, Start immediately using the free Zen provider.
 
 ## Usage
 
