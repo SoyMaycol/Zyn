@@ -335,7 +335,7 @@ const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || proce
 const HUGGINGFACE_TOKEN = process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN || '';
 const GEMINI_API_KEY = process.env.ZYN_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 
-const MAX_TOOL_STEPS = Number(process.env.ZYN_MAX_TOOL_STEPS || 100);
+const MAX_TOOL_STEPS = Number(process.env.ZYN_MAX_TOOL_STEPS || 500);
 
 const REQUEST_TIMEOUT_MS = Number(process.env.ZYN_REQUEST_TIMEOUT_MS || 120000);
 const ACTION_LOG_LIMIT = 100;
