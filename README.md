@@ -1,7 +1,7 @@
-# Zyn Agent
+# Zyn — AI Agent for Your Terminal
 
 <p align="center">
-  <img src="https://i.ibb.co/46VHVKb/47-sin-t-tulo-20260702143433.png" alt="Zyn logo" width="180" />
+  <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn AI Agent Logo" width="180" />
 </p>
 
 <p align="center">
@@ -9,242 +9,342 @@
   <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
   <img src="https://img.shields.io/npm/dt/zyn-ai" alt="Downloads"/>
   <img src="https://img.shields.io/github/license/SoyMaycol/Zyn" alt="License"/>
+  <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="Node.js 18+"/>
 </p>
 
 <p align="center">
-  <b>Production-grade CLI Agent with 28+ providers and 217+ models.</b>
+  <b>Terminal AI agent with 28+ providers, 217+ models, plugin system, MCP support, and zero vendor lock-in.</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/SoyMaycol/Zyn">GitHub</a>
+  <a href="#installation">Install</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="#providers--models">Providers</a> ·
+  <a href="#plugins">Plugins</a> ·
+  <a href="#mcp-servers">MCP</a> ·
+  <a href="#themes">Themes</a>
 </p>
 
 ---
 
-## Why Zyn?
+## What Is Zyn?
 
-- One binary.
-- Works with 28 AI providers.
-- Built-in memory.
-- Native TUI.
-- Background workers.
-- Runs locally or in the cloud.
-- OpenAI-compatible APIs.
+Zyn is a command-line AI agent that runs on your machine. It connects to any LLM provider (OpenAI, Anthropic, Gemini, Groq, etc.), executes real tools (shell commands, file operations, web searches), and remembers context across sessions.
 
-## Features
+It's not a chat wrapper. It's an agent that actually does things — runs commands, reads/writes files, searches the web, creates images, and talks to MCP servers. You can extend it with plugins from npm.
 
-- **CLI + TUI**” full terminal UI with keyboard navigation, token display, real-time streaming, theme support (10 themes), auto-compaction
-- **28 providers, 217+ models**” OpenAI, Anthropic, Google (Gemini/Vertex), Groq, Together, OpenRouter, Mistral, xAI, Cohere, Fireworks, Perplexity, DeepSeek, Qwen (DashScope), HuggingFace, Replicate, Cloudflare Workers AI, Azure OpenAI, AWS Bedrock, GitHub Models, LM Studio (local), Ollama (local + cloud), Novita, Chutes, Inference.net, Zen (free, no config), and any custom OpenAI-compatible API
-- **Persistent memory**” agent-managed memory tool (`memory save/list/get/delete/clear`) with session persistence, visible in system prompt as compact reference
-- **Skills system**” folder-based skills with YAML frontmatter and automatic prompt integration
-- **Tool execution**” read/write files, run commands (with mandatory timeout), search code, browse web, glob patterns, git operations, image processing (via Jimp)
-- **Session management**” persistent sessions with full history replay, resume, export, transcript, auto-title
-- **Background workers**” detach long-running turns to background processes
-- **i18n** â€” English and Spanish interfaces with auto-detection
-- **Streaming**” real-time token streaming, live thinking visibility, tool call detection during streaming, cancelable with ESC
-- **No hard-coded limits**” all limits configurable via env vars (tool steps, history chars, file lines, output chars)
-- **Multi-platform*”" embeddable in WhatsApp (Baileys), Discord, and Telegram bots (under development)
+**Honest assessment:** Zyn works well for terminal-based AI workflows. It has real tool execution, persistent memory, and a plugin system. It's not perfect — some edge cases with streaming can be rough, and the TUI occasionally glitches. But it gets the job done for developers who want AI in their terminal without vendor lock-in.
 
 ---
 
 ## Installation
 
 ```bash
+# Install globally
 npm install -g zyn-ai
-zyn
-```
 
-### From source
+# Or use directly
+npx zyn-ai
 
-```bash
+# From source
 git clone https://github.com/SoyMaycol/Zyn.git
 cd Zyn
 npm install
 npm start
 ```
-> No configuration required, Start immediately using the free Zen provider.
 
-## Usage
+**Requirements:** Node.js 18+
+
+---
+
+## Quick Start
 
 ```bash
-zyn                  # Interactive TUI (default)
-zyn "question"       # Single prompt (CLI mode)
-zyn --new            # Force new session
-zyn --resume ID      # Resume existing session (keeps history)
+zyn               # Full TUI with streaming, themes, plugins
+zyn "your prompt" # Single CLI prompt
+zyn --new         # Fresh session
+zyn --resume ID   # Resume a previous session
 ```
 
-## Presentation
+First run: Zyn starts with a free model (Zen/Nemotron). Use `/providers` to configure your own API keys, then `/models` to pick a model.
 
+---
 
+## Features
 
-https://github.com/user-attachments/assets/8f1020ea-a883-4489-8ced-37cc4860c052
+### Agent Core
 
+- **Tool execution** — run commands, read/write files, edit code, search web, create images
+- **Persistent memory** — saves context across sessions (`/memory`, `/summary`)
+- **Session management** — full history, resume, export, transcripts
+- **Background jobs** — `/bg` for long-running tasks, `/jobs` to manage them
+- **Streaming** — live token output, thinking indicators, cancel with ESC
+- **i18n** — English/Spanish with auto-detection
+- **No hard limits** — configurable timeouts, history size, context windows
 
+### Providers & Models
 
-## Providers
+- **28+ providers** — OpenAI, Anthropic, Google Gemini, Groq, Together, OpenRouter, Mistral, xAI, Cohere, Fireworks, Perplexity, Ollama, GitHub Models, Azure, AWS Bedrock, Vertex AI, Cloudflare, LM Studio, Novita, Chutes, Inference.net, Replicate, DeepSeek, HuggingFace, Zen, Qwen, Custom
+- **217+ verified models** — real model IDs, no fake entries
+- **Dynamic model picker** — `/models` opens interactive selector
+- **Custom model IDs** — type any model ID (with warning if not registered)
+- **Auto-discovery** — `/provider sync` fetches latest model lists
 
-28 providers supported. Use `/providers` in the TUI to select a provider, configure it, and pick a model.
+### TUI Interface
 
-| Provider | Key | Config Required | Auth Method | Notes |
-|---|---|---|---|---|
-| Zen | `zen` | No | None | Free, no setup needed |
-| OpenAI | `openai` | Yes | `apiKey` | `OPENAI_API_KEY` |
-| Anthropic | `anthropic` | Yes | `apiKey` | `ANTHROPIC_API_KEY` |
-| Google Gemini | `gemini` | Yes | `apiKey` | `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
-| Google Vertex AI | `vertex` | Yes | `apiKey` + `project` + `location` | `GOOGLE_CLOUD_API_KEY` |
-| Groq | `groq` | Yes | `apiKey` | `GROQ_API_KEY` |
-| Together AI | `together` | Yes | `apiKey` | `TOGETHER_API_KEY` |
-| OpenRouter | `openrouter` | Yes | `apiKey` | `OPENROUTER_API_KEY` |
-| Mistral AI | `mistral` | Yes | `apiKey` | `MISTRAL_API_KEY` |
-| xAI (Grok) | `xai` | Yes | `apiKey` | `XAI_API_KEY` |
-| Cohere | `cohere` | Yes | `apiKey` | `COHERE_API_KEY` |
-| Fireworks AI | `fireworks` | Yes | `apiKey` | `FIREWORKS_API_KEY` |
-| Perplexity | `perplexity` | Yes | `apiKey` | `PERPLEXITY_API_KEY` |
-| DeepSeek | `deepseek` | Yes | `apiKey` | `DEEPSEEK_CHAT_KEY` |
-| Qwen (DashScope) | `qwenapi` | Yes | `apiKey` | `QWEN_API_KEY` |
-| HuggingFace | `huggingface` | Optional | `apiKey` | `HF_TOKEN` |
-| Ollama (Local) | `ollama` | No | None | Runs locally |
-| Ollama Cloud | `ollamaCloud` | Yes | `apiKey` | `OLLAMA_API_KEY` |
-| GitHub Models | `github` | Yes | `apiKey` (PAT with models:read) | `GITHUB_TOKEN` |
-| Azure OpenAI | `azure` | Yes | `apiKey` + `resource` | `AZURE_OPENAI_API_KEY` |
-| AWS Bedrock | `bedrock` | Yes | `apiKey` + `region` | `BEDROCK_API_KEY` |
-| Replicate | `replicate` | Yes | `apiKey` | `REPLICATE_API_TOKEN` |
-| Cloudflare Workers AI | `cloudflare` | Yes | `apiKey` + `accountId` | `CLOUDFLARE_API_TOKEN` |
-| LM Studio (Local) | `lmstudio` | No | None | Runs locally |
-| Novita AI | `novita` | Yes | `apiKey` | `NOVITA_API_KEY` |
-| Chutes AI | `chutes` | Yes | `apiKey` | `CHUTES_API_KEY` |
-| Inference.net | `inference` | Yes | `apiKey` | `INFERENCE_API_KEY` |
-| Custom (OpenAI-compatible) | `custom` | Yes | `baseUrl` + `apiKey` | Any OpenAI-compatible API |
+- **Interactive selection** — model picker, provider selector, theme chooser
+- **Real-time streaming** — thinking blocks, tool call logs, live token counter
+- **24 built-in themes** — dark, light, gruvbox, dracula, nord, solarized, monokai, tokyo-night, matrix, cyberpunk, vaporwave, rosePine, catppuccin, and more
+- **Dynamic theme chooser** — `/theme` opens interactive picker with preview
+- **Responsive** — adapts to any terminal width, listens to resize events
+- **No emojis** — clean text UI with symbols (`>`, `·`, `x`)
 
-Default model: `nemotron` (Zen, free, no configuration required).
+### Plugin System
 
-Run `/models` to see all available models for the current provider, or use `/providers` to configure and switch providers interactively. You can also type a custom model ID manually from the model selector.
+- **`/plugins` command** — install, uninstall, list community plugins
+- **npm-based** — install from npmjs registry
+- **Plugin types** — themes, skills, tools, prompts, commands, UI components
+- **Security model** — consent required before install, warns about permissions
+- **Sandboxed** — plugins run in restricted context, no full system access
+
+### MCP Servers
+
+- **`/mcp` commands** — connect, disconnect, list, import
+- **Model Context Protocol** — connect to external tool servers
+- **Auto-discovery** — detect MCP servers from URLs
+- **Tool integration** — MCP tools appear alongside built-in tools
+
+---
 
 ## Commands
 
-### Sessions
+### Core
 
 | Command | Description |
-|---|---|
+|---------|-------------|
 | `/help` | Show help |
-| `/status` | Current status |
-| `/history` | Recent actions (last 20) |
+| `/status` | Current model, provider, session info |
+| `/history` | Last 20 actions |
 | `/memory` | Show memory summary |
-| `/transcript` | View session transcript |
 | `/session` | Current session info |
 | `/sessions` | List all sessions |
 | `/new` | New session |
-| `/resume <ID>` | Resume session (keeps history) |
+| `/resume <ID>` | Resume session |
 | `/title <text>` | Rename session |
 
 ### Configuration
 
 | Command | Description |
-|---|---|
-| `/models` | Open model picker (current provider) |
-| `/providers` | Open interactive provider picker -> configure -> pick model |
-| `/provider list` | List configured providers and their fields |
-| `/provider sync <name>` | Fetch models from a provider's API |
+|---------|-------------|
+| `/models` | Model picker |
+| `/providers` | Provider selector |
 | `/provider set <name> <field> <value>` | Set provider config |
-| `/provider remove <name>` | Remove a provider configuration |
+| `/provider remove <name>` | Remove provider |
+| `/provider sync <name>` | Fetch latest models |
+| `/theme` | Theme picker (24 themes) |
+| `/theme <name>` | Switch theme directly |
 | `/lang <en\|es>` | Change language |
-| `/auto on\|off` | Toggle auto-approval |
-| `/concuerdo` | Toggle group model mode |
-| `/persona set <text>` | Set response persona |
-| `/config show` | Show config |
-| `/git set\|list\|remove` | Manage git credentials |
+| `/auto on\|off` | Auto-approve tools |
+| `/persona set <text>` | Set AI persona |
+| `/config show` | Show all config |
 | `/cwd <path>` | Change working directory |
 
-### Tools & Skills
+### Plugins
 
 | Command | Description |
-|---|---|
-| `/tools` | List agent tools |
-| `/skills` | List loaded skills |
-| `/gmail connect` | Connect Gmail via OAuth |
+|---------|-------------|
+| `/plugins` | Open plugin manager |
+| `/plugins list` | List installed plugins |
+| `/plugins install <name>` | Install from npm |
+| `/plugins uninstall <name>` | Remove plugin |
+| `/plugins search <query>` | Search npm for plugins |
+
+### MCP Servers
+
+| Command | Description |
+|---------|-------------|
+| `/mcp` | Open MCP manager |
+| `/mcp connect <name> <url>` | Connect to MCP server |
+| `/mcp disconnect <name>` | Disconnect server |
+| `/mcp list` | List connected servers |
+| `/mcp tools <name>` | List server tools |
+| `/mcp import` | Auto-discover MCP servers |
 
 ### Export & Control
 
 | Command | Description |
-|---|---|
-| `/bg` | Detach current turn to background |
+|---------|-------------|
 | `/export` | Export session to txt |
-| `/stop` | Stop current agent turn |
-| `/undo` | Undo last turn |
-| `/redo` | Redo undone turn |
-| `/reset` | Reset context (keeps memory) |
-| `/exit` | Exit |
+| `/bg` | Detach to background |
+| `/jobs` | List background jobs |
+| `/stop` | Stop current turn |
+| `/clear` | Reset session |
+| `/exit` | Exit Zyn |
 
-Press `ESC` twice in the TUI to stop the current task.
+---
 
-## Custom Providers
+## Providers & Models
 
-Add any OpenAI-compatible API:
+Zyn connects to 28+ LLM providers. Configure with `/providers`, then pick a model with `/models`.
+
+**Free options (no API key):**
+- Zen (Nemotron, Mimo) — default, works out of the box
+
+**Popular paid providers:**
+- OpenAI — GPT-4o, GPT-5, o1, o3
+- Anthropic — Claude 3.5 Sonnet, Claude 4
+- Google — Gemini 2.5 Pro, Gemini 2.5 Flash
+- Groq — Llama 3.3, Mixtral (fast inference)
+- Together — DeepSeek, Llama, Qwen models
+- OpenRouter — access to multiple providers
 
 ```bash
-# Interactive: run /providers -> select "+ Add custom provider"
-# Or manual:
-/provider set groq baseUrl https://api.groq.com/openai/v1
-/provider set groq apiKey gsk_xxxx
-/provider set groq contextLength 128000
-/provider sync groq
+# Configure a provider
+/provider set openai apiKey sk-xxx
+
+# Pick a model
+/models
 ```
 
-Configurable fields: `apiKey`, `baseUrl`, `modelId`, `contextLength`, `email`, `password`, `modelEndpoint`, `chatEndpoint`.
-
-## Skills
-
-Skills are folders under `data/skills/<name>/SKILL.md` with YAML frontmatter:
-
-```markdown
----
-name: reasoning
-description: Reasoning and planning for complex tasks
 ---
 
-# Skill body here
+## Themes
+
+Zyn includes 24 built-in themes with dynamic selection.
+
+```bash
+/theme                  # Interactive theme picker
+/theme gruvbox          # Switch directly
+/theme random           # Random theme
+/theme list             # List all themes
 ```
 
-The system prompt automatically advertises every loaded skill to the model.
+**Built-in themes:** dark, cappuccino, light, coffee, gruvbox, dracula, nord, solarized, monokai, tokyo-night, matrix, synthwave, rosePine, catppuccin, oneDark, materialPalenight, cyberpunk, arctic, ember, lavender, midnight, sunset, ocean, vaporwave.
 
-## Environment Variables
+**Install community themes:**
+```bash
+/plugins install zyn-theme-matrix
+/theme matrix
+```
 
-| Variable | Default | Description |
-|---|---|---|
-| `ZYN_DEFAULT_MODEL` | `nemotron` | Override default model key |
-| `ZYN_DEFAULT_LANG` | `en` | Default language (`en` or `es`) |
-| `ZYN_REQUEST_TIMEOUT_MS` | `120000` | Request timeout |
-| `ZYN_PROVIDER_TIMEOUT_MAX_ATTEMPTS` | `4` | Retry attempts on provider failure |
-| `ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS` | `5000` | Delay between retries |
-| `ZYN_MAX_TOOL_STEPS` | `500` | Maximum tool call steps per turn |
-| `ZYN_MAX_HISTORY_CHARS` | `200000` | Max history characters retained |
-| `ZYN_MAX_FILE_LINES` | `10000` | Max file lines read at once |
-| `ZYN_MAX_OUTPUT_CHARS` | `50000` | Max output chars per tool result |
-| `OPENAI_API_KEY` | - | OpenAI API key |
-| `ANTHROPIC_API_KEY` | - | Anthropic API key |
-| `GOOGLE_API_KEY` / `GEMINI_API_KEY` | - | Google AI API key |
-| `GROQ_API_KEY` | - | Groq API key |
-| `TOGETHER_API_KEY` | - | Together AI API key |
-| `OPENROUTER_API_KEY` | - | OpenRouter API key |
-| `MISTRAL_API_KEY` | - | Mistral AI API key |
-| `XAI_API_KEY` | - | xAI (Grok) API key |
-| `COHERE_API_KEY` | - | Cohere API key |
-| `FIREWORKS_API_KEY` | - | Fireworks AI API key |
-| `PERPLEXITY_API_KEY` | - | Perplexity API key |
-| `DEEPSEEK_CHAT_KEY` | - | DeepSeek API key |
-| `QWEN_API_KEY` / `DASHSCOPE_API_KEY` | - | Qwen (DashScope) API key |
-| `HF_TOKEN` | - | HuggingFace token |
-| `GITHUB_TOKEN` | - | GitHub PAT with models:read scope |
-| `AZURE_OPENAI_API_KEY` | - | Azure OpenAI API key |
-| `BEDROCK_API_KEY` | - | AWS Bedrock API key |
-| `REPLICATE_API_TOKEN` | - | Replicate API token |
-| `CLOUDFLARE_API_TOKEN` | - | Cloudflare API token |
-| `NOVITA_API_KEY` | - | Novita AI API key |
-| `CHUTES_API_KEY` | - | Chutes AI API key |
-| `INFERENCE_API_KEY` | - | Inference.net API key |
-| `OLLAMA_API_KEY` | - | Ollama Cloud API key |
-| `ZYN_GMAIL_CLIENT_SECRET` | - | Gmail OAuth client secret |
+---
+
+## Plugins
+
+Extend Zyn with community plugins from npm.
+
+```bash
+/plugins                    # Open plugin manager
+/plugins list               # List installed plugins
+/plugins install zyn-theme-neon  # Install a theme
+/plugins search skill       # Search for skill plugins
+/plugins uninstall zyn-theme-neon  # Remove plugin
+```
+
+**Plugin types:**
+- `theme` — new color schemes and visual styles
+- `skill` — AI skills with YAML frontmatter
+- `tool` — custom tools (API calls, scripts)
+- `prompt` — modify system prompts
+- `command` — add slash commands
+- `ui` — UI components
+
+**Security:** Zyn asks for consent before installing plugins. Plugins run sandboxed — they can't access your files or API keys without explicit permission. Always review plugin source code before installing.
+
+---
+
+## MCP Servers
+
+Connect to Model Context Protocol servers for external tools.
+
+```bash
+/mcp                                    # Open MCP manager
+/mcp connect my-tools http://localhost:8080  # Connect server
+/mcp list                               # List connected servers
+/mcp tools my-tools                     # List available tools
+/mcp disconnect my-tools                # Disconnect
+```
+
+MCP tools appear alongside Zyn's built-in tools. The agent can use them automatically.
+
+---
+
+## Directory Structure
+
+```
+zyn/
+├── zyn.js                    # Entry point
+├── src/
+│   ├── core/
+│   │   ├── agent.js          # Agent core (runAgentTurn, streaming, tool loop)
+│   │   ├── prompts.js        # System prompt, conversation formatting
+│   │   └── skills.js         # Skill loading (YAML frontmatter)
+│   ├── cli/
+│   │   ├── commands.js       # Slash commands, provider config, plugin/MCP mgmt
+│   │   ├── runtime.js        # CLI interface
+│   │   ├── print.js          # Terminal output, streaming
+│   │   └── selector.js       # Interactive selectors
+│   ├── tui/
+│   │   └── app.mjs           # TUI (Ink/React), themes, UI components
+│   ├── tools/
+│   │   └── index.js          # Tool definitions, execution, validation
+│   ├── providers/
+│   │   ├── scraperClient.js  # Provider routing, chat dispatch
+│   │   ├── catalog.js        # Model/provider catalog
+│   │   └── *.js              # Provider implementations (28+)
+│   ├── utils/
+│   │   ├── sessionStorage.js # Session state, history, memory
+│   │   └── transcriptStorage.js # Transcript logging
+│   └── i18n.js               # English/Spanish translations
+├── data/chat/                # Local session data (not uploaded)
+│   ├── sessions/
+│   ├── transcripts/
+│   ├── exports/
+│   └── providers.json        # Provider API keys
+├── package.json
+└── README.md
+```
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/SoyMaycol/Zyn.git
+cd Zyn
+npm install
+npm run check    # Syntax check critical files
+npm start        # Run TUI
+```
+
+**Code conventions:**
+- CommonJS for Node.js files (`.js`)
+- ES Modules for TUI (`.mjs`)
+- No emojis in TUI — use text symbols
+- Spanish/English i18n for all user-facing strings
+
+---
+
+## Roadmap
+
+- [ ] Plugin marketplace UI
+- [ ] More MCP server integrations
+- [ ] Custom tool creation wizard
+- [ ] Multi-session collaboration
+- [ ] Voice input/output
+- [ ] Custom theme builder
+
+---
+
+## Support
+
+- **Issues:** https://github.com/SoyMaycol/Zyn/issues
+- **Discussions:** https://github.com/SoyMaycol/Zyn/discussions
+
+---
 
 ## License
 
-MIT - Maycol B.T
+MIT © Maycol

@@ -10,7 +10,8 @@ fs.mkdirSync(CHATS_DIR, { recursive: true });
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
 
 function readUsers() {
-  return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
+  catch { return []; }
 }
 
 function writeUsers(users) {
@@ -65,7 +66,8 @@ function createChat(userId, repoOwner, repoName) {
 function getChat(id) {
   const file = path.join(CHATS_DIR, `${id}.json`);
   if (!fs.existsSync(file)) return null;
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { return null; }
 }
 
 function saveChat(chat) {
@@ -78,8 +80,11 @@ function saveChat(chat) {
 function getUserChats(userId) {
   const files = fs.readdirSync(CHATS_DIR).filter(f => f.endsWith('.json'));
   return files
-    .map(f => JSON.parse(fs.readFileSync(path.join(CHATS_DIR, f), 'utf8')))
-    .filter(c => c.userId === userId)
+    .map(f => {
+      try { return JSON.parse(fs.readFileSync(path.join(CHATS_DIR, f), 'utf8')); }
+      catch { return null; }
+    })
+    .filter(c => c && c.userId === userId)
     .sort((a, b) => b.createdAt - a.createdAt)
     .map(({ id, title, repoOwner, repoName, createdAt, messages }) => ({
       id,

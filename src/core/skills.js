@@ -75,6 +75,8 @@ function listSkillFolders() {
 
 function loadSkill(name) {
   const folderPath = path.join(SKILLS_DIR, name);
+  const resolved = path.resolve(folderPath);
+  if (!resolved.startsWith(path.resolve(SKILLS_DIR))) return null;
   if (!fs.existsSync(folderPath)) return null;
   return readSkillFolder(folderPath);
 }

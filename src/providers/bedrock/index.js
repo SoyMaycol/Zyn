@@ -66,6 +66,24 @@ async function bedrock(messages, modelId, onChunk = null, options = {}) {
       }
     }
 
+    // Flush remaining SSE buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed?.output?.text || parsed?.delta?.text || parsed?.contentBlock?.text;
+            if (content) {
+              answer += content;
+              if (onChunk) onChunk(content, 'answer');
+            }
+          } catch {}
+        }
+      }
+    }
+
     return { status: true, text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeoutId);

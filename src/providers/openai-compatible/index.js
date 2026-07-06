@@ -50,6 +50,7 @@ function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens =
       let answer = '';
       let thinking = '';
 
+      let usage = null;
       for await (const chunk of res.body) {
         buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
@@ -61,6 +62,14 @@ function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens =
           if (data === '[DONE]') continue;
           let parsed;
           try { parsed = JSON.parse(data); } catch { continue; }
+
+          if (parsed?.usage) {
+            usage = {
+              promptTokens: parsed.usage.prompt_tokens || 0,
+              completionTokens: parsed.usage.completion_tokens || 0,
+              totalTokens: parsed.usage.total_tokens || 0,
+            };
+          }
 
           const delta = parsed?.choices?.[0]?.delta;
           if (!delta) continue;
@@ -78,7 +87,31 @@ function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens =
         }
       }
 
-      return { status: true, text: answer.trim(), thinking: thinking.trim() };
+      if (buffer.trim()) {
+        const trimmed = buffer.trim();
+        if (trimmed.startsWith('data:')) {
+          const data = trimmed.slice(5).trim();
+          if (data !== '[DONE]') {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed?.usage) {
+                usage = {
+                  promptTokens: parsed.usage.prompt_tokens || 0,
+                  completionTokens: parsed.usage.completion_tokens || 0,
+                  totalTokens: parsed.usage.total_tokens || 0,
+                };
+              }
+              const delta = parsed?.choices?.[0]?.delta;
+              if (delta?.content) {
+                answer += delta.content;
+                if (onChunk) onChunk(delta.content, 'answer');
+              }
+            } catch {}
+          }
+        }
+      }
+
+      return { status: true, text: answer.trim(), thinking: thinking.trim(), usage };
     } finally {
       clearTimeout(timeoutId);
       if (options.signal) options.signal.removeEventListener('abort', onAbort);

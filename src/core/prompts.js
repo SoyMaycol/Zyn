@@ -1,7 +1,12 @@
 const { normalizeText } = require('../utils/text');
 const { buildSkillsIndexPrompt, buildSkillsPrompt } = require('./skills');
-const { getToolPromptText, TOOL_DEFINITIONS } = require('../tools');
-const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY, MAX_HISTORY_CHARS, MAX_OUTPUT_CHARS, KEEP_RECENT_MESSAGES, countTokens, stripBase64Images } = require('../config');
+const {
+  getToolPromptText,
+  TOOL_DEFINITIONS,
+  getMcpToolDefinitions: getMcpToolDefsFromTools,
+  refreshMcpTools,
+} = require('../tools');
+const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY, MAX_HISTORY_CHARS, MAX_OUTPUT_CHARS, KEEP_RECENT_MESSAGES, countTokens, stripBase64Images, getSetting } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const os = require('os');
 const fs = require('fs');
@@ -73,15 +78,40 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     day: 'numeric',
   });
 
+  refreshMcpTools();
+  const mcpDefs = getMcpToolDefsFromTools();
+  const mcpToolNames = mcpDefs.map(t => t.name);
+  for (const name of mcpToolNames) KNOWN_TOOLS.add(name);
+  for (const name of KNOWN_TOOLS) {
+    if (!mcpToolNames.includes(name) && name.startsWith('mcp_')) {
+      KNOWN_TOOLS.delete(name);
+    }
+  }
+
   const skillsIndex = buildSkillsIndexPrompt();
   const providerGroups = listProvidersFromModels(MODELS)
     .map(group => `${group.key}: ${group.models.map(m => m.key).join(', ')}`)
     .join('\n');
 
+  const mcpToolsPrompt = mcpDefs.length > 0
+    ? (language === 'es'
+      ? `\n# MCP TOOLS\nHerramientas externas conectadas via MCP. Usa el nombre exacto.\n${mcpDefs.map(t => `  ${t.name} — ${t.description}`).join('\n')}\n`
+      : `\n# MCP TOOLS\nExternal tools connected via MCP. Use the exact name.\n${mcpDefs.map(t => `  ${t.name} — ${t.description}`).join('\n')}\n`)
+    : '';
+
   const parts = [
     ...(language === 'es' ? [
       '# RESPUESTA — SOLO JSON, NADA MAS',
       'Tu respuesta es UN OBJETO JSON. Sin texto antes ni despues. Sin explicaciones. Sin pensamientos.',
+      '',
+      '# MEMORIA — GUARDA AUTOMATICAMENTE',
+      'Despues de CADA interaccion, evalua si debes guardar algo en memoria:',
+      '  - Si encontraste un bug → memory save con key="bug:<breve>" y value=<descripcion>',
+      '  - Si aprendiste algo del usuario → memory save con key="user:<tema>" y value=<info>',
+      '  - Si descubriste algo del proyecto → memory save con key="project:<tema>" y value=<info>',
+      '  - Si el usuario corrigio algo → memory save con key="preference:<tema>" y value=<preference>',
+      'Guarda SIEMPRE que haya algo worth remembering. No esperes a que el usuario pida.',
+      'Ejemplo: {"type":"tool","tool":"memory","args":{"action":"save","key":"bug:import","value":"El archivo src/index.js tenia una import circular"}}',
       '',
       'Usar herramienta:',
       '{"type":"tool","tool":"NOMBRE","args":{...}}',
@@ -103,12 +133,27 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '- Tienes acceso al historial de la conversacion. Úsalo para responder preguntas sobre conversaciones anteriores.',
       '- Si el usuario pregunta "que dice al principio" o similar, revisa el historial y responde con lo que dice.',
       '',
+      'REGLAS PARA EJECUTAR COMANDOS (run_command):',
+      '- NUNCA uses & al final del comando. Ejecuta comandos de forma sincrona.',
+      '- Si necesitas un proceso largo, usa timeout razonable (30-120 segundos).',
+      '- Ejemplo CORRECTO: {"type":"tool","tool":"run_command","args":{"command":"npm install","timeout":120000}}',
+      '- Ejemplo MAL: {"type":"tool","tool":"run_command","args":{"command":"node server.js &"}}',
+      '- Si un comando necesita seguir corriendo en background, informa al usuario primero.',
+      '- Siempre incluye timeout en milisegundos para comandos que puedan tardar.',
+      '',
       'PROHIBIDO — NUNCA hagas esto:',
       '  <toolcall><invoke name="run_command"><args>{"command":"ls"}</args></invoke></toolcall>',
       '  <invoke name="run_command"><args>...',
       '  ```json\n{"type":"tool",...}\n```',
       '  "Voy a ejecutar el comando..." y luego el JSON',
       '  Explicaciones antes o despues del JSON',
+      '',
+      'DESPUES DE EJECUTAR UNA HERRAMIENTA:',
+      '  SIEMPRE genera un {"type":"final","content":"..."} como TU SIGUIENTE RESPUESTA.',
+      '  NUNCA termines sin generar un final despues de ejecutar tools.',
+      '  El usuario necesita ver tu respuesta, no solo el resultado de la tool.',
+      '  Ejemplo correcto: tool call → TOOL_RESULT → {"type":"final","content":"Listo! Instale express."}',
+      '  Ejemplo MAL: tool call → TOOL_RESULT → (silencio/vacio)',
       '',
       'Tu respuesta DEBE SER UNICAMENTE el JSON. Sin <>, sin ```, sin texto.',
       '',
@@ -128,15 +173,36 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  cuando el usuario te pida que le preguntes algo',
       '  cuando tengas opciones y no sepas cual elegir',
       '  cuando falte informacion que solo el usuario puede dar',
+      '  cuando tengas dudas sobre que framework, libreria o herramienta usar',
+      '  cuando no estes seguro de algo y necesites confirmacion',
+      '  REGLA: SIEMPRE pregunta al usuario cuando tengas dudas, nunca asumas.',
+      '  IMPORTANTE: DESPUES de recibir la respuesta de ask_user, SIEMPRE genera una respuesta completa al usuario con la información que pidió. NUNCA termines después de ask_user.',
       '',
       'REGLA: Si necesitas datos actuales o del sistema del usuario → ACCION.',
       'Si puedes responder de memoria → INFORMACION.',
       'Si necesitas que el usuario decida algo → ask_user.',
       'Si el usuario te pide que recuerdes algo → memory save.',
+      '',
+      'GUARDAR EN MEMORIA = usa memory save (type="tool"):',
+      '  cuando encuentres un bug o error en el codigo del usuario',
+      '  cuando descubras informacion importante sobre el proyecto o preferencias del usuario',
+      '  cuando el usuario te cuente algo personal o relevante sobre su trabajo',
+      '  cuando aprendas algo que te ayude a ayudar mejor al usuario en el futuro',
+      '  REGLA: Guarda en memoria SIEMPRE que encuentres algo worth remembering. No esperes a que el usuario pida.',
+      '',
       'Nunca describas lo que vas a hacer. Solo responde el JSON.',
     ] : [
       '# RESPONSE — ONLY JSON, NOTHING ELSE',
       'Your response is A SINGLE JSON OBJECT. No text before or after. No explanations. No thoughts.',
+      '',
+      '# MEMORY — SAVE AUTOMATICALLY',
+      'After EACH interaction, evaluate if you should save to memory:',
+      '  - If you found a bug → memory save with key="bug:<brief>" and value=<description>',
+      '  - If you learned something about the user → memory save with key="user:<topic>" and value=<info>',
+      '  - If you discovered something about the project → memory save with key="project:<topic>" and value=<info>',
+      '  - If the user corrected something → memory save with key="preference:<topic>" and value=<preference>',
+      'ALWAYS save when there is something worth remembering. Don\'t wait for the user to ask.',
+      'Example: {"type":"tool","tool":"memory","args":{"action":"save","key":"bug:import","value":"The file src/index.js had a circular import"}}',
       '',
       'Use a tool:',
       '{"type":"tool","tool":"NAME","args":{...}}',
@@ -158,12 +224,27 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '- You have access to the conversation history. Use it to answer questions about previous conversations.',
       '- If the user asks "what does it say at the beginning" or similar, check the history and respond with what it says.',
       '',
+      'RULES FOR EXECUTING COMMANDS (run_command):',
+      '- NEVER use & at the end of commands. Run commands synchronously.',
+      '- If you need a long process, use a reasonable timeout (30-120 seconds).',
+      '- CORRECT example: {"type":"tool","tool":"run_command","args":{"command":"npm install","timeout":120000}}',
+      '- WRONG example: {"type":"tool","tool":"run_command","args":{"command":"node server.js &"}}',
+      '- If a command needs to run in background, inform the user first.',
+      '- Always include timeout in milliseconds for commands that may take time.',
+      '',
       'PROHIBITED — NEVER do this:',
       '  <toolcall><invoke name="run_command"><args>{"command":"ls"}</args></invoke></toolcall>',
       '  <invoke name="run_command"><args>...',
       '  ```json\n{"type":"tool",...}\n```',
       '  "I will run the command..." followed by the JSON',
       '  Explanations before or after the JSON',
+      '',
+      'AFTER EXECUTING ANY TOOL:',
+      '  ALWAYS generate a {"type":"final","content":"..."} as your NEXT RESPONSE.',
+      '  NEVER stop without generating a final after running tools.',
+      '  The user needs to see your answer, not just the tool result.',
+      '  Correct flow: tool call → TOOL_RESULT → {"type":"final","content":"Done! I installed express."}',
+      '  WRONG: tool call → TOOL_RESULT → (silence/empty)',
       '',
       'Your response MUST BE ONLY the JSON. No <>, no ```, no text.',
       '',
@@ -183,11 +264,23 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  when the user asks you to ask them something',
       '  when you have options and don\'t know which to choose',
       '  when missing information only the user can provide',
+      '  when you have doubts about which framework, library, or tool to use',
+      '  when you are unsure about something and need confirmation',
+      '  RULE: ALWAYS ask the user when you have doubts, never assume.',
+      '  IMPORTANT: AFTER receiving the answer from ask_user, ALWAYS generate a complete response to the user with the requested information. NEVER stop after ask_user.',
       '',
       'RULE: If you need current data or user system data → ACTION.',
       'If you can answer from memory → INFORMATION.',
       'If you need the user to decide something → ask_user.',
       'If the user asks you to remember something → memory save.',
+      '',
+      'SAVE TO MEMORY = use memory save (type="tool"):',
+      '  when you find a bug or error in the user\'s code',
+      '  when you discover important information about the project or user preferences',
+      '  when the user tells you something personal or relevant about their work',
+      '  when you learn something that will help you assist the user better in the future',
+      '  RULE: ALWAYS save to memory when you find something worth remembering. Don\'t wait for the user to ask.',
+      '',
       'Never describe what you will do. Only respond with the JSON.',
     ]),
     '',
@@ -212,6 +305,23 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       skillsIndex,
     ]),
     '',
+    mcpToolsPrompt,
+    (() => {
+      let mcpServersSection = '';
+      try {
+        const mcpConfigPath = require('path').join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+        const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+        const connectedServers = Object.entries(mcpConfig.servers || {}).filter(([, srv]) => srv.connected);
+        if (connectedServers.length > 0) {
+          const lines = connectedServers.map(([name, srv]) => {
+            const toolNames = (srv.tools || []).map(t => t.name).join(', ');
+            return `- ${name} (${srv.url})${toolNames ? ' — tools: ' + toolNames : ''}`;
+          });
+          mcpServersSection = '\nMCP SERVERS:\n' + lines.join('\n') + '\n';
+        }
+      } catch {}
+      return mcpServersSection;
+    })(),
     '# ENVIRONMENT',
     `- Working directory: ${cwd}`,
     `- System: ${platform}`,
@@ -280,8 +390,13 @@ function scanJson(text, filterFn) {
   return null;
 }
 
+function stripCodeBlocks(text) {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+
 function extractToolJson(text) {
-  return scanJson(text, obj =>
+  const clean = stripCodeBlocks(text);
+  return scanJson(clean, obj =>
     obj?.type === 'tool' && KNOWN_TOOLS.has(obj.tool),
   );
 }
@@ -374,10 +489,11 @@ const LONG_VALUE_ARG = {
 };
 
 function extractMalformedFinalContent(text) {
-  const typeMatch = text.match(/(?:["'])type(?:["'])\s*:\s*(?:["'])final(?:["'])/i);
+  const clean = stripCodeBlocks(text);
+  const typeMatch = clean.match(/(?:["'])type(?:["'])\s*:\s*(?:["'])final(?:["'])/i);
   if (!typeMatch) return null;
 
-  const contentMatch = text.match(/(?:["'])content(?:["'])\s*:\s*(["'])/i);
+  const contentMatch = clean.match(/(?:["'])content(?:["'])\s*:\s*(["'])/i);
   if (!contentMatch) return null;
 
   const quote = contentMatch[1];
@@ -405,7 +521,8 @@ function extractMalformedFinalContent(text) {
 }
 
 function fuzzyExtractTool(text) {
-  const toolMatch = text.match(/(?:"|')?tool(?:"|')?\s*:\s*"(\w+)"/i);
+  const clean = stripCodeBlocks(text);
+  const toolMatch = clean.match(/(?:"|')?tool(?:"|')?\s*:\s*"(\w+)"/i);
   if (!toolMatch) return null;
 
   const tool = normalizeToolName(toolMatch[1]);
@@ -559,9 +676,11 @@ function sanitizeArgsForModel(parsed) {
 function truncateHistory(state) {
   if (!Array.isArray(state.history) || state.history.length === 0) return;
   const totalChars = state.history.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-  if (totalChars <= MAX_HISTORY_CHARS) return;
+  const maxHistory = getSetting(state, 'maxHistoryChars');
+  if (totalChars <= maxHistory) return;
 
-  const keep = Math.min(KEEP_RECENT_MESSAGES, state.history.length);
+  const keepRecent = getSetting(state, 'keepRecentMessages');
+  const keep = Math.min(keepRecent, state.history.length);
   const recent = state.history.slice(-keep);
   const removed = state.history.slice(0, -keep);
 
@@ -584,13 +703,15 @@ function truncateHistory(state) {
 
 function buildConversationMessages(state, turnMessages, systemPrompt) {
   const messages = [];
+  const lang = state.language || 'es';
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
   }
   if (state.memorySummary) {
+    const memLabel = lang === 'es' ? 'Memoria resumida anterior' : 'Previous memory summary';
     messages.push({
       role: 'system',
-      content: `Memoria resumida anterior:\n${state.memorySummary}`,
+      content: `${memLabel}:\n${state.memorySummary}`,
     });
   }
   if (Array.isArray(state.history) && state.history.length > 0) {

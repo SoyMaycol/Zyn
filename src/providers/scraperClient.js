@@ -123,14 +123,16 @@ async function runProvider(provider, messages, model, onChunk, options = {}) {
   }
 }
 
-async function chat({ messages, onChunk, modelKey, signal }) {
+async function chat({ messages, onChunk, modelKey, signal }, options = {}) {
   const { key, model } = getModelDefinition(modelKey);
   const provider = model?.provider || 'zen';
-  const result = await runProvider(provider, messages, model || {}, onChunk, { signal, modelKey: key });
+  const result = await runProvider(provider, messages, model || {}, onChunk, { signal, modelKey: key, ...options });
 
   return {
     answer: result.text || '',
     thinking: result.thinking || '',
+    usage: result.usage || null,
+    hasContent: !!result.hasContent || (result.text || '').trim().length > 0,
   };
 }
 

@@ -30,8 +30,9 @@ function getTuiLang() {
 function uiText(en, es) {
   return getTuiLang() === 'es' ? es : en;
 }
-const MAX_THINKING_LINES = 40;
+const MAX_THINKING_LINES = 30;
 const SPIN_MS = 80;
+const THINKING_THROTTLE_MS = 200;
 
 const SPIN_FRAMES = ['\u280b', '\u2819', '\u2839', '\u2838', '\u283c', '\u2834', '\u2826', '\u2827', '\u2807', '\u280f'];
 const SPIN_FRAMES_DOTS = ['\u25cb', '\u25cf', '\u25d0', '\u25d1', '\u25d2', '\u25d3'];
@@ -151,6 +152,160 @@ const THEMES = {
     border: '#414868', borderLight: '#565f89', codeBg: '#16161e',
     spinFrames: SPIN_FRAMES_DOTS, spinMs: 85, borderStyle: 'round',
   },
+  matrix: {
+    bg: '#0a0a0a', surface: '#0d1a0d', surfaceHi: '#142814',
+    text: '#00ff41', textDim: '#00cc33', textMuted: '#009926',
+    textGhost: '#006619', textInvis: '#00330d',
+    accent: '#00ff41', accentSoft: '#00cc33', accentDim: '#009926',
+    green: '#00ff41', greenDim: '#00cc33', red: '#ff0033', redDim: '#cc0026',
+    amber: '#ccff00', amberDim: '#99cc00', purple: '#33ff33', purpleDim: '#26cc26',
+    blue: '#00ff99', blueDim: '#00cc7a', cyan: '#00ffcc', cyanDim: '#00cc99',
+    border: '#00330d', borderLight: '#004d14', codeBg: '#050a05',
+    spinFrames: SPIN_FRAMES_ARROW, spinMs: 50, borderStyle: 'bold',
+  },
+  synthwave: {
+    bg: '#1a1030', surface: '#241848', surfaceHi: '#2e2060',
+    text: '#f0e0ff', textDim: '#c8b0e0', textMuted: '#a090c0',
+    textGhost: '#7868a0', textInvis: '#504080',
+    accent: '#ff6ec7', accentSoft: '#ff9ed6', accentDim: '#cc5aa0',
+    green: '#36fca8', greenDim: '#28c888', red: '#ff3366', redDim: '#cc2952',
+    amber: '#ffcc00', amberDim: '#ccaa00', purple: '#ff77ff', purpleDim: '#cc5ecc',
+    blue: '#00ccff', blueDim: '#00a0cc', cyan: '#00ffcc', cyanDim: '#00cc99',
+    border: '#3a2070', borderLight: '#4a3080', codeBg: '#120820',
+    spinFrames: SPIN_FRAMES_CLOCK, spinMs: 75, borderStyle: 'double',
+  },
+  rosePine: {
+    bg: '#191724', surface: '#1f1d2e', surfaceHi: '#26233a',
+    text: '#e0def4', textDim: '#c4c0e0', textMuted: '#a090c0',
+    textGhost: '#7060a0', textInvis: '#504080',
+    accent: '#eb6f92', accentSoft: '#f090a8', accentDim: '#cc5a78',
+    green: '#9ccfd8', greenDim: '#80b0c0', red: '#eb6f92', redDim: '#cc5a78',
+    amber: '#f6c177', amberDim: '#d0a060', purple: '#c4a7e7', purpleDim: '#a088c0',
+    blue: '#9ccfd8', blueDim: '#80b0c0', cyan: '#9ccfd8', cyanDim: '#80b0c0',
+    border: '#26233a', borderLight: '#302d44', codeBg: '#13111e',
+    spinFrames: SPIN_FRAMES_BRAILLE, spinMs: 100, borderStyle: 'round',
+  },
+  catppuccin: {
+    bg: '#1e1e2e', surface: '#28283d', surfaceHi: '#313244',
+    text: '#cdd6f4', textDim: '#bac2de', textMuted: '#a6adc8',
+    textGhost: '#7f849c', textInvis: '#585b70',
+    accent: '#f5c2e7', accentSoft: '#f0b8d8', accentDim: '#cc9eb8',
+    green: '#a6e3a1', greenDim: '#88cc88', red: '#f38ba8', redDim: '#cc6e88',
+    amber: '#f9e2af', amberDim: '#d0c090', purple: '#cba6f7', purpleDim: '#a888cc',
+    blue: '#89dceb', blueDim: '#70b8cc', cyan: '#94e2d5', cyanDim: '#78b8ac',
+    border: '#313244', borderLight: '#45475a', codeBg: '#181825',
+    spinFrames: SPIN_FRAMES_DOTS, spinMs: 90, borderStyle: 'round',
+  },
+  oneDark: {
+    bg: '#282c34', surface: '#2c313a', surfaceHi: '#353b45',
+    text: '#abb2bf', textDim: '#9ca3af', textMuted: '#737c8c',
+    textGhost: '#5c6370', textInvis: '#3e4451',
+    accent: '#61afef', accentSoft: '#7ec0ee', accentDim: '#4a90d9',
+    green: '#98c379', greenDim: '#7ca860', red: '#e06c75', redDim: '#c05060',
+    amber: '#e5c07b', amberDim: '#c0a060', purple: '#c678dd', purpleDim: '#a060bb',
+    blue: '#61afef', blueDim: '#4a90d9', cyan: '#56b6c2', cyanDim: '#4090a0',
+    border: '#3e4451', borderLight: '#4b5263', codeBg: '#21252b',
+    spinFrames: SPIN_FRAMES_ARROW, spinMs: 85, borderStyle: 'line',
+  },
+  materialPalenight: {
+    bg: '#292d3e', surface: '#2f3347', surfaceHi: '#373d57',
+    text: '#d8dee9', textDim: '#b8c0d0', textMuted: '#9098b0',
+    textGhost: '#687090', textInvis: '#444a64',
+    accent: '#c792ea', accentSoft: '#d4a8f0', accentDim: '#aa78cc',
+    green: '#c3e88d', greenDim: '#a0c070', red: '#f07178', redDim: '#cc5860',
+    amber: '#ffcb6b', amberDim: '#d0a850', purple: '#c792ea', purpleDim: '#aa78cc',
+    blue: '#82aaff', blueDim: '#6090dd', cyan: '#89ddff', cyanDim: '#70b8cc',
+    border: '#373d57', borderLight: '#444a64', codeBg: '#222638',
+    spinFrames: SPIN_FRAMES_MOON, spinMs: 95, borderStyle: 'double',
+  },
+  cyberpunk: {
+    bg: '#0a0a14', surface: '#12121f', surfaceHi: '#1a1a2f',
+    text: '#00ffff', textDim: '#00cccc', textMuted: '#009999',
+    textGhost: '#006666', textInvis: '#003333',
+    accent: '#ff00ff', accentSoft: '#cc00cc', accentDim: '#990099',
+    green: '#00ff66', greenDim: '#00cc52', red: '#ff0033', redDim: '#cc0029',
+    amber: '#ffcc00', amberDim: '#ccaa00', purple: '#ff00ff', purpleDim: '#cc00cc',
+    blue: '#00ccff', blueDim: '#00a0cc', cyan: '#00ffcc', cyanDim: '#00cc99',
+    border: '#1a1a2f', borderLight: '#252540', codeBg: '#06060e',
+    spinFrames: SPIN_FRAMES_CLOCK, spinMs: 60, borderStyle: 'bold',
+  },
+  arctic: {
+    bg: '#f0f4f8', surface: '#e8eef4', surfaceHi: '#dde4ec',
+    text: '#1a2332', textDim: '#3a4a5a', textMuted: '#5a6a7a',
+    textGhost: '#7a8a9a', textInvis: '#b0c0d0',
+    accent: '#0077cc', accentSoft: '#0088dd', accentDim: '#0066bb',
+    green: '#28a745', greenDim: '#3cb95a', red: '#dc3545', redDim: '#e05060',
+    amber: '#ffc107', amberDim: '#ffcd39', purple: '#6f42c1', purpleDim: '#8555d0',
+    blue: '#007bff', blueDim: '#339dff', cyan: '#17a2b8', cyanDim: '#45b8cc',
+    border: '#c8d4e0', borderLight: '#d8e4f0', codeBg: '#e0e8f0',
+    spinFrames: SPIN_FRAMES_BRAILLE, spinMs: 110, borderStyle: 'line',
+  },
+  ember: {
+    bg: '#1a0f0a', surface: '#241810', surfaceHi: '#2e2018',
+    text: '#ffeedd', textDim: '#ddc8b0', textMuted: '#bba088',
+    textGhost: '#998070', textInvis: '#604838',
+    accent: '#ff6633', accentSoft: '#ff8855', accentDim: '#cc5528',
+    green: '#66cc66', greenDim: '#55aa55', red: '#ff3333', redDim: '#cc2828',
+    amber: '#ffaa33', amberDim: '#cc8828', purple: '#cc66cc', purpleDim: '#aa55aa',
+    blue: '#6699ff', blueDim: '#5580dd', cyan: '#66cccc', cyanDim: '#55aaaa',
+    border: '#3a2818', borderLight: '#4a3828', codeBg: '#120a06',
+    spinFrames: SPIN_FRAMES_MOON, spinMs: 80, borderStyle: 'double',
+  },
+  lavender: {
+    bg: '#f5f0ff', surface: '#ece6ff', surfaceHi: '#e0d8f8',
+    text: '#2d1f4e', textDim: '#4a3a6a', textMuted: '#6a5a88',
+    textGhost: '#8a7aa6', textInvis: '#c0b8d8',
+    accent: '#7c3aed', accentSoft: '#8b5cf6', accentDim: '#6d28d9',
+    green: '#10b981', greenDim: '#34d399', red: '#ef4444', redDim: '#f87171',
+    amber: '#f59e0b', amberDim: '#fbbf24', purple: '#8b5cf6', purpleDim: '#a78bfa',
+    blue: '#3b82f6', blueDim: '#60a5fa', cyan: '#06b6d4', cyanDim: '#22d3ee',
+    border: '#d8d0f0', borderLight: '#e4dcf8', codeBg: '#e8e0ff',
+    spinFrames: SPIN_FRAMES_DOTS, spinMs: 100, borderStyle: 'round',
+  },
+  midnight: {
+    bg: '#0d1117', surface: '#161b22', surfaceHi: '#1c2129',
+    text: '#c9d1d9', textDim: '#8b949e', textMuted: '#6e7681',
+    textGhost: '#484f58', textInvis: '#30363d',
+    accent: '#58a6ff', accentSoft: '#79b8ff', accentDim: '#388bfd',
+    green: '#3fb950', greenDim: '#56d364', red: '#f85149', redDim: '#ff7b72',
+    amber: '#d29922', amberDim: '#e3b341', purple: '#bc8cff', purpleDim: '#d2a8ff',
+    blue: '#58a6ff', blueDim: '#79b8ff', cyan: '#39d2c0', cyanDim: '#56d4c8',
+    border: '#30363d', borderLight: '#484f58', codeBg: '#0d1117',
+    spinFrames: SPIN_FRAMES_ARROW, spinMs: 90, borderStyle: 'line',
+  },
+  sunset: {
+    bg: '#1a1020', surface: '#241830', surfaceHi: '#2e2040',
+    text: '#ffe0cc', textDim: '#ddc0a0', textMuted: '#bba088',
+    textGhost: '#998070', textInvis: '#604838',
+    accent: '#ff6b35', accentSoft: '#ff8855', accentDim: '#cc5528',
+    green: '#4ecdc4', greenDim: '#3cb8b0', red: '#ff6b6b', redDim: '#cc5555',
+    amber: '#ffe66d', amberDim: '#d0c060', purple: '#a06cd5', purpleDim: '#8855bb',
+    blue: '#6c9bcf', blueDim: '#5580bb', cyan: '#4ecdc4', cyanDim: '#3cb8b0',
+    border: '#3a2050', borderLight: '#4a3060', codeBg: '#120818',
+    spinFrames: SPIN_FRAMES_CLOCK, spinMs: 70, borderStyle: 'double',
+  },
+  ocean: {
+    bg: '#0a1628', surface: '#0f2035', surfaceHi: '#152842',
+    text: '#e0f0ff', textDim: '#a0c0e0', textMuted: '#7098c0',
+    textGhost: '#5080a8', textInvis: '#305878',
+    accent: '#00b4d8', accentSoft: '#48cae4', accentDim: '#0096c7',
+    green: '#52b788', greenDim: '#409070', red: '#e76f51', redDim: '#c05540',
+    amber: '#f4a261', amberDim: '#d08850', purple: '#7b68ee', purpleDim: '#6050cc',
+    blue: '#0077b6', blueDim: '#005f90', cyan: '#00b4d8', cyanDim: '#0096c7',
+    border: '#1a3550', borderLight: '#254560', codeBg: '#061018',
+    spinFrames: SPIN_FRAMES_BRAILLE, spinMs: 120, borderStyle: 'round',
+  },
+  vaporwave: {
+    bg: '#1a0a2e', surface: '#241440', surfaceHi: '#2e1e52',
+    text: '#ff71ce', textDim: '#cc5aa8', textMuted: '#994488',
+    textGhost: '#663368', textInvis: '#331848',
+    accent: '#01cdfe', accentSoft: '#44d4ff', accentDim: '#00a0cc',
+    green: '#05ffa1', greenDim: '#04cc80', red: '#ff6b6b', redDim: '#cc5555',
+    amber: '#fffb96', amberDim: '#d0c870', purple: '#b967ff', purpleDim: '#9855cc',
+    blue: '#01cdfe', blueDim: '#00a0cc', cyan: '#05ffa1', cyanDim: '#04cc80',
+    border: '#3a1860', borderLight: '#4a2870', codeBg: '#120620',
+    spinFrames: SPIN_FRAMES_CLOCK, spinMs: 65, borderStyle: 'bold',
+  },
 };
 
 function getTheme(name) {
@@ -195,6 +350,10 @@ class UIStore extends EventEmitter {
     this.themeVersion = 0;
     this._idCounter = 0;
     this._scheduled = false;
+    this._lastEmitAt = 0;
+    this._streamingActive = false;
+    this._lastThinkingEmit = 0;
+    this._lastAnswerEmit = 0;
   }
 
   addItem(item) {
@@ -210,12 +369,16 @@ class UIStore extends EventEmitter {
 
   beginThinking() {
     this.liveThinking = { text: '', started: Date.now() };
+    this._streamingActive = true;
     this._emit();
   }
 
   appendThinking(delta) {
     if (!this.liveThinking) return;
     this.liveThinking = { ...this.liveThinking, text: this.liveThinking.text + delta };
+    const now = Date.now();
+    if (now - this._lastThinkingEmit < THINKING_THROTTLE_MS) return;
+    this._lastThinkingEmit = now;
     this._emit();
   }
 
@@ -224,6 +387,7 @@ class UIStore extends EventEmitter {
     const elapsed = ((Date.now() - this.liveThinking.started) / 1000).toFixed(1);
     const text = this.liveThinking.text.trim();
     this.liveThinking = null;
+    this._lastThinkingEmit = 0;
     if (!text) return;
     this.thinkingHistory.push({ text, elapsed, timestamp: Date.now() });
     if (this.thinkingHistory.length > 20) this.thinkingHistory.shift();
@@ -232,6 +396,7 @@ class UIStore extends EventEmitter {
 
   beginAnswer() {
     this.liveAnswer = { text: '' };
+    this._streamingActive = true;
     this._emit();
   }
 
@@ -239,13 +404,18 @@ class UIStore extends EventEmitter {
     if (!this.liveAnswer) return;
     this.liveAnswer = { ...this.liveAnswer, text: this.liveAnswer.text + delta };
     this._updateTokenEstimate(delta);
+    const now = Date.now();
+    if (now - this._lastAnswerEmit < THINKING_THROTTLE_MS) return;
+    this._lastAnswerEmit = now;
     this._emit();
   }
 
   endAnswer() {
     if (!this.liveAnswer) return;
+    this._lastAnswerEmit = 0;
     this.addItem({ type: 'answer', text: this.liveAnswer.text });
     this.liveAnswer = null;
+    this._streamingActive = false;
   }
 
   _updateTokenEstimate(delta) {
@@ -259,8 +429,25 @@ class UIStore extends EventEmitter {
     this._emit();
   }
 
+  setTokenUsage(usage) {
+    if (usage && typeof usage.completionTokens === 'number' && usage.completionTokens > 0) {
+      this.tokenEstimate = (usage.promptTokens || 0) + (usage.completionTokens || 0);
+      this._emit();
+    }
+  }
+
   addEvent(kind, title, detail) {
     this.addItem({ type: 'event', kind, title, detail: detail || '' });
+  }
+
+  updateLastEventTitle(title) {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (this.items[i].type === 'event' && this.items[i].kind === 'tool') {
+        this.items = this.items.map((item, idx) => idx === i ? { ...item, title } : item);
+        this._emit();
+        return;
+      }
+    }
   }
 
   setInputDraft(text) {
@@ -376,8 +563,12 @@ class UIStore extends EventEmitter {
       this.inputRequest = null;
     } else if (ch === '\x7f' || ch === '\b') {
       this.inputRequest.value = this.inputRequest.value.slice(0, -1);
-    } else if (ch.length === 1 && ch.charCodeAt(0) >= 32) {
-      this.inputRequest.value += ch;
+    } else {
+      for (const c of ch) {
+        if (c.charCodeAt(0) >= 32) {
+          this.inputRequest.value += c;
+        }
+      }
     }
     this._emit();
   }
@@ -426,13 +617,18 @@ class UIStore extends EventEmitter {
 
   _removeLastConversationItems() {
     let removed = 0;
-    for (let i = this.items.length - 1; i >= 0 && removed < 2; i--) {
-      if (this.items[i].type === 'user' || this.items[i].type === 'answer') {
-        this.items.splice(i, 1);
+    const newItems = [];
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (removed < 2 && (this.items[i].type === 'user' || this.items[i].type === 'answer')) {
         removed++;
+        continue;
       }
+      newItems.unshift(this.items[i]);
     }
-    if (removed > 0) this._emit();
+    if (removed > 0) {
+      this.items = newItems;
+      this._emit();
+    }
   }
 
   undoSubmittedMessage() {
@@ -724,9 +920,17 @@ function CodeBlock({ lang, code, width }) {
   );
 }
 
-function MarkdownContent({ text, width }) {
-  const blocks = parseMarkdownBlocks(text);
+function MarkdownContent({ text, width, live }) {
   const contentWidth = Math.max(24, (width || 80) - 8);
+  if (live) {
+    const lines = text.split('\n').slice(-200);
+    return h(Box, { flexDirection: 'column' },
+      ...lines.map((line, i) =>
+        h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line || ' '),
+      ),
+    );
+  }
+  const blocks = parseMarkdownBlocks(text);
   return h(Box, { flexDirection: 'column' },
     ...blocks.map((block, i) => {
       switch (block.type) {
@@ -903,9 +1107,14 @@ function UserMessage({ text }) {
 }
 
 function ThinkingBlock({ text, elapsed, live, width }) {
-  const lines = text.split('\n').filter(l => l.trim()).slice(0, MAX_THINKING_LINES);
-  const total  = text.split('\n').filter(l => l.trim()).length;
-  const more   = total - MAX_THINKING_LINES;
+  const displayLines = React.useMemo(() => {
+    const allLines = text.split('\n').filter(l => l.trim());
+    const total = allLines.length;
+    const maxLines = MAX_THINKING_LINES;
+    const lines = allLines.slice(-maxLines);
+    return { lines, more: total - lines.length };
+  }, [text, live]);
+  const { lines, more } = displayLines;
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -937,14 +1146,18 @@ function ThinkingBlock({ text, elapsed, live, width }) {
 
 function AnswerBlock({ text, live, width }) {
   if (!text) return null;
-  const displayText = normalizeAssistantDisplayText(text);
+  const content = React.useMemo(() => {
+    const displayText = normalizeAssistantDisplayText(text);
+    return { displayText };
+  }, [text]);
+  const contentWidth = Math.max(40, (width || 80) - 8);
   return h(Box, { flexDirection: 'column', paddingLeft: 3, paddingRight: 3, marginTop: 1 },
     h(Box, { gap: 1, marginBottom: 0 },
       h(Text, { color: T.accentSoft, bold: true }, '\u25c9'),
       h(Text, { color: T.textDim, bold: true }, APP_NAME),
     ),
     h(Box, { flexDirection: 'column', paddingLeft: 2 },
-      h(MarkdownContent, { text: displayText, width: Math.max(40, (width || 80) - 8) }),
+      h(MarkdownContent, { text: content.displayText, width: contentWidth, live }),
       live ? h(Text, { color: T.accent }, '\u258e') : null,
     ),
   );
@@ -1171,6 +1384,10 @@ function StaticItem({ item, width }) {
 
 function sanitizeInputChunk(input) {
   return String(input || '')
+    .replace(/\u001b\[200~/g, '')
+    .replace(/\u001b\[201~/g, '')
+    .replace(/\[200~/g, '')
+    .replace(/\[201~/g, '')
     .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
     .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
     .replace(/\u001bP[\s\S]*?\u001b\\/g, '')
@@ -1497,7 +1714,14 @@ function App({ store, state, onSubmit }) {
   }, [onSubmit, exit, store]);
 
   useInput((input, key) => {
-    if (key.ctrl && input === 'c') { exit(); return; }
+    if (key.ctrl && input === 'c') {
+      try {
+        const { saveState } = require('../utils/sessionStorage');
+        if (typeof saveState === 'function') saveState(state);
+      } catch {}
+      exit();
+      return;
+    }
     if (key.escape) {
       if (store.selectRequest) {
         store.cancelSelect();
@@ -1519,11 +1743,8 @@ function App({ store, state, onSubmit }) {
             state.abortCurrentTurn();
           }
           store.processing = false;
-          store.liveThinking = '';
-          store.thinkingAnswer = '';
-          store.currentThinking = '';
-          store.lastStreamingText = '';
-          store.streamBuffer = '';
+          store.liveThinking = null;
+          store.liveAnswer = null;
           store._emit();
           store.addEvent('warn', uiText('agent stopped', 'agente detenido'), uiText('Interrupted with ESC', 'Interrumpido con ESC'));
           return;
@@ -1673,6 +1894,9 @@ function getUiBindings(store, state) {
       pushAction(st, kind, title, detail);
       store.addEvent(kind, title, detail || '');
     },
+    updateLastEventTitle: (title) => {
+      store.updateLastEventTitle(title);
+    },
     startThinkingIndicator: (st, label) => {
       pushAction(st, 'think', label);
       store.setSpinner(label);
@@ -1685,6 +1909,7 @@ function getUiBindings(store, state) {
       const limit = getContextLimit(state.activeModel);
       store.setTokenEstimate(estimate, limit);
     },
+    setTokenUsage: (usage) => store.setTokenUsage(usage),
   };
 }
 
@@ -1694,11 +1919,80 @@ export async function startTUI(options = {}) {
   const store = new UIStore();
   globalStore = store;
 
+  const saveStateSafe = () => {
+    try {
+      const { saveState } = require('../utils/sessionStorage');
+      if (typeof saveState === 'function') {
+        const result = saveState(state);
+        if (result && typeof result.then === 'function') {
+          const { writeFileSync, mkdirSync } = require('fs');
+          const { dirname } = require('path');
+          const sessionPath = state.sessionPath;
+          if (sessionPath) {
+            try {
+              mkdirSync(dirname(sessionPath), { recursive: true });
+              writeFileSync(sessionPath, JSON.stringify({
+                sessionId: state.sessionId,
+                sessionPath: state.sessionPath,
+                createdAt: state.createdAt,
+                updatedAt: new Date().toISOString(),
+                title: state.title,
+                cwd: state.cwd,
+                history: state.history || [],
+                memorySummary: state.memorySummary || '',
+                sessionMemory: state.sessionMemory || {},
+                actionLog: state.actionLog || [],
+                turnCount: state.turnCount || 0,
+                transcriptPath: state.transcriptPath,
+                autoApprove: state.autoApprove,
+                activeModel: state.activeModel,
+                language: state.language,
+                personaPrompt: state.personaPrompt || '',
+                theme: state.theme || '',
+                settings: state.settings || {},
+              }, null, 2), 'utf8');
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+  };
+  process.on('SIGINT', () => { saveStateSafe(); process.exit(0); });
+  process.on('SIGTERM', () => { saveStateSafe(); process.exit(0); });
+  process.on('exit', () => { saveStateSafe(); });
+
   state.rl = null;
   state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
   state.tuiSelect = (options) => store.requestSelect(options);
   state.tuiInput = (options) => store.requestInput(options);
   state.tuiAskUser = (question, allItems, customLabel) => store.requestAskUser(question, allItems, customLabel);
+
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const mcpConfigPath = path.join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+    const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+    state.mcpServers = mcpConfig.servers || {};
+  } catch {
+    state.mcpServers = {};
+  }
+
+  // Auto-connect MCP servers on startup
+  try {
+    const { autoConnectAll } = require('../mcp/client');
+    const mcpResults = await autoConnectAll();
+    const connected = mcpResults.filter(r => r.ok);
+    const failed = mcpResults.filter(r => !r.ok);
+    if (connected.length > 0) {
+      const summary = connected.map(r => `${r.name}(${r.toolCount})`).join(', ');
+      store.addEvent('info', 'MCP', uiText(`Connected: ${summary}`, `Conectados: ${summary}`));
+    }
+    if (failed.length > 0) {
+      const failSummary = failed.map(r => `${r.name}: ${r.error || 'unreachable'}`).join(', ');
+      store.addEvent('warn', 'MCP', uiText(`Failed: ${failSummary}`, `Fallidos: ${failSummary}`));
+    }
+  } catch {}
+
   state.getQueuedMessages = () => {
     const msgs = store.messageQueue.splice(0);
     if (msgs.length) store._emit();
@@ -1801,8 +2095,19 @@ export async function startTUI(options = {}) {
     state.history = loadedState.history || [];
     state.memorySummary = loadedState.memorySummary || '';
     state.sessionMemory = loadedState.sessionMemory || {};
+    state.actionLog = loadedState.actionLog || [];
     state.turnCount = loadedState.turnCount || 0;
     state.title = loadedState.title || 'New session';
+    state.autoApprove = Boolean(loadedState.autoApprove);
+    state.activeModel = loadedState.activeModel || '';
+    state.language = loadedState.language || '';
+    state.personaPrompt = loadedState.personaPrompt || '';
+    state.theme = loadedState.theme || '';
+    state.settings = loadedState.settings && typeof loadedState.settings === 'object' ? loadedState.settings : {};
+    state.transcriptPath = loadedState.transcriptPath || '';
+    state.__resumedHistory = (loadedState.history || []).slice();
+    state.__compacting = false;
+    state.__toolNameShown = false;
     const { saveState } = require('../utils/sessionStorage');
     await saveState(state);
   }
@@ -1846,6 +2151,157 @@ export async function startTUI(options = {}) {
 
     if (input === '/sessions' || input === '/session') {
       await handleSessionsCommand(store, state, input);
+      return;
+    }
+
+    if (input === '/settings' || input === '/settings show' || input.startsWith('/settings ')) {
+      const args = input.slice(10).trim();
+      const { DEFAULT_SETTINGS, getSetting } = require('../config');
+      const lang = state.language || 'es';
+      state.settings = state.settings || {};
+
+      const SETTINGS_LIST = [
+        { key: 'maxToolSteps',         name: 'max-tool-steps',    isFloat: false, min: 1,      max: 500,     env: 'ZYN_MAX_TOOL_STEPS',         i18nKey: 'settingMaxToolSteps' },
+        { key: 'requestTimeoutMs',     name: 'request-timeout',   isFloat: false, min: 5000,   max: 600000,  env: 'ZYN_REQUEST_TIMEOUT_MS',      i18nKey: 'settingRequestTimeout' },
+        { key: 'maxHistoryChars',      name: 'max-history',       isFloat: false, min: 10000,  max: 2000000, env: 'ZYN_MAX_HISTORY_CHARS',       i18nKey: 'settingMaxHistory' },
+        { key: 'maxOutputChars',       name: 'max-output',        isFloat: false, min: 1000,   max: 500000,  env: 'ZYN_MAX_OUTPUT_CHARS',        i18nKey: 'settingMaxOutput' },
+        { key: 'maxFileLines',         name: 'max-file-lines',    isFloat: false, min: 100,    max: 100000,  env: 'ZYN_MAX_FILE_LINES',          i18nKey: 'settingMaxFileLines' },
+        { key: 'keepRecentMessages',   name: 'keep-recent',       isFloat: false, min: 5,      max: 500,     env: '',                            i18nKey: 'settingKeepRecent' },
+        { key: 'autoCompactThreshold', name: 'compact-threshold', isFloat: true,  min: 0.1,    max: 1.0,     env: '',                            i18nKey: 'settingCompactThreshold' },
+        { key: 'providerMaxAttempts',  name: 'provider-attempts', isFloat: false, min: 1,      max: 20,      env: '',                            i18nKey: 'settingProviderAttempts' },
+        { key: 'providerRetryDelayMs', name: 'retry-delay',       isFloat: false, min: 500,    max: 30000,   env: 'ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS', i18nKey: 'settingRetryDelay' },
+        { key: 'maxTokens',            name: 'max-tokens',        isFloat: false, min: 1024,   max: 200000,  env: '',                            i18nKey: 'settingMaxTokens' },
+      ];
+
+      if (args === 'reset') {
+        state.settings = {};
+        const { saveState } = require('../utils/sessionStorage');
+        await saveState(state);
+        store.addEvent('ok', t(lang, 'settingsTitle'), t(lang, 'settingsResetDone'));
+        return;
+      }
+
+      const current = (s) => getSetting(state, s.key);
+      const isDefault = (s) => state.settings[s.key] === undefined;
+
+      const selected = await store.requestSelect({
+        title: t(lang, 'settingsTitle'),
+        subtitle: t(lang, 'settingsSelectToModify'),
+        items: SETTINGS_LIST,
+        getLabel: (s) => {
+          const val = current(s);
+          const unit = (s.key.includes('Timeout') || s.key.includes('Delay')) ? t(lang, 'settingsUnitMs') : '';
+          const def = isDefault(s) ? ` (${t(lang, 'settingsDefault')})` : '';
+          return `${t(lang, s.i18nKey)}:  ${val}${unit}${def}`;
+        },
+        isActive: () => false,
+      });
+
+      if (!selected) return;
+
+      const val = current(selected);
+      const inputResult = await store.requestInput({
+        title: t(lang, selected.i18nKey),
+        subtitle: `${t(lang, 'settingsCurrent')}: ${val}  |  ${selected.isFloat ? '(0.1-1.0)' : `(${selected.min}-${selected.max})`}`,
+        prompt: '>',
+      });
+
+      if (inputResult === null || inputResult === undefined) return;
+
+      const raw = String(inputResult).trim();
+      if (raw === '' || raw === 'default') {
+        delete state.settings[selected.key];
+        const { saveState } = require('../utils/sessionStorage');
+        await saveState(state);
+        store.addEvent('ok', t(lang, selected.i18nKey), t(lang, 'settingsDefault'));
+        return;
+      }
+
+      const parsed = selected.isFloat ? parseFloat(raw) : parseInt(raw, 10);
+      if (isNaN(parsed)) {
+        store.addEvent('error', t(lang, 'settingsInvalidValue'), raw);
+        return;
+      }
+      if (parsed < selected.min || parsed > selected.max) {
+        store.addEvent('error', t(lang, 'settingsOutOfRange'), `${parsed} (${selected.min}-${selected.max})`);
+        return;
+      }
+
+      state.settings[selected.key] = parsed;
+      const { saveState } = require('../utils/sessionStorage');
+      await saveState(state);
+      store.addEvent('ok', t(lang, selected.i18nKey), `${parsed} ${t(lang, 'settingsSaved')}`);
+      return;
+    }
+
+    if (input === '/theme' || input.startsWith('/theme ')) {
+      const args = input.slice(6).trim();
+      const themes = [
+        { key: 'dark', label: 'Dark', bg: '#212823', accent: '#d4a054' },
+        { key: 'cappuccino', label: 'Cappuccino', bg: '#f5efe6', accent: '#a0522d' },
+        { key: 'light', label: 'Light', bg: '#ffffff', accent: '#d35400' },
+        { key: 'coffee', label: 'Coffee', bg: '#2c1e10', accent: '#d4a054' },
+        { key: 'gruvbox', label: 'Gruvbox', bg: '#282828', accent: '#fe8019' },
+        { key: 'dracula', label: 'Dracula', bg: '#282a36', accent: '#ff79c6' },
+        { key: 'nord', label: 'Nord', bg: '#2e3440', accent: '#88c0d0' },
+        { key: 'solarized', label: 'Solarized', bg: '#002b36', accent: '#b58900' },
+        { key: 'monokai', label: 'Monokai', bg: '#272822', accent: '#f92672' },
+        { key: 'tokyoNight', label: 'Tokyo Night', bg: '#1a1b26', accent: '#ff9e64' },
+        { key: 'matrix', label: 'Matrix', bg: '#0a0a0a', accent: '#00ff41' },
+        { key: 'synthwave', label: 'Synthwave', bg: '#1a1030', accent: '#ff6ec7' },
+        { key: 'rosePine', label: 'Rose Pine', bg: '#191724', accent: '#eb6f92' },
+        { key: 'catppuccin', label: 'Catppuccin', bg: '#1e1e2e', accent: '#f5c2e7' },
+        { key: 'oneDark', label: 'One Dark', bg: '#282c34', accent: '#61afef' },
+        { key: 'materialPalenight', label: 'Material Palenight', bg: '#292d3e', accent: '#c792ea' },
+        { key: 'cyberpunk', label: 'Cyberpunk', bg: '#0a0a14', accent: '#ff00ff' },
+        { key: 'arctic', label: 'Arctic', bg: '#f0f4f8', accent: '#0077cc' },
+        { key: 'ember', label: 'Ember', bg: '#1a0f0a', accent: '#ff6633' },
+        { key: 'lavender', label: 'Lavender', bg: '#f5f0ff', accent: '#7c3aed' },
+        { key: 'midnight', label: 'Midnight', bg: '#0d1117', accent: '#58a6ff' },
+        { key: 'sunset', label: 'Sunset', bg: '#1a1020', accent: '#ff6b35' },
+        { key: 'ocean', label: 'Ocean', bg: '#0a1628', accent: '#00b4d8' },
+        { key: 'vaporwave', label: 'Vaporwave', bg: '#1a0a2e', accent: '#ff71ce' },
+      ];
+
+      if (args === 'random') {
+        const pick = themes[Math.floor(Math.random() * themes.length)];
+        state.theme = pick.key;
+        const { saveState } = require('../utils/sessionStorage');
+        await saveState(state);
+        if (global.__zynApplyTheme) global.__zynApplyTheme(pick.key);
+        store.addEvent('ok', uiText('theme', 'tema'), pick.label);
+        return;
+      }
+
+      if (args && args !== 'list') {
+        const found = themes.find(t => t.key.toLowerCase() === args.toLowerCase());
+        if (found) {
+          state.theme = found.key;
+          const { saveState } = require('../utils/sessionStorage');
+          await saveState(state);
+          if (global.__zynApplyTheme) global.__zynApplyTheme(found.key);
+          store.addEvent('ok', uiText('theme', 'tema'), found.label);
+          return;
+        }
+        store.addEvent('warn', uiText('unknown theme', 'tema desconocido'), args);
+        return;
+      }
+
+      const current = state.theme || 'dark';
+      const selected = await store.requestSelect({
+        title: uiText('Select Theme', 'Seleccionar Tema'),
+        subtitle: uiText(`Current: ${current}`, `Actual: ${current}`),
+        items: themes,
+        getLabel: (t) => `${t.key === current ? '> ' : '  '}${t.label}  [${t.bg}]`,
+        isActive: (t) => t.key === current,
+      });
+      if (selected) {
+        state.theme = selected.key;
+        const { saveState } = require('../utils/sessionStorage');
+        await saveState(state);
+        if (global.__zynApplyTheme) global.__zynApplyTheme(selected.key);
+        store.addEvent('ok', uiText('theme', 'tema'), selected.label);
+      }
       return;
     }
 

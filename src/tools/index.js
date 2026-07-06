@@ -20,6 +20,21 @@ const {
   MAX_FILE_LINES,
 } = require('../config');
 
+let _mcpToolDefs = [];
+function getMcpToolDefinitions() {
+  try {
+    const { getMcpToolDefinitions: _get } = require('../mcp/client');
+    _mcpToolDefs = _get();
+  } catch { _mcpToolDefs = []; }
+  return _mcpToolDefs;
+}
+function refreshMcpTools() {
+  _mcpToolDefs = getMcpToolDefinitions();
+  for (const t of _mcpToolDefs) {
+    REGISTERED_TOOLS.add(t.name);
+  }
+}
+
 function t(lang, es, en) {
   return lang === 'es' ? es : en;
 }
@@ -62,7 +77,6 @@ const TOOL_DEFINITIONS = [
   { name: 'web_read', usage: '{ url }' },
   { name: 'upload_file', usage: '{ path, field?, name?, type? }' },
   { name: 'gmail', usage: '{ action, query?, maxResults?, id?, to?, subject?, body? }' },
-  { name: 'create_canvas_image', usage: '{ width, height, background?, elements?, format?, outputPath? }' },
   { name: 'git', usage: '{ provider, action, method?, path?, body?, headers?, name?, repoUrl?, destination?, branch?, timeoutMs? }' },
   { name: 'load_skill', usage: '{ name }' },
   { name: 'memory', usage: '{ action, key?, value?, query? }' },
@@ -76,39 +90,47 @@ function getToolPromptText() {
     '',
     'list_dir { path? }',
     '  Lista archivos y carpetas ordenados. Sin path usa directorio actual.',
+    '  Ejemplo: {"type":"tool","tool":"list_dir","args":{"path":"src"}}',
     '',
     'read_file { path, startLine?, endLine?, offset?, limit? }',
     '  Lee contenido con numeros de linea. Max 10000 lineas por llamada.',
     '  startLine/endLine: lineas 1-indexadas. offset/limit: 0-indexados.',
-    '  Ej: {"offset":0,"limit":50} lee primeras 50 lineas.',
+    '  Ejemplo rango: {"type":"tool","tool":"read_file","args":{"path":"src/index.js","startLine":1,"endLine":50}}',
+    '  Ejemplo offset: {"type":"tool","tool":"read_file","args":{"path":"src/index.js","offset":0,"limit":50}}',
     '',
     'search_text { pattern, path?, glob? }',
     '  Busca patron regex en archivos (ripgrep). path: directorio base.',
-    '  glob: filtro de archivos (ej: "**/*.js"). Ejemplo completo:',
-    '  {"type":"tool","tool":"search_text","args":{"pattern":"TODO|FIXME","path":"src","glob":"**/*.js"}}',
+    '  glob: filtro de archivos (ej: "**/*.js").',
+    '  Ejemplo: {"type":"tool","tool":"search_text","args":{"pattern":"TODO|FIXME","path":"src","glob":"**/*.js"}}',
     '',
     'glob_files { pattern, path? }',
-    '  Busca archivos por patron glob. Ejemplo:',
-    '  {"type":"tool","tool":"glob_files","args":{"pattern":"**/*.test.js","path":"src"}}',
+    '  Busca archivos por patron glob.',
+    '  Ejemplo: {"type":"tool","tool":"glob_files","args":{"pattern":"**/*.test.js","path":"src"}}',
     '',
     'file_info { path }',
     '  Metadata: tamano, tipo, fechas de creacion y modificacion.',
+    '  Ejemplo: {"type":"tool","tool":"file_info","args":{"path":"package.json"}}',
     '',
     '## Escritura y edicion',
     '',
     'write_file { path, content }',
     '  Crea o sobrescribe archivo. Crea directorios padres automaticamente.',
+    '  Ejemplo: {"type":"tool","tool":"write_file","args":{"path":"src/hello.js","content":"console.log(\'hello\');\\n"}}',
     '',
     'append_file { path, content }',
     '  Agrega contenido al final de un archivo existente.',
+    '  Ejemplo: {"type":"tool","tool":"append_file","args":{"path":"logs.txt","content":"nueva linea\\n"}}',
     '',
     'replace_in_file { path, search, replace, all? }',
     '  Reemplaza texto literal (NO regex) en archivo.',
     '  search debe coincidir EXACTAMENTE incluyendo espacios y saltos de linea.',
     '  all=true reemplaza todas las coincidencias (default: solo primera).',
+    '  Ejemplo: {"type":"tool","tool":"replace_in_file","args":{"path":"src/config.js","search":"const PORT = 3000","replace":"const PORT = 8080"}}',
+    '  Ejemplo all: {"type":"tool","tool":"replace_in_file","args":{"path":"src/index.js","search":"console.log","replace":"logger.info","all":true}}',
     '',
     'make_dir { path }',
     '  Crea directorio y padres necesarios.',
+    '  Ejemplo: {"type":"tool","tool":"make_dir","args":{"path":"src/components"}}',
     '',
     '## Ejecucion',
     '',
@@ -118,8 +140,9 @@ function getToolPromptText() {
     '  Para servidores usa timeoutMs: 10000 y verifica si quedo vivo con otro comando.',
     '  Retorna exit code, stdout y stderr.',
     '  Usa flags no-interactivos: -y, --yes, --no-pager, DEBIAN_FRONTEND=noninteractive.',
-    '  Ejemplo: {"type":"tool","tool":"run_command","args":{"command":"ls -la","timeoutMs":5000}}',
-    '  Ejemplo servidor: {"type":"tool","tool":"run_command","args":{"command":"node server.js &","timeoutMs":10000}}',
+    '  Ejemplo rapido: {"type":"tool","tool":"run_command","args":{"command":"ls -la","timeoutMs":5000}}',
+    '  Ejemplo npm: {"type":"tool","tool":"run_command","args":{"command":"npm install express","timeoutMs":30000}}',
+    '  Ejemplo servidor: {"type":"tool","tool":"run_command","args":{"command":"node server.js","timeoutMs":10000}}',
     '',
     '## Web',
     '',
@@ -128,25 +151,26 @@ function getToolPromptText() {
     '  Con selector CSS (ej: "h1", ".price"): extrae texto de elementos.',
     '  Con selector + attribute (ej: "href", "src"): extrae atributo.',
     '  limit: max elementos a extraer (default: 20, max: 50).',
-    '  Ejemplo (extraer titulos): {"type":"tool","tool":"fetch_url","args":{"url":"https://news.ycombinator.com","selector":".titleline > a"}}',
-    '  Ejemplo (extraer links de imagenes): {"type":"tool","tool":"fetch_url","args":{"url":"https://example.com","selector":"img","attribute":"src","limit":10}}',
+    '  Ejemplo titulos: {"type":"tool","tool":"fetch_url","args":{"url":"https://news.ycombinator.com","selector":".titleline > a"}}',
+    '  Ejemplo links: {"type":"tool","tool":"fetch_url","args":{"url":"https://example.com","selector":"img","attribute":"src","limit":10}}',
     '',
     'fetch_http { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
     '  Cliente HTTP avanzado: soporta headers custom, query params, body JSON/texto, form-data y adjuntar archivos.',
     '  Ejemplo GET: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.github.com/users/octocat","method":"GET"}}',
     '  Ejemplo POST JSON: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/items","method":"POST","json":true,"data":{"name":"test","value":42},"headers":{"Authorization":"Bearer token123"}}}',
-    '  Ejemplo con query params: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/search","query":{"q":"hello","page":1}}}',
+    '  Ejemplo query: {"type":"tool","tool":"fetch_http","args":{"url":"https://api.example.com/search","query":{"q":"hello","page":1}}}',
     '',
     'fetch { url, method?, headers?, query?, json?, data?, form?, files?, timeoutMs? }',
     '  Alias profesional recomendado para solicitudes HTTP avanzadas.',
     '',
     'webfetch { url, headers?, timeoutMs? }',
     '  Descarga una pagina web y la convierte a Markdown estructurado (enlaces, botones, imagenes, texto).',
+    '  Ejemplo: {"type":"tool","tool":"webfetch","args":{"url":"https://docs.example.com/guide"}}',
     '',
     'scrape_site { url, selectors, limit?, headers? }',
     '  Scraping avanzado con multiples selectores en una sola llamada.',
-    '  selectors: objeto con nombres y selectores CSS. Ejemplo:',
-    '  {"type":"tool","tool":"scrape_site","args":{"url":"https://news.ycombinator.com","selectors":{"titulos":".titleline > a","urls":".titleline > a","scores":".score"},"limit":10}}',
+    '  selectors: objeto con nombres y selectores CSS.',
+    '  Ejemplo: {"type":"tool","tool":"scrape_site","args":{"url":"https://news.ycombinator.com","selectors":{"titulos":".titleline > a","urls":".titleline > a","scores":".score"},"limit":10}}',
     '',
     'web_search { query, lang?, limit? }',
     '  Busca en la web via DuckDuckGo. Retorna titulo, URL y snippet de los primeros resultados.',
@@ -161,8 +185,7 @@ function getToolPromptText() {
     'upload_file { path, field?, name?, type? }',
     '  Sube un archivo local a https://cdn.soymaycol.icu/upload por POST multipart/form-data y devuelve el link directo.',
     '  Limite estricto: maximo 5 MB. field por defecto: "file". name/type son opcionales.',
-    '  Usa esta tool cuando necesites entregar un archivo como enlace directo al agente o al usuario.',
-    '  Ejemplo: {"type":"tool","tool":"upload_file","args":{"path":"dist/116.zip"}}',
+    '  Ejemplo: {"type":"tool","tool":"upload_file","args":{"path":"dist/app.zip"}}',
     '',
     'gmail { action, query?, maxResults?, id?, to?, subject?, body? }',
     '  Usa Gmail conectado con /gmail connect. Acciones: status, list, read, send.',
@@ -170,21 +193,7 @@ function getToolPromptText() {
     '  read: requiere id de mensaje. send: requiere to, subject y body; pide confirmacion antes de enviar.',
     '  Ejemplo listar: {"type":"tool","tool":"gmail","args":{"action":"list","query":"is:unread newer_than:7d","maxResults":5}}',
     '  Ejemplo leer: {"type":"tool","tool":"gmail","args":{"action":"read","id":"MESSAGE_ID"}}',
-    '',
-    '## Imagen profesional con Jimp',
-    '',
-    'create_canvas_image { width, height, background?, elements?, format?, outputPath? }',
-    '  Crea imagenes desde cero usando Jimp con composicion por elementos.',
-    '  width/height son obligatorios. background puede ser color HEX (#RRGGBB o #RRGGBBAA).',
-    '  elements permite combinar rect, circle/ellipse, line, text e image.',
-    '  Para tutoriales y plantillas, carga la skill: jimp-advanced',
-    '',
-    '  Tipos de elementos soportados:',
-    '    rect: { type:"rect", x, y, w, h, fill?, radius?, stroke? }',
-    '    circle/ellipse: { type:"circle", x, y, r } o { type:"ellipse", x, y, rx, ry, fill }',
-    '    line: { type:"line", x1, y1, x2, y2, stroke }',
-    '    image: { type:"image", src, x, y, w?, h? }',
-    '    text: { type:"text", x, y, text, fontSize?, maxWidth? }',
+    '  Ejemplo enviar: {"type":"tool","tool":"gmail","args":{"action":"send","to":"user@example.com","subject":"Hola","body":"Mensaje de prueba"}}',
     '',
     '## Git - Control total de API',
     '',
@@ -196,16 +205,13 @@ function getToolPromptText() {
     '  action="api" — cualquier operacion HTTP sobre la API del proveedor:',
     '    method: GET, POST, PATCH, PUT, DELETE. path: ruta de la API sin / inicial.',
     '    body: objeto JSON para POST/PATCH/PUT. headers: headers adicionales opcionales.',
-    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"github","action":"api","method":"POST","path":"user/repos","body":{"name":"mi-proyecto","private":true}}}',
-    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"github","action":"api","method":"GET","path":"repos/owner/repo/issues?state=open"}}',
-    '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"custom","name":"empresa","action":"api","method":"POST","path":"projects","body":{"name":"nuevo"}}}',
+    '    Ejemplo crear repo: {"type":"tool","tool":"git","args":{"provider":"github","action":"api","method":"POST","path":"user/repos","body":{"name":"mi-proyecto","private":true}}}',
+    '    Ejemplo issues: {"type":"tool","tool":"git","args":{"provider":"github","action":"api","method":"GET","path":"repos/owner/repo/issues?state=open"}}',
+    '    Ejemplo custom: {"type":"tool","tool":"git","args":{"provider":"custom","name":"empresa","action":"api","method":"POST","path":"projects","body":{"name":"nuevo"}}}',
     '',
     '  action="clone" — clonar repositorio con credenciales configuradas:',
     '    repoUrl: URL del repositorio. destination: carpeta destino. branch: rama especifica.',
     '    Ejemplo: {"type":"tool","tool":"git","args":{"provider":"github","action":"clone","repoUrl":"https://github.com/user/repo","destination":"./repo"}}',
-    '',
-    '  Control total: repos, issues, PRs, releases, webhooks, users, etc. Segun permisos del token.',
-    '  No hay acciones fijas. Elige method y path libremente.',
     '',
     '## Preguntar al usuario',
     '',
@@ -226,7 +232,7 @@ function getToolPromptText() {
     '  Llama load_skill ANTES de aplicar las reglas de una skill a la tarea actual.',
     '  Si name esta vacio, la herramienta devuelve la lista completa de skills disponibles.',
     '  Ejemplo: {"type":"tool","tool":"load_skill","args":{"name":"testing"}}',
-    '  Ejemplo (listar): {"type":"tool","tool":"load_skill","args":{"name":""}}',
+    '  Ejemplo listar: {"type":"tool","tool":"load_skill","args":{"name":""}}',
     '',
     '## Memoria persistente',
     '',
@@ -238,6 +244,7 @@ function getToolPromptText() {
     '  Ejemplo save: {"type":"tool","tool":"memory","args":{"action":"save","key":"proyecto","value":"Usamos React + TypeScript"}}',
     '  Ejemplo get: {"type":"tool","tool":"memory","args":{"action":"get","key":"proyecto"}}',
     '  Ejemplo list: {"type":"tool","tool":"memory","args":{"action":"list"}}',
+    '  Ejemplo delete: {"type":"tool","tool":"memory","args":{"action":"delete","key":"proyecto"}}',
     '',
   ].join('\n');
 }
@@ -294,8 +301,6 @@ function describeToolCall(call, lang) {
       return t(lang, `Subiendo ${call.args.path}`, `Uploading ${call.args.path}`);
     case 'gmail':
       return `Gmail ${call.args.action || 'status'}`;
-    case 'create_canvas_image':
-      return t(lang, `Creando imagen ${call.args.width || '?'}x${call.args.height || '?'}`, `Creating image ${call.args.width || '?'}x${call.args.height || '?'}`);
     case 'git':
       return `Git ${call.args.action || '?'} ${call.args.provider || '?'}`;
     case 'load_skill':
@@ -1491,9 +1496,6 @@ async function executeToolCall(call, state, ui, options = {}) {
   if (!call || typeof call.tool !== 'string' || !REGISTERED_TOOLS.has(call.tool)) {
     throw new Error(t(state?.language, `Herramienta no registrada: ${call?.tool || 'desconocida'}`, `Unknown tool: ${call?.tool || 'unknown'}`));
   }
-  const toolDesc = describeToolCall(call, state?.language);
-  ui.logEvent(state, 'tool', `Preparando ${toolDesc}`);
-
   const startTime = Date.now();
   let result;
 
@@ -1558,9 +1560,6 @@ async function executeToolCall(call, state, ui, options = {}) {
       case 'gmail':
         result = await gmailTool(call.args, state, ui.paint, ctx);
         break;
-      case 'create_canvas_image':
-        result = await createCanvasImageTool(call.args, state, ui.paint, ctx);
-        break;
       case 'git':
         result = await gitUnifiedTool(call.args, state, ui.paint, ctx);
         break;
@@ -1574,6 +1573,19 @@ async function executeToolCall(call, state, ui, options = {}) {
         result = await askUserTool(call.args, state, ui.paint, ctx);
         break;
       default:
+        if (call.tool && call.tool.startsWith('mcp_')) {
+          try {
+            const { executeMcpToolCall } = require('../mcp/client');
+            const mcpResult = await executeMcpToolCall(call.tool, call.args || {});
+            result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult, null, 2);
+          } catch (mcpErr) {
+            const errMsg = mcpErr?.code === 'ECONNREFUSED'
+              ? `No se pudo conectar al servidor MCP (el servidor no está ejecutándose).`
+              : (mcpErr?.message || 'Error desconocido en MCP');
+            throw new Error(`MCP tool error: ${errMsg}`);
+          }
+          break;
+        }
         throw new Error(t(state?.language, `Herramienta no soportada: ${call.tool}`, `Unsupported tool: ${call.tool}`));
     }
   } catch (err) {
@@ -1780,9 +1792,11 @@ module.exports = {
   cleanUrl,
   describeToolCall,
   executeToolCall,
+  getMcpToolDefinitions,
   getToolPromptText,
   parseDirectAction,
   printTools,
+  refreshMcpTools,
 };
 
 
@@ -1790,153 +1804,6 @@ function getGitSecretLabel(provider, name = '') {
   const key = normalizeProfileName(provider);
   if (key === 'custom') return name ? `custom:${name}` : 'custom';
   return key;
-}
-
-function parseColor(value, fallback = 0x000000ff) {
-  if (typeof value !== 'string' || !value.trim()) return fallback;
-  const raw = value.trim().replace('#', '');
-  if (/^[0-9a-f]{6}$/i.test(raw)) return Number.parseInt(`${raw}ff`, 16) >>> 0;
-  if (/^[0-9a-f]{8}$/i.test(raw)) return Number.parseInt(raw, 16) >>> 0;
-  return fallback;
-}
-
-function drawRect(image, x, y, w, h, color) {
-  const left = Math.max(0, Math.floor(Number(x) || 0));
-  const top = Math.max(0, Math.floor(Number(y) || 0));
-  const width = Math.max(1, Math.floor(Number(w) || 0));
-  const height = Math.max(1, Math.floor(Number(h) || 0));
-  image.scan(left, top, width, height, function (px, py, idx) {
-    this.bitmap.data.writeUInt32BE(color >>> 0, idx);
-  });
-}
-
-function drawRoundRect(image, x, y, w, h, radius, color) {
-  const left = Math.max(0, Math.floor(Number(x) || 0));
-  const top = Math.max(0, Math.floor(Number(y) || 0));
-  const width = Math.max(1, Math.floor(Number(w) || 0));
-  const height = Math.max(1, Math.floor(Number(h) || 0));
-  const r = Math.max(0, Math.min(Number(radius) || 0, Math.floor(width / 2), Math.floor(height / 2)));
-  if (r <= 0) return drawRect(image, left, top, width, height, color);
-
-  image.scan(left, top, width, height, function (px, py, idx) {
-    const cx = px < left + r ? left + r : px >= left + width - r ? left + width - r - 1 : px;
-    const cy = py < top + r ? top + r : py >= top + height - r ? top + height - r - 1 : py;
-    const dx = px - cx;
-    const dy = py - cy;
-    if ((dx * dx) + (dy * dy) <= r * r) {
-      this.bitmap.data.writeUInt32BE(color >>> 0, idx);
-    }
-  });
-}
-
-function drawLine(image, x1, y1, x2, y2, color) {
-  const sx = Number(x1 || 0);
-  const sy = Number(y1 || 0);
-  const tx = Number(x2 || 0);
-  const ty = Number(y2 || 0);
-  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(tx - sx), Math.abs(ty - sy))));
-  for (let i = 0; i <= steps; i++) {
-    const x = Math.round(sx + ((tx - sx) * i / steps));
-    const y = Math.round(sy + ((ty - sy) * i / steps));
-    if (x >= 0 && y >= 0 && x < image.bitmap.width && y < image.bitmap.height) {
-      image.setPixelColor(color, x, y);
-    }
-  }
-}
-
-async function createCanvasImageTool(args, state, paint) {
-  let Jimp, loadFont;
-  try {
-    ({ Jimp, loadFont } = require('jimp'));
-  } catch {
-    throw new Error(t(state?.language,
-      'create_canvas_image requiere jimp instalado. Instala con: npm install jimp@0.16.1',
-      'create_canvas_image requires jimp. Install with: npm install jimp@0.16.1'));
-  }
-  let fonts;
-  try {
-    const pluginPrintMain = require.resolve('@jimp/plugin-print');
-    const fontsPath = path.join(path.dirname(pluginPrintMain), 'fonts.js');
-    fonts = require(fontsPath);
-  } catch {
-    fonts = {};
-  }
-  const width = Math.max(1, Number(args.width || 0));
-  const height = Math.max(1, Number(args.height || 0));
-  if (!width || !height) {
-    throw new Error(t(state?.language, 'create_canvas_image requiere width y height', 'create_canvas_image requires width and height'));
-  }
-
-  const format = String(args.format || 'png').toLowerCase();
-  const safeFormat = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff'].includes(format) ? format : 'png';
-  const fileExt = safeFormat === 'jpeg' ? 'jpg' : safeFormat;
-  const outputPath = resolveInputPath(args.outputPath || path.join('generated', `image-${Date.now()}.${fileExt}`), state.cwd);
-
-  const allowed = await askConfirmation(state.rl, 'Crear imagen', `${width}x${height}\nFormato: ${safeFormat}\nSalida: ${outputPath}`, paint, state);
-  if (!allowed) return 'Creacion de imagen cancelada por el usuario.';
-
-  const bg = args.background && typeof args.background === 'object'
-    ? args.background.color || args.background.fill || '#ffffff'
-    : args.background || '#ffffff';
-  const image = new Jimp({ width, height, color: parseColor(bg, 0xffffffff) });
-  const elements = Array.isArray(args.elements) ? args.elements.filter(Boolean) : [];
-
-  for (const element of elements) {
-    if (!element || typeof element !== 'object') continue;
-    const type = String(element.type || 'text').toLowerCase();
-    if (type === 'rect') {
-      const color = parseColor(element.fill || element.color || '#000000', 0x000000ff);
-      if (element.radius) drawRoundRect(image, element.x || 0, element.y || 0, element.w || element.width || 0, element.h || element.height || 0, element.radius || 0, color);
-      else drawRect(image, element.x || 0, element.y || 0, element.w || element.width || 0, element.h || element.height || 0, color);
-      continue;
-    }
-    if (type === 'line') {
-      drawLine(image, element.x1 || 0, element.y1 || 0, element.x2 || 0, element.y2 || 0, parseColor(element.stroke || '#000000', 0x000000ff));
-      continue;
-    }
-    if (type === 'circle' || type === 'ellipse') {
-      const color = parseColor(element.fill || element.color || '#000000', 0x000000ff);
-      const cx = Number(element.x || 0);
-      const cy = Number(element.y || 0);
-      const rx = Math.max(1, Number(element.rx || element.r || element.radius || element.width || 0));
-      const ry = Math.max(1, Number(element.ry || element.r || element.radius || element.height || rx));
-      image.scan(0, 0, image.bitmap.width, image.bitmap.height, function (px, py, idx) {
-        const dx = (px - cx) / rx;
-        const dy = (py - cy) / ry;
-        if ((dx * dx) + (dy * dy) <= 1) {
-          this.bitmap.data.writeUInt32BE(color >>> 0, idx);
-        }
-      });
-      continue;
-    }
-    if (type === 'image') {
-      const src = element.src || element.url || element.path;
-      if (!src) continue;
-      const loaded = await Jimp.read(src.startsWith('http') || src.startsWith('data:') ? src : resolveInputPath(src, state.cwd));
-      const x = Number(element.x || 0);
-      const y = Number(element.y || 0);
-      const w = Math.max(1, Number(element.w || element.width || loaded.bitmap.width));
-      const h = Math.max(1, Number(element.h || element.height || loaded.bitmap.height));
-      const clone = loaded.clone().resize({ w, h });
-      image.composite(clone, x, y);
-      continue;
-    }
-
-    const text = String(element.text || '');
-    if (!text) continue;
-    const size = Math.max(8, Math.min(64, Number(element.fontSize || 32)));
-    const font = await loadFont(
-      size <= 8 ? fonts.SANS_8_BLACK :
-      size <= 16 ? fonts.SANS_16_BLACK :
-      size <= 32 ? fonts.SANS_32_BLACK :
-      fonts.SANS_64_BLACK,
-    );
-    image.print({ font, x: Number(element.x || 0), y: Number(element.y || 0), maxWidth: element.maxWidth ? Number(element.maxWidth) : undefined }, text);
-  }
-
-  await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
-  await image.write(outputPath);
-  return [`Imagen creada: ${outputPath}`, `Formato: ${safeFormat}`, `Tamano: ${width}x${height}`, `Elementos: ${elements.length}`].join('\n');
 }
 
 

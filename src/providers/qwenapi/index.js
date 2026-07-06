@@ -90,6 +90,24 @@ async function streamCompletion(messages, modelId, apiKey, onChunk, signal) {
       }
     }
 
+    // Flush remaining SSE buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed?.choices?.[0]?.delta;
+            if (delta?.content) {
+              answer += delta.content;
+              if (onChunk) onChunk(delta.content, 'answer');
+            }
+          } catch {}
+        }
+      }
+    }
+
     return { text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeoutId);

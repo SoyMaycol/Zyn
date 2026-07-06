@@ -95,6 +95,17 @@ async function runSinglePrompt(prompt, options = {}) {
     if (!rl) {
       state.autoApprove = true;
     }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const mcpConfigPath = path.join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+      const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+      state.mcpServers = mcpConfig.servers || {};
+    } catch {
+      state.mcpServers = {};
+    }
+
     const { resumed, rehydrated } = loaded;
     if (process.stdout.isTTY) {
       await printWelcome();
@@ -126,6 +137,33 @@ async function runInteractiveChatClassic(options = {}) {
   });
 
   const { state, resumed, rehydrated } = await loadOrCreateSessionState(rl, options);
+
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const mcpConfigPath = path.join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+    const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+    state.mcpServers = mcpConfig.servers || {};
+  } catch {
+    state.mcpServers = {};
+  }
+
+  try {
+    const { autoConnectAll } = require('../mcp/client');
+    const mcpResults = await autoConnectAll();
+    const connected = mcpResults.filter(r => r.ok);
+    const failed = mcpResults.filter(r => !r.ok);
+    if (connected.length > 0) {
+      const summary = connected.map(r => `${r.name}(${r.toolCount})`).join(', ');
+      logEvent(state, 'info', `MCP Connected: ${summary}`);
+      if (process.stdout.isTTY) console.log(`\x1b[36m  \u00b7 MCP\x1b[0m\n    Connected: ${summary}`);
+    }
+    if (failed.length > 0) {
+      const failSummary = failed.map(r => `${r.name}: ${r.error || 'unreachable'}`).join(', ');
+      logEvent(state, 'warn', `MCP Failed: ${failSummary}`);
+      if (process.stdout.isTTY) console.log(`\x1b[33m  \u00b7 MCP\x1b[0m\n    Failed: ${failSummary}`);
+    }
+  } catch {}
 
   const completedBackgrounds = await listBackgroundResults(state.sessionId).catch(() => []);
   if (completedBackgrounds.length > 0) {

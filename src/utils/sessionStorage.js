@@ -49,6 +49,7 @@ async function loadPersistentConfig() {
     language: normalizeLanguage(data.language || DEFAULT_LANGUAGE),
     personaPrompt: typeof data.personaPrompt === 'string' ? data.personaPrompt : undefined,
     theme: typeof data.theme === 'string' && data.theme.trim() ? data.theme : undefined,
+    settings: data.settings && typeof data.settings === 'object' ? data.settings : {},
   };
 }
 
@@ -60,6 +61,7 @@ async function savePersistentConfig(state) {
     language: state.language || DEFAULT_LANGUAGE,
     personaPrompt: state.personaPrompt || '',
     theme: state.theme || 'dark',
+    settings: state.settings || {},
   });
 }
 
@@ -169,7 +171,12 @@ async function writeJson(filePath, data) {
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.tmp`;
   await fsp.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf8');
-  await fsp.rename(tempPath, filePath);
+  try {
+    await fsp.rename(tempPath, filePath);
+  } catch {
+    await fsp.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+    await fsp.unlink(tempPath).catch(() => {});
+  }
 }
 
 async function setCurrentSessionId(sessionId) {
@@ -198,6 +205,8 @@ function applyLoadedState(state, loaded) {
   state.activeModel = loaded.activeModel || DEFAULT_MODEL_KEY;
   state.language = loaded.language || DEFAULT_LANGUAGE;
   state.personaPrompt = loaded.personaPrompt || '';
+  state.theme = loaded.theme || '';
+  state.settings = loaded.settings && typeof loaded.settings === 'object' ? loaded.settings : {};
   if (state.actionLog.length > ACTION_LOG_LIMIT) {
     state.actionLog = state.actionLog.slice(-ACTION_LOG_LIMIT);
   }

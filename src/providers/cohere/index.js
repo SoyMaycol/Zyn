@@ -23,17 +23,21 @@ async function cohere(messages, modelId, onChunk = null, options = {}) {
   }));
 
   try {
+    const body = {
+      model: modelId,
+      messages: chatMsgs,
+      stream: true,
+    };
+    if (systemMsg) {
+      body.preamble = systemMsg.content;
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: modelId,
-        messages: chatMsgs,
-        stream: true,
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -62,6 +66,24 @@ async function cohere(messages, modelId, onChunk = null, options = {}) {
           const text = parsed.delta.message.content.text;
           answer += text;
           if (onChunk) onChunk(text, 'answer');
+        }
+      }
+    }
+
+    // Flush remaining SSE buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content-delta' && parsed.delta?.message?.content?.text) {
+              const text = parsed.delta.message.content.text;
+              answer += text;
+              if (onChunk) onChunk(text, 'answer');
+            }
+          } catch {}
         }
       }
     }

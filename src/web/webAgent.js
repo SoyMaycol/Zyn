@@ -6,7 +6,7 @@ const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
 const githubApi = require('./githubApi');
 const store = require('./store');
 
-const MAX_STEPS = Number.POSITIVE_INFINITY;
+const MAX_STEPS = 100;
 const CONCUERDO_TIMEOUT = 30000;
 const BUFFER_CHECK = 72;
 const WEB_SKILLS = loadAllSkills();
@@ -112,23 +112,6 @@ function looksLikeActionRequest(text) {
   const sample = normalizeClassifierText(String(text || ''));
   if (!sample) return false;
   return /(instala|instalar|install|run|ejecuta|ejecutar|crea|crear|build|compile|compila|fix|arregla|corrige|update|actualiza|edita|edit|borra|elimina|remove|descarga|download|busca|search|prueba|test|verifica|check|configura|setup|mueve|move|importa|import|aplica|apply)/i.test(sample);
-}
-
-function buildForcedWritePrompt(state) {
-  const path = state.lastReadPath || 'archivo-leido';
-  const content = state.lastReadContent || '';
-
-  return [
-    `Ya leiste ${path} y ya identificaste el cambio.`,
-    'No describas el fix.',
-    'Responde AHORA SOLO con un JSON valido de write_file.',
-    `El path debe ser exactamente "${path}".`,
-    'El campo content debe incluir el archivo COMPLETO ya corregido.',
-    'Si de verdad necesitas otro archivo auxiliar, usa read_file para ese archivo. Si no, emite write_file ya.',
-    '',
-    `Archivo actual (${path}):`,
-    content,
-  ].join('\n');
 }
 
 function normalizeRepoPath(value = '') {

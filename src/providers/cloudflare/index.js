@@ -74,6 +74,31 @@ async function cloudflare(messages, modelId, onChunk = null, options = {}) {
       }
     }
 
+    // Flush remaining SSE buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed?.choices?.[0]?.delta;
+            if (delta?.content) {
+              answer += delta.content;
+              if (onChunk) onChunk(delta.content, 'answer');
+            }
+            if (delta?.reasoning_content) {
+              thinking += delta.reasoning_content;
+              if (onChunk) onChunk(delta.reasoning_content, 'thinking');
+            } else if (delta?.reasoning) {
+              thinking += delta.reasoning;
+              if (onChunk) onChunk(delta.reasoning, 'thinking');
+            }
+          } catch {}
+        }
+      }
+    }
+
     return { status: true, text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeoutId);

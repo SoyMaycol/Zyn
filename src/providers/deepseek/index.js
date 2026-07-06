@@ -302,6 +302,42 @@ async function deepseekChat(messages, modelId, onChunk = null, options = {}) {
       }
     }
 
+    // Flush remaining SSE buffer
+    if (buf.trim()) {
+      const trimmed = buf.trim();
+      if (trimmed.startsWith('data:')) {
+        const raw = trimmed.slice(5).trim();
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.v && typeof parsed.v === 'object' && parsed.v.response?.fragments) {
+              for (const frag of parsed.v.response.fragments) {
+                if (frag.type === 'RESPONSE' && frag.content) {
+                  fragmentBuffer += frag.content;
+                }
+                if (frag.type === 'THINKING' && frag.content) {
+                  thinkingText += frag.content;
+                  if (onChunk) onChunk(frag.content, 'thinking');
+                }
+              }
+            }
+            if (parsed.p) currentPath = parsed.p;
+            const val = parsed.v;
+            if (val !== undefined && currentPath === 'response/fragments/-1/content' && typeof val === 'string') {
+              fragmentBuffer += val;
+            }
+            if (parsed.p === 'response' && parsed.o === 'BATCH' && Array.isArray(parsed.v)) {
+              for (const patch of parsed.v) {
+                if (patch.p === 'response/fragments/-1/content' && typeof patch.v === 'string') {
+                  fragmentBuffer += patch.v;
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
     if (!answerText && fragmentBuffer) {
       answerText = fragmentBuffer;
       if (onChunk && lastEmittedLen === 0) onChunk(fragmentBuffer, 'answer');

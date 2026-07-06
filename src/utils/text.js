@@ -34,12 +34,14 @@ function normalizeText(value) {
   return trimmed;
 }
 
-function truncateText(value, limit = MAX_OUTPUT_CHARS) {
+function truncateText(value, limit = MAX_OUTPUT_CHARS, lang = 'es') {
   if (value.length <= limit) {
     return value;
   }
-
-  return `${value.slice(0, limit)}\n\n[truncado: ${value.length - limit} caracteres omitidos]`;
+  const removed = value.length - limit;
+  const label = lang === 'es' ? 'truncado' : 'truncated';
+  const unit = lang === 'es' ? 'caracteres omitidos' : 'chars omitted';
+  return `${value.slice(0, limit)}\n\n[${label}: ${removed} ${unit}]`;
 }
 
 function formatLineRange(lines, startLine, endLine) {

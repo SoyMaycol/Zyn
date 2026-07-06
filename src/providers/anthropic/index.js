@@ -75,6 +75,29 @@ async function anthropic(messages, modelId, onChunk = null, options = {}) {
       }
     }
 
+    // Flush remaining SSE buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta') {
+              const delta = parsed.delta;
+              if (delta.type === 'text_delta' && delta.text) {
+                answer += delta.text;
+                if (onChunk) onChunk(delta.text, 'answer');
+              } else if (delta.type === 'thinking_delta' && delta.thinking) {
+                thinking += delta.thinking;
+                if (onChunk) onChunk(delta.thinking, 'thinking');
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
     return { status: true, text: answer.trim(), thinking: thinking.trim() };
   } finally {
     clearTimeout(timeoutId);

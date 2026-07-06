@@ -83,6 +83,22 @@ async function replicate(messages, modelId, onChunk = null, options = {}) {
       }
     }
 
+    // Flush remaining SSE buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed.startsWith('data:')) {
+        const data = trimmed.slice(5).trim();
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.event === 'output' && parsed.data) {
+            const text = Array.isArray(parsed.data) ? parsed.data.join('') : parsed.data;
+            answer += text;
+            if (onChunk) onChunk(text, 'answer');
+          }
+        } catch {}
+      }
+    }
+
     return { status: true, text: answer.trim(), thinking: '' };
   } finally {
     clearTimeout(timeoutId);

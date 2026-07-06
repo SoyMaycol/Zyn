@@ -1,7 +1,7 @@
 {
   "name": "zyn-ai",
   "version": "1.4.1",
-  "description": "Production-ready AI agent for CLI, TUI, and external platforms (WhatsApp/Baileys, Discord, Telegram) with real tool execution and automation",
+  "description": "Production-ready AI agent for CLI and TUI with real tool execution, 28+ providers, 217+ models, memory, and automation",
   "author": "Maycol",
   "keywords": [
     "ai-agent",
@@ -15,18 +15,17 @@
     "local-ai-agent",
     "command-line-ai",
     "tui-agent",
-    "whatsapp-bot",
-    "discord-bot",
-    "telegram-bot",
-    "multi-platform",
     "embeddable-agent",
+    "ai-terminal",
+    "llm-agent",
+    "openai",
+    "claude",
+    "gemini",
     "zyn"
   ],
   "bin": {
     "zyn": "./zyn.js",
-    "zyn-ai": "./zyn.js",
-    "Zyn": "./zyn.js",
-    "Zyn-ai": "./zyn.js"
+    "Zyn": "./zyn.js"
   },
   "type": "commonjs",
   "main": "./src/agent.js",
@@ -40,12 +39,6 @@
     "cheerio": "^1.2.0",
     "ink": "^6.8.0",
     "react": "^19.2.7"
-  },
-  "optionalDependencies": {
-    "@whiskeysockets/baileys": "^6.7.0",
-    "discord.js": "^14.16.0",
-    "jimp": "0.16.1",
-    "node-telegram-bot-api": "^0.66.0"
   },
   "repository": {
     "type": "git",
@@ -67,11 +60,7 @@
   ],
   "exports": {
     ".": "./src/agent.js",
-    "./agent": "./src/agent.js",
-    "./platforms": "./src/platforms/index.js",
-    "./platforms/baileys": "./src/platforms/baileys.js",
-    "./platforms/discord": "./src/platforms/discord.js",
-    "./platforms/telegram": "./src/platforms/telegram.js"
+    "./agent": "./src/agent.js"
   },
   "preferGlobal": true
 }
