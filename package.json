@@ -54,7 +54,7 @@
     "url": "https://github.com/SoyMaycol/Zyn/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22" 
   },
   "license": "MIT",
   "files": [
