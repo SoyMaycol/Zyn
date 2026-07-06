@@ -1,6 +1,5 @@
 ---
 name: game-dev
-author: Zyn Team
 description: Creation of browser-based games using Babylon.js, Phaser, and PlayCanvas. Includes project setup and development workflow.
 ---
 
