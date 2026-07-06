@@ -1,9 +1,0 @@
-{
-  "name": "zyn-rgb",
-  "version": "1.0.0",
-  "type": "theme",
-  "description": "A vibrant RGB neon theme for Zyn Agent.",
-  "author": "SoyMaycol",
-  "entry": "src/index.js",
-  "theme": "rgb"
-}
