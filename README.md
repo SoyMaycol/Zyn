@@ -1,7 +1,7 @@
-# Zyn — AI Agent for Your Terminal
+# Zyn Agent — AI Agent for Your Terminal
 
 <p align="center">
-  <img src="http://cdn.soymaycol.icu/files/logo_zyn.png" alt="Zyn AI Agent Logo" width="180" />
+  <img src="https://i.ibb.co/46VHVKb/47-sin-t-tulo-20260702143433.png" alt="Zyn AI Agent Logo" width="180" />
 </p>
 
 <p align="center">
@@ -69,6 +69,12 @@ zyn --resume ID   # Resume a previous session
 ```
 
 First run: Zyn starts with a free model (Zen/Nemotron). Use `/providers` to configure your own API keys, then `/models` to pick a model.
+
+
+
+https://github.com/user-attachments/assets/a66690d6-db83-4d5a-8482-d0af98a8b7e4
+
+
 
 ---
 
