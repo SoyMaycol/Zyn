@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/github/v/release/SoyMaycol/Zyn?include_prereleases&sort=semver" alt="Latest Release"/>
   <img src="https://img.shields.io/npm/dt/zyn-ai" alt="Downloads"/>
   <img src="https://img.shields.io/github/license/SoyMaycol/Zyn" alt="License"/>
-  <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="Node.js 18+"/>
+  <img src="https://img.shields.io/badge/node-%3E%3D22-green" alt="Node.js 22+"/>
 </p>
 
 <p align="center">
