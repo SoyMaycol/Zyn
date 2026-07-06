@@ -1497,6 +1497,7 @@ async function runModelsFlow(state, deps) {
         const serverEnv = serverConfig.env;
         const serverCwd = serverConfig.cwd;
         const serverHeaders = serverConfig.headers;
+        const serverProtocol = serverConfig.protocol || serverConfig.format;
         const serverTransport = serverConfig.type || (serverUrl ? 'http' : 'stdio');
         if (!serverName) {
           console.log('  ' + (state.language === 'es' ? 'El JSON debe incluir "name"' : 'JSON must include "name"'));
@@ -1513,6 +1514,7 @@ async function runModelsFlow(state, deps) {
           addedAt: new Date().toISOString(),
           ...(serverUrl ? { url: serverUrl } : {}),
           ...(serverHeaders ? { headers: serverHeaders } : {}),
+          ...(serverProtocol ? { protocol: serverProtocol } : {}),
           ...(serverEnv ? { env: serverEnv } : {}),
           ...(serverCommand ? { command: serverCommand } : {}),
           ...(serverArgs ? { args: serverArgs } : {}),
@@ -1619,7 +1621,7 @@ async function runModelsFlow(state, deps) {
     if (sub === 'connect') {
       const jsonArg = rest.join(' ').trim();
       let serverConfig;
-      let serverName, serverUrl, serverHeaders, serverEnv, serverTransport, serverCommand, serverArgs, serverCwd;
+      let serverName, serverUrl, serverHeaders, serverEnv, serverTransport, serverCommand, serverArgs, serverCwd, serverProtocol;
       if (jsonArg) {
         try {
           serverConfig = JSON.parse(jsonArg);
@@ -1630,6 +1632,7 @@ async function runModelsFlow(state, deps) {
         serverName = serverConfig.name || serverConfig.serverName;
         serverUrl = serverConfig.url;
         serverHeaders = serverConfig.headers;
+        serverProtocol = serverConfig.protocol || serverConfig.format;
         serverEnv = serverConfig.env;
         serverCwd = serverConfig.cwd;
         serverCommand = serverConfig.command;
@@ -1675,6 +1678,7 @@ async function runModelsFlow(state, deps) {
         addedAt: new Date().toISOString(),
         ...(serverUrl ? { url: serverUrl } : {}),
         ...(serverHeaders ? { headers: serverHeaders } : {}),
+        ...(serverProtocol ? { protocol: serverProtocol } : {}),
         ...(serverEnv ? { env: serverEnv } : {}),
         ...(serverCommand ? { command: serverCommand } : {}),
         ...(serverArgs ? { args: serverArgs } : {}),

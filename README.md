@@ -239,41 +239,77 @@ Zyn includes 24 built-in themes with dynamic selection.
 
 ## Plugins
 
-Extend Zyn with community plugins from npm.
+Extend Zyn with community plugins from npm or a local folder. Plugins are intentionally powerful: they can add themes, tools, slash commands, prompts, UI components, and behavior changes.
 
 ```bash
-/plugins                    # Open plugin manager
-/plugins list               # List installed plugins
-/plugins install zyn-theme-neon  # Install a theme
-/plugins search skill       # Search for skill plugins
-/plugins uninstall zyn-theme-neon  # Remove plugin
+/plugins                         # Open plugin manager
+/plugins list                    # List installed plugins
+/plugins install zyn-theme-neon  # Install from npm
+/plugins install ./my-plugin     # Install from a local folder
+/plugins search skill            # Search for skill plugins
+/plugins uninstall zyn-theme-neon
 ```
 
-**Plugin types:**
-- `theme` — new color schemes and visual styles
-- `skill` — AI skills with YAML frontmatter
-- `tool` — custom tools (API calls, scripts)
-- `prompt` — modify system prompts
-- `command` — add slash commands
-- `ui` — UI components
+### Minimal plugin format
 
-**Security:** Zyn asks for consent before installing plugins. Plugins run sandboxed — they can't access your files or API keys without explicit permission. Always review plugin source code before installing.
+Create a folder with a `package.json` and a `manifest.json`:
+
+```json
+{
+  "name": "zyn-plugin-example",
+  "version": "1.0.0",
+  "main": "index.js"
+}
+```
+
+```json
+{
+  "name": "zyn-plugin-example",
+  "version": "1.0.0",
+  "type": "command",
+  "description": "Adds a custom Zyn command",
+  "author": "you"
+}
+```
+
+Supported `type` values:
+- `theme` — color schemes and visual styles
+- `skill` — AI skills with YAML frontmatter
+- `tool` — custom tools such as API calls or scripts
+- `prompt` — system-prompt additions or replacements
+- `command` — slash commands
+- `ui` — UI components
+- `system` — advanced behavior changes
+
+**Security and responsibility:** Zyn asks for consent before installing plugins. By accepting, you acknowledge that a plugin can modify Zyn behavior and that you are responsible for what you install. Only install trusted plugins and review their source code first.
 
 ---
 
 ## MCP Servers
 
-Connect to Model Context Protocol servers for external tools.
+Connect to Model Context Protocol servers for external tools. Zyn accepts a single JSON object so the format is explicit and copy/paste friendly.
 
 ```bash
-/mcp                                    # Open MCP manager
-/mcp connect my-tools http://localhost:8080  # Connect server
-/mcp list                               # List connected servers
-/mcp tools my-tools                     # List available tools
-/mcp disconnect my-tools                # Disconnect
+/mcp                                            # Open MCP manager
+/mcp connect {"name":"deepwiki","url":"https://mcp.deepwiki.com/mcp"}
+/mcp connect {"name":"local","url":"http://localhost:8080"}
+/mcp connect {"name":"fs","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}
+/mcp list                                       # List configured servers
+/mcp tools deepwiki                             # List discovered tools
+/mcp disconnect deepwiki                        # Disconnect
 ```
 
-MCP tools appear alongside Zyn's built-in tools. The agent can use them automatically.
+### MCP JSON fields
+
+- `name` (required): stable name used in tool names, for example `deepwiki`.
+- `url`: HTTP/SSE/streamable HTTP endpoint, for example `https://mcp.deepwiki.com/mcp`.
+- `command` + `args`: stdio server process instead of a URL.
+- `headers`: optional HTTP headers.
+- `env`: optional environment variables for stdio servers.
+- `cwd`: optional working directory for stdio servers.
+- `protocol` or `format`: optional; use `jsonrpc` to force streamable JSON-RPC. URLs ending in `/mcp` are auto-detected as JSON-RPC endpoints.
+
+When a server connects, Zyn discovers its tools and injects them into the system prompt under **MCP TOOLS**. The agent must use the exact `mcp_<server>_<tool>` name shown there.
 
 ---
 

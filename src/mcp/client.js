@@ -1,5 +1,6 @@
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
 
 const { MCP_CONFIG_FILE } = require('../config');
@@ -31,7 +32,8 @@ function httpRequest(urlStr, options = {}) {
       headers: options.headers || {},
       timeout: options.timeout || 30000,
     };
-    const req = http.request(reqOpts, (res) => {
+    const transport = url.protocol === 'https:' ? https : http;
+    const req = transport.request(reqOpts, (res) => {
       let body = '';
       res.on('data', chunk => body += chunk);
       res.on('end', () => {
@@ -121,6 +123,37 @@ async function stopStdioServer(name) {
   _stdioProcesses.delete(name);
 }
 
+function parseJsonResponse(body, fallback = {}) {
+  if (!body) return fallback;
+  const trimmed = body.trim();
+  if (!trimmed) return fallback;
+  if (trimmed.startsWith('data:')) {
+    const dataLine = trimmed.split(/\r?\n/).find(line => line.trim().startsWith('data:'));
+    if (!dataLine) return fallback;
+    return JSON.parse(dataLine.replace(/^\s*data:\s*/, ''));
+  }
+  return JSON.parse(trimmed);
+}
+
+async function streamableMcpRequest(srv, method, params = {}, timeout = 30000) {
+  const url = srv.url.replace(/\/$/, '');
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    ...(srv.headers || {}),
+  };
+  const response = await httpRequest(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: `zyn_${Date.now()}`, method, params }),
+    timeout,
+  });
+  if (!response.ok) throw new Error(`MCP request failed (${response.status}): ${response.body.slice(0, 200)}`);
+  const data = parseJsonResponse(response.body, {});
+  if (data.error) throw new Error(data.error.message || 'MCP JSON-RPC error');
+  return data.result ?? data;
+}
+
 async function callMcpTool(serverName, toolName, args) {
   const config = loadMcpConfig();
   const srv = config.servers?.[serverName];
@@ -141,6 +174,9 @@ async function callMcpTool(serverName, toolName, args) {
   const headers = { 'Content-Type': 'application/json', ...(srv.headers || {}) };
   let response;
   try {
+    if ((srv.protocol || srv.format) === 'jsonrpc' || /\/mcp\/?$/.test(url)) {
+      return await streamableMcpRequest(srv, 'tools/call', { name: toolName, arguments: args });
+    }
     response = await httpRequest(`${url}/tools/call`, {
       method: 'POST',
       headers,
@@ -158,7 +194,7 @@ async function callMcpTool(serverName, toolName, args) {
     throw new Error(`MCP tool call failed (${response.status}): ${response.body.slice(0, 200)}`);
   }
 
-  return JSON.parse(response.body);
+  return parseJsonResponse(response.body);
 }
 
 async function autoConnectAll() {
@@ -216,6 +252,21 @@ async function discoverMcpTools(serverName) {
   const headers = { ...(srv.headers || {}) };
   let response;
   try {
+    if ((srv.protocol || srv.format) === 'jsonrpc' || /\/mcp\/?$/.test(url)) {
+      try {
+        await streamableMcpRequest(srv, 'initialize', {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'Zyn', version: '1.0.0' },
+        }, 10000);
+      } catch {}
+      const result = await streamableMcpRequest(srv, 'tools/list', {}, 10000);
+      const tools = result?.tools || (Array.isArray(result) ? result : []);
+      config.servers[serverName].tools = tools;
+      fs.mkdirSync(path.dirname(MCP_CONFIG_PATH), { recursive: true });
+      fs.writeFileSync(MCP_CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+      return tools;
+    }
     response = await httpRequest(`${url}/tools`, { timeout: 5000, headers });
   } catch (reqErr) {
     if (reqErr?.code === 'ECONNREFUSED') {
@@ -224,7 +275,7 @@ async function discoverMcpTools(serverName) {
     throw new Error(`Error de conexión al servidor "${serverName}": ${reqErr?.message || reqErr}`);
   }
   if (!response.ok) throw new Error(`Discovery failed (${response.status})`);
-  const data = JSON.parse(response.body);
+  const data = parseJsonResponse(response.body);
   const tools = Array.isArray(data) ? data : (data.tools || []);
   config.servers[serverName].tools = tools;
   fs.mkdirSync(path.dirname(MCP_CONFIG_PATH), { recursive: true });
