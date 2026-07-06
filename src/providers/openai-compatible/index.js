@@ -4,7 +4,7 @@ const { REQUEST_TIMEOUT_MS } = require('../../config');
  * Factory for OpenAI-compatible providers.
  * Creates a streaming chat function compatible with Zyn's pipeline.
  */
-function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens = 16384) {
+function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens = 16384, defaultHeaders = {}) {
   return async function provider(messages, modelId, onChunk = null, options = {}) {
     const config = options.config || {};
     const apiKey = String(
@@ -25,7 +25,10 @@ function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens =
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const headers = { 'Content-Type': 'application/json' };
+      const headers = {
+        'Content-Type': 'application/json',
+        ...defaultHeaders,
+      };
       if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
       const res = await fetch(url, {

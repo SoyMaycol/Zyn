@@ -8,6 +8,12 @@ const DEFAULT_HEADERS = {
   'User-Agent': 'Zyn/1.0',
 };
 
+const OPENROUTER_HEADERS = {
+  'HTTP-Referer': 'https://zyn.soymaycol.icu',
+  'X-OpenRouter-Title': 'Zyn Agent',
+  'X-OpenRouter-Categories': 'cli-agent,programming-app',
+};
+
 function readJsonFile(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -452,7 +458,10 @@ async function fetchTogetherModels(config) {
 
 async function fetchOpenRouterModels(config) {
   const apiKey = String(config.apiKey || process.env.OPENROUTER_API_KEY || '').trim();
-  const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+  const headers = {
+    ...OPENROUTER_HEADERS,
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+  };
   const data = await fetchJson('https://openrouter.ai/api/v1/models', { headers });
   const list = Array.isArray(data?.data) ? data.data : [];
   return list.map(model => buildModelRecord(

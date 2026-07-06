@@ -25,7 +25,11 @@ const { describeProviderConfig } = require('./catalog');
 
 // Create OpenAI-compatible providers for together, openrouter, mistral, xai, fireworks, perplexity
 const together = createOpenAICompatible('Together AI', 'https://api.together.xyz/v1', 'TOGETHER_API_KEY');
-const openrouter = createOpenAICompatible('OpenRouter', 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY');
+const openrouter = createOpenAICompatible('OpenRouter', 'https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY', 16384, {
+  'HTTP-Referer': 'https://zyn.soymaycol.icu',
+  'X-OpenRouter-Title': 'Zyn Agent',
+  'X-OpenRouter-Categories': 'cli-agent,programming-app',
+});
 const mistral = createOpenAICompatible('Mistral AI', 'https://api.mistral.ai/v1', 'MISTRAL_API_KEY');
 const xai = createOpenAICompatible('xAI', 'https://api.x.ai/v1', 'XAI_API_KEY');
 const fireworks = createOpenAICompatible('Fireworks AI', 'https://api.fireworks.ai/inference/v1', 'FIREWORKS_API_KEY');

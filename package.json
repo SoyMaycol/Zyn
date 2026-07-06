@@ -32,7 +32,7 @@
   "scripts": {
     "start": "node zyn.js",
     "dev": "node zyn.js",
-    "check": "node --check zyn.js && node --check src/cli/runtime.js && node --check src/agent.js"
+    "check": "node scripts/check-syntax.js"
   },
   "dependencies": {
     "axios": "^1.7.9",

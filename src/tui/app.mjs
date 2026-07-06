@@ -21,7 +21,7 @@ const {
   DEFAULT_MODEL_KEY,
   MODELS,
 } = require('../config');
-const { normalizeLanguage } = require('../i18n');
+const { normalizeLanguage, t } = require('../i18n');
 
 const h = React.createElement;
 function getTuiLang() {
