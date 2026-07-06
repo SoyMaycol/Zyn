@@ -25,7 +25,7 @@
   ],
   "bin": {
     "zyn": "./zyn.js",
-    "Zyn": "./zyn.js"
+    "zyn-ai": "./zyn.js"
   },
   "type": "commonjs",
   "main": "./src/agent.js",
