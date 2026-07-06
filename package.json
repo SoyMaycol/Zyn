@@ -1,27 +1,72 @@
 {
-  "name": "zyn-rgb",
-  "version": "1.0.0",
-  "description": "RGB neon theme plugin for Zyn Agent",
+  "name": "zyn-ai",
+  "version": "1.5.1",
+  "description": "Production-ready AI agent for CLI and TUI with real tool execution, 28+ providers, 217+ models, memory, and automation",
   "author": "SoyMaycol",
-  "license": "MIT",
-  "main": "src/index.js",
   "keywords": [
-    "zyn",
-    "plugin",
-    "theme",
-    "rgb",
-    "neon",
-    "terminal"
+    "ai-agent",
+    "cli-ai",
+    "terminal-ai",
+    "automation-agent",
+    "developer-tools",
+    "ai-cli",
+    "nodejs-cli",
+    "productivity-tool",
+    "local-ai-agent",
+    "command-line-ai",
+    "tui-agent",
+    "embeddable-agent",
+    "ai-terminal",
+    "llm-agent",
+    "openai",
+    "claude",
+    "gemini",
+    "zyn"
   ],
+  "bin": {
+    "zyn": "./zyn.js",
+    "zyn-ai": "./zyn.js"
+  },
+  "type": "commonjs",
+  "main": "./src/agent.js",
+  "scripts": {
+    "start": "node zyn.js",
+    "dev": "node zyn.js",
+    "check": "node scripts/check-syntax.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "bcryptjs": "^2.4.3",
+    "cheerio": "^1.2.0",
+    "express": "^4.19.2",
+    "express-session": "^1.18.1",
+    "ink": "^6.8.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "session-file-store": "^1.5.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SoyMaycol/Zyn"
+  },
+  "homepage": "https://github.com/SoyMaycol/Zyn#readme",
+  "bugs": {
+    "url": "https://github.com/SoyMaycol/Zyn/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
   "files": [
-    "src/index.js",
-    "manifest.json",
-    "src/rgb-theme.json",
-    "README.md"
+    "zyn.js",
+    "src/",
+    "data/",
+    "README.md",
+    "LICENSE"
   ],
-  "zyn": {
-    "type": "theme",
-    "name": "rgb",
-    "themeFile": "src/rgb-theme.json"
-  }
-} 
+  "exports": {
+    ".": "./src/agent.js",
+    "./agent": "./src/agent.js"
+  },
+  "preferGlobal": true
+}
