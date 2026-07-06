@@ -98,8 +98,8 @@ async function runSinglePrompt(prompt, options = {}) {
 
     try {
       const fs = require('fs');
-      const path = require('path');
-      const mcpConfigPath = path.join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+      const { MCP_CONFIG_FILE } = require('../config');
+      const mcpConfigPath = MCP_CONFIG_FILE;
       const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
       state.mcpServers = mcpConfig.servers || {};
     } catch {
@@ -140,8 +140,8 @@ async function runInteractiveChatClassic(options = {}) {
 
   try {
     const fs = require('fs');
-    const path = require('path');
-    const mcpConfigPath = path.join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+    const { MCP_CONFIG_FILE } = require('../config');
+    const mcpConfigPath = MCP_CONFIG_FILE;
     const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
     state.mcpServers = mcpConfig.servers || {};
   } catch {

@@ -8,7 +8,7 @@ const bcrypt = require('bcryptjs');
 const store = require('./store');
 const githubApi = require('./githubApi');
 const { runWebAgent } = require('./webAgent');
-const { MODELS, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, listProvidersFromModels, DEFAULT_LANGUAGE } = require('../config');
+const { MODELS, DEFAULT_MODEL_KEY, GEMINI_MODEL_WARNING, listProvidersFromModels, DEFAULT_LANGUAGE, USER_WEB_ROOT } = require('../config');
 
 const app = express();
 const HOST = process.env.HOST || process.env.ZYN_WEB_HOST || '127.0.0.1';
@@ -39,7 +39,7 @@ app.get('/', (req, res) => {
 app.use('/assets', express.static(PUBLIC_DIR, { index: false }));
 app.use(express.static(PUBLIC_DIR, { index: false }));
 // Persistir secreto de sesion en disco
-const SECRET_FILE = path.join(__dirname, 'data', '.session-secret');
+const SECRET_FILE = path.join(USER_WEB_ROOT, '.session-secret');
 let sessionSecret;
 try {
   sessionSecret = fs.readFileSync(SECRET_FILE, 'utf8').trim();
@@ -50,7 +50,7 @@ try {
 }
 
 // Asegurar que el directorio de sesiones existe
-const SESSION_DIR = path.join(__dirname, 'data', 'sessions');
+const SESSION_DIR = path.join(USER_WEB_ROOT, 'sessions');
 fs.mkdirSync(SESSION_DIR, { recursive: true });
 
 app.use(session({

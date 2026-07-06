@@ -277,6 +277,18 @@ MCP tools appear alongside Zyn's built-in tools. The agent can use them automati
 
 ---
 
+
+## User Data Location
+
+Zyn stores runtime data outside the project folder, under the current user's home directory by default:
+
+- Linux/macOS: `~/.zyn/`
+- Windows: `C:\\Users\\<User>\\.zyn\\`
+
+Sessions, transcripts, exports, background tasks, provider/model configuration, MCP servers, plugins, web UI data, session secrets, and OAuth/token files are written there instead of `data/chat` inside the repository. Set `ZYN_DATA_DIR` to override this location.
+
+---
+
 ## Directory Structure
 
 ```
@@ -304,11 +316,7 @@ zyn/
 │   │   ├── sessionStorage.js # Session state, history, memory
 │   │   └── transcriptStorage.js # Transcript logging
 │   └── i18n.js               # English/Spanish translations
-├── data/chat/                # Local session data (not uploaded)
-│   ├── sessions/
-│   ├── transcripts/
-│   ├── exports/
-│   └── providers.json        # Provider API keys
+├── data/                     # Bundled read-only assets (skills/catalog defaults)
 ├── package.json
 └── README.md
 ```

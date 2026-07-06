@@ -9,11 +9,11 @@ function resolveInputPath(inputPath, cwd) {
   }
 
   if (inputPath === '~') {
-    return HOME_DIR || os.homedir() || '/root';
+    return HOME_DIR || os.homedir() || process.cwd();
   }
 
-  if (inputPath.startsWith('~/')) {
-    return path.join(HOME_DIR || os.homedir() || '/root', inputPath.slice(2));
+  if (inputPath.startsWith('~/') || inputPath.startsWith('~\\')) {
+    return path.join(HOME_DIR || os.homedir() || process.cwd(), inputPath.slice(2));
   }
 
   if (path.isAbsolute(inputPath)) {
