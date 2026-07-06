@@ -114,7 +114,7 @@ async function requestModel(messages, state, ui, options = {}) {
             const isToolCall = /"type"\s*:\s*"tool"/.test(trimmed);
             if (isToolCall) {
               const toolMatch = trimmed.match(/"tool"\s*:\s*"([\w-]+)"/);
-              const prepLabel = turnLanguage === 'es' ? 'Preparando' : 'Preparing';
+              const prepLabel = state.language === 'es' ? 'Preparando' : 'Preparing';
               if (toolMatch) {
                 const toolName = toolMatch[1];
                 if (!state.__toolNameShown) {
