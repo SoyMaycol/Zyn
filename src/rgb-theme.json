@@ -1,0 +1,39 @@
+{
+  "name": "rgb",
+  "label": "RGB Neon",
+  "palette": {
+    "bg": "#05060a",
+    "surface": "#0b0f1a",
+    "surfaceHi": "#121827",
+    "text": "#f8fafc",
+    "textDim": "#d8e1ee",
+    "textMuted": "#94a3b8",
+    "textGhost": "#64748b",
+    "textInvis": "#334155",
+    "accent": "#ff004c",
+    "accentSoft": "#00e5ff",
+    "accentDim": "#7c3aed",
+    "green": "#00ff9d",
+    "greenDim": "#00b36b",
+    "red": "#ff335f",
+    "redDim": "#b91c1c",
+    "amber": "#ffd166",
+    "amberDim": "#b7791f",
+    "purple": "#c084fc",
+    "purpleDim": "#7c3aed",
+    "blue": "#4ea1ff",
+    "blueDim": "#1d4ed8",
+    "cyan": "#00e5ff",
+    "cyanDim": "#0891b2",
+    "border": "#1f2a44",
+    "borderLight": "#2b3b5e",
+    "codeBg": "#050814",
+    "borderStyle": "double",
+    "spinMs": 75
+  },
+  "preview": {
+    "primary": "#ff004c",
+    "secondary": "#00e5ff",
+    "tertiary": "#00ff9d"
+  }
+}
