@@ -1,6 +1,6 @@
 {
   "name": "zyn-ai",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Production-ready AI agent for CLI and TUI with real tool execution, 28+ providers, 217+ models, memory, and automation",
   "author": "Maycol",
   "keywords": [
