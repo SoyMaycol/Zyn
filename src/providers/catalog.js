@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { MODELS_FILE, PROVIDERS_FILE, SUPPORTED_MODEL_PROVIDERS } = require('../config');
+const { BUNDLED_MODELS_FILE, BUNDLED_PROVIDERS_FILE, MODELS_FILE, PROVIDERS_FILE, SUPPORTED_MODEL_PROVIDERS } = require('../config');
 
 const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
@@ -81,7 +81,7 @@ async function fetchJson(url, options = {}) {
 }
 
 function loadProviderRegistry() {
-  const raw = readJsonFile(PROVIDERS_FILE);
+  const raw = readJsonFile(PROVIDERS_FILE) || readJsonFile(BUNDLED_PROVIDERS_FILE);
   if (!raw || typeof raw !== 'object') {
     return { providers: {}, customModels: {} };
   }
@@ -96,7 +96,7 @@ function saveProviderRegistry(registry) {
 }
 
 function loadExternalModels() {
-  const raw = readJsonFile(MODELS_FILE);
+  const raw = readJsonFile(MODELS_FILE) || readJsonFile(BUNDLED_MODELS_FILE);
   if (!raw) return {};
   if (Array.isArray(raw)) {
     const output = {};

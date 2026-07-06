@@ -1305,7 +1305,8 @@ async function runModelsFlow(state, deps) {
     const { execSync } = require('child_process');
     const fs = require('fs');
     const path = require('path');
-    const pluginsDir = path.join(process.cwd(), 'data', 'plugins');
+    const { PLUGINS_DIR } = require('../config');
+    const pluginsDir = PLUGINS_DIR;
     const [sub, ...rest] = (args || '').split(' ').filter(Boolean);
 
     if (!sub || sub === 'list') {
@@ -1443,7 +1444,8 @@ async function runModelsFlow(state, deps) {
   if (commandName === 'mcp') {
     const fs = require('fs');
     const path = require('path');
-    const mcpConfigPath = path.join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+    const { MCP_CONFIG_FILE } = require('../config');
+    const mcpConfigPath = MCP_CONFIG_FILE;
     const [sub, ...rest] = (args || '').split(' ').filter(Boolean);
 
     function loadMcpConfig() {

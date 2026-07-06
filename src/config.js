@@ -6,9 +6,16 @@ const { normalizeLanguage } = require('./i18n');
 const APP_NAME = 'Zyn';
 const APP_ROOT = path.resolve(__dirname, '..');
 const DATA_ROOT = path.join(APP_ROOT, 'data');
-const HOME_DIR = os.homedir() || '/root';
+const HOME_DIR = os.homedir() || process.env.USERPROFILE || process.env.HOME || process.cwd();
+const USER_DATA_ROOT = path.resolve(process.env.ZYN_DATA_DIR || path.join(HOME_DIR, '.zyn'));
+const USER_CONFIG_ROOT = path.join(USER_DATA_ROOT, 'config');
+const USER_WEB_ROOT = path.join(USER_DATA_ROOT, 'web');
+const LEGACY_SESSION_ROOT = path.join(DATA_ROOT, 'chat');
+const LEGACY_PLUGINS_DIR = path.join(DATA_ROOT, 'plugins');
+const LEGACY_WEB_ROOT = path.join(APP_ROOT, 'src', 'web', 'data');
 
-const MODELS_FILE = path.join(DATA_ROOT, 'models.json');
+const BUNDLED_MODELS_FILE = path.join(DATA_ROOT, 'models.json');
+const MODELS_FILE = path.join(USER_CONFIG_ROOT, 'models.json');
 
 const BUILTIN_MODELS = {
   // ===== Zen (Default - Free) =====
@@ -531,8 +538,32 @@ function readJsonFile(filePath) {
   }
 }
 
+function copyIfExists(source, target) {
+  try {
+    if (!source || !target) return;
+    const resolvedSource = path.resolve(source);
+    const resolvedTarget = path.resolve(target);
+    if (resolvedSource === resolvedTarget || !fs.existsSync(resolvedSource) || fs.existsSync(resolvedTarget)) return;
+    fs.mkdirSync(path.dirname(resolvedTarget), { recursive: true });
+    fs.cpSync(resolvedSource, resolvedTarget, { recursive: true, errorOnExist: false, force: false });
+  } catch {
+    // Best-effort migration only; normal reads/writes will still use USER_DATA_ROOT.
+  }
+}
+
+function migrateLegacyUserData() {
+  copyIfExists(LEGACY_SESSION_ROOT, SESSION_ROOT);
+  copyIfExists(LEGACY_PLUGINS_DIR, PLUGINS_DIR);
+  copyIfExists(LEGACY_WEB_ROOT, USER_WEB_ROOT);
+  copyIfExists(path.join(LEGACY_SESSION_ROOT, 'mcp-servers.json'), MCP_CONFIG_FILE);
+  copyIfExists(path.join(DATA_ROOT, 'providers.json'), PROVIDERS_FILE);
+  copyIfExists(path.join(DATA_ROOT, 'models.json'), MODELS_FILE);
+}
+
+copyIfExists(BUNDLED_MODELS_FILE, MODELS_FILE);
+
 function loadExternalModels() {
-  const raw = readJsonFile(MODELS_FILE);
+  const raw = readJsonFile(MODELS_FILE) || readJsonFile(BUNDLED_MODELS_FILE);
   if (!raw) return {};
 
   if (Array.isArray(raw)) {
@@ -627,7 +658,7 @@ function getSetting(state, key) {
   return DEFAULT_SETTINGS[key];
 }
 
-const SESSION_ROOT = path.join(DATA_ROOT, 'chat');
+const SESSION_ROOT = path.join(USER_DATA_ROOT, 'chat');
 const SESSIONS_DIR = path.join(SESSION_ROOT, 'sessions');
 const CURRENT_SESSION_FILE = path.join(SESSION_ROOT, 'current-session.json');
 const PERSISTENT_CONFIG_FILE = path.join(SESSION_ROOT, 'persistent-config.json');
@@ -635,12 +666,16 @@ const TRANSCRIPTS_DIR = path.join(SESSION_ROOT, 'transcripts');
 const EXPORTS_DIR = path.join(SESSION_ROOT, 'exports');
 const BACKGROUND_DIR = path.join(SESSION_ROOT, 'background');
 const THINK_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const USER_DATA_ROOT = path.join(os.homedir(), '.zyn');
 const TASKS_FILE = path.join(USER_DATA_ROOT, 'tasks.json');
+const PLUGINS_DIR = path.join(USER_DATA_ROOT, 'plugins');
 const GMAIL_CLIENT_ID = '871944347395-rnpsjsqgbnvlfb05hqk4dc9283olgnh2.apps.googleusercontent.com';
 const GMAIL_CLIENT_SECRET = process.env.ZYN_GMAIL_CLIENT_SECRET || '';
 const GMAIL_AUTH_FILE = path.join(USER_DATA_ROOT, 'gmail-auth.json');
-const PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
+const BUNDLED_PROVIDERS_FILE = path.join(DATA_ROOT, 'providers.json');
+const PROVIDERS_FILE = path.join(USER_CONFIG_ROOT, 'providers.json');
+const MCP_CONFIG_FILE = path.join(USER_CONFIG_ROOT, 'mcp-servers.json');
+
+migrateLegacyUserData();
 
 function listProvidersFromModels(models = MODELS) {
   const grouped = new Map();
@@ -669,6 +704,11 @@ module.exports = {
   AUTO_COMPACT_THRESHOLD,
   BACKGROUND_DIR,
   BUILTIN_MODELS,
+  BUNDLED_MODELS_FILE,
+  BUNDLED_PROVIDERS_FILE,
+  LEGACY_PLUGINS_DIR,
+  LEGACY_SESSION_ROOT,
+  LEGACY_WEB_ROOT,
   CURRENT_SESSION_FILE,
   PERSISTENT_CONFIG_FILE,
   DATA_ROOT,
@@ -691,6 +731,8 @@ module.exports = {
   MAX_TOOL_STEPS,
   MODELS,
   MODELS_FILE,
+  MCP_CONFIG_FILE,
+  PLUGINS_DIR,
   PROVIDERS_FILE,
   SUPPORTED_MODEL_PROVIDERS,
   PROVIDER_TIMEOUT_MAX_ATTEMPTS,
@@ -701,11 +743,14 @@ module.exports = {
   TASKS_FILE,
   THINK_FRAMES,
   TRANSCRIPTS_DIR,
+  USER_CONFIG_ROOT,
   USER_DATA_ROOT,
+  USER_WEB_ROOT,
   countTokens,
   estimateContextTokens,
   getContextLimit,
   getSetting,
   listProvidersFromModels,
+  migrateLegacyUserData,
   stripBase64Images,
 };

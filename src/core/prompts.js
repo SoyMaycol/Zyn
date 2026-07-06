@@ -309,7 +309,8 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     (() => {
       let mcpServersSection = '';
       try {
-        const mcpConfigPath = require('path').join(process.cwd(), 'data', 'chat', 'mcp-servers.json');
+        const { MCP_CONFIG_FILE } = require('../config');
+        const mcpConfigPath = MCP_CONFIG_FILE;
         const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
         const connectedServers = Object.entries(mcpConfig.servers || {}).filter(([, srv]) => srv.connected);
         if (connectedServers.length > 0) {

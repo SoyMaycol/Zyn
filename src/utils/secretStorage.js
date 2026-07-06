@@ -1,9 +1,8 @@
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
+const { USER_DATA_ROOT } = require('../config');
 
-const HOME_DIR = os.homedir() || '/root';
-const DATA_ROOT = path.join(HOME_DIR, '.zyn');
+const DATA_ROOT = USER_DATA_ROOT;
 const GIT_SECRETS_FILE = path.join(DATA_ROOT, 'git-secrets.json');
 
 function readJson(filePath) {

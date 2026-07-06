@@ -1,9 +1,10 @@
 const fs = require('fs');
-const path = require('path');
 const http = require('http');
 const { spawn } = require('child_process');
 
-const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'data', 'chat', 'mcp-servers.json');
+const { MCP_CONFIG_FILE } = require('../config');
+
+const MCP_CONFIG_PATH = MCP_CONFIG_FILE;
 
 const _stdioProcesses = new Map();
 
