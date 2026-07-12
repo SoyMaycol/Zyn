@@ -32,7 +32,8 @@ function getModelWarning(key) {
 
 function printModelChanged(key) {
   const warning = getModelWarning(key);
-  console.log(`Model: ${MODELS[key].label}`);
+  const model = MODELS[key];
+  console.log(`Model: ${model?.label ?? key}`);
   if (warning) console.log(`Warning: ${warning}`);
 }
 
@@ -77,6 +78,7 @@ const SLASH_COMMANDS = [
   { name: 'cwd', desc: 'working directory', descEs: 'directorio de trabajo' },
   { name: 'compact', desc: 'compact memory', descEs: 'compactar memoria' },
   { name: 'theme', desc: 'UI theme', descEs: 'tema de la UI' },
+  { name: 'thinking', desc: 'toggle thinking display (on|off)', descEs: 'mostrar/ocultar pensamiento (on|off)' },
   { name: 'plugins', desc: 'manage plugins (install, uninstall, list, search)', descEs: 'gestionar plugins (install, uninstall, list, search)' },
   { name: 'mcp', desc: 'MCP servers (connect, disconnect, list, tools)', descEs: 'servidores MCP (connect, disconnect, list, tools)' },
   { name: 'settings', desc: 'configure limits, retries, timeouts', descEs: 'configurar límites, reintentos, tiempos de espera' },
@@ -103,84 +105,91 @@ function printHelp(state = {}) {
   const g = (value) => paint(value, 'green');
   const w = (value) => paint(value, 'white');
   const providers = listProvidersFromModels(MODELS);
-  const line = '─'.repeat(52);
+  const cols = Math.min(Math.max((process.stdout.columns || 80) - 4, 40), 120);
+  const line = '─'.repeat(cols);
+
+  const sec = (title) => { console.log(''); console.log(`  ${g(title)}`); };
+  const cmd = (usage, desc) => {
+    const pad = Math.max(4, cols - usage.length - desc.length - 6);
+    const dots = pad > 2 ? ' '.repeat(pad - 2) : '  ';
+    console.log(`    ${b(usage)}${dots}${m(desc)}`);
+  };
 
   console.log('');
-  console.log(`  ${paint('◆', 'cyan')} ${paint('Zyn', 'cyan')} ${m('v1.4.1')} — ${m(t(lang, 'helpTitle'))}`);
+  console.log(`  ${paint('◆', 'cyan')} ${paint('Zyn', 'cyan')} — ${m(t(lang, 'helpTitle'))}`);
   console.log(`  ${m(line)}`);
 
-  console.log('');
-  console.log(`  ${m(t(lang, 'usage'))}`);
-  console.log(`    ${w('zyn')}                ${m(t(lang, 'interactiveMode'))}`);
-  console.log(`    ${w("zyn 'question'")}     ${m(t(lang, 'singlePrompt'))}`);
-  console.log(`    ${w('zyn --new')}          ${m(t(lang, 'newSession'))}`);
-  console.log(`    ${w('zyn --resume ID')}    ${m(t(lang, 'resumeSession'))}`);
+  sec(t(lang, 'usage'));
+  cmd('zyn', m(t(lang, 'interactiveMode')));
+  cmd("zyn 'question'", m(t(lang, 'singlePrompt')));
+  cmd('zyn --new', m(t(lang, 'newSession')));
+  cmd('zyn --resume ID', m(t(lang, 'resumeSession')));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpSessions'))}`);
-  console.log(`    ${b('/help')}                       ${m(t(lang, 'helpShowHelp'))}`);
-  console.log(`    ${b('/status')}                     ${m(t(lang, 'helpStatusInfo'))}`);
-  console.log(`    ${b('/history')}                    ${m(t(lang, 'helpRecentActions'))}`);
-  console.log(`    ${b('/memory')}                     ${m(t(lang, 'helpMemorySummary'))}`);
-  console.log(`    ${b('/session')}                    ${m(t(lang, 'helpCurrentSession'))}`);
-  console.log(`    ${b('/sessions')}                   ${m(t(lang, 'helpListSessions'))}`);
-  console.log(`    ${b('/new')}                        ${m(t(lang, 'helpCreateSession'))}`);
-  console.log(`    ${b('/resume <ID>')}                ${m(t(lang, 'helpResumeSession'))}`);
-  console.log(`    ${b('/title <text>')}               ${m(t(lang, 'helpRenameSession'))}`);
+  sec(t(lang, 'helpSessions'));
+  cmd('/help', t(lang, 'helpShowHelp'));
+  cmd('/status', t(lang, 'helpStatusInfo'));
+  cmd('/history', t(lang, 'helpRecentActions'));
+  cmd('/memory', t(lang, 'helpMemorySummary'));
+  cmd('/session', t(lang, 'helpCurrentSession'));
+  cmd('/sessions', t(lang, 'helpListSessions'));
+  cmd('/new', t(lang, 'helpCreateSession'));
+  cmd('/resume <ID>', t(lang, 'helpResumeSession'));
+  cmd('/title <text>', t(lang, 'helpRenameSession'));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpConfiguration'))}`);
-  console.log(`    ${b('/models')}                     ${m(t(lang, 'helpModelPicker'))}`);
-  console.log(`    ${b('/providers')}                  ${m(t(lang, 'helpProviderPicker'))}`);
-  console.log(`    ${b('/theme')}                      ${m(t(lang, 'helpThemePicker'))}`);
-  console.log(`    ${b('/theme <name>')}               ${m(t(lang, 'helpThemeSwitch'))}`);
-  console.log(`    ${b('/lang <en|es>')}               ${m(t(lang, 'helpChangeLang'))}`);
-  console.log(`    ${b('/auto on|off')}                ${m(t(lang, 'helpAutoApprove'))}`);
-  console.log(`    ${b('/persona set <text>')}         ${m(t(lang, 'helpSetPersona'))}`);
-  console.log(`    ${b('/config show')}                ${m(t(lang, 'helpShowConfig'))}`);
-  console.log(`    ${b('/cwd <path>')}                 ${m(t(lang, 'helpChangeCwd'))}`);
+  sec(t(lang, 'helpConfiguration'));
+  cmd('/models', t(lang, 'helpModelPicker'));
+  cmd('/providers', t(lang, 'helpProviderPicker'));
+  cmd('/theme', t(lang, 'helpThemePicker'));
+  cmd('/theme <name>', t(lang, 'helpThemeSwitch'));
+  cmd('/thinking on|off', m(t(lang, 'thinkingOn')) + ' / ' + m(t(lang, 'thinkingOff')));
+  cmd('/lang <en|es>', t(lang, 'helpChangeLang'));
+  cmd('/auto on|off', t(lang, 'helpAutoApprove'));
+  cmd('/persona set <text>', t(lang, 'helpSetPersona'));
+  cmd('/config show', t(lang, 'helpShowConfig'));
+  cmd('/cwd <path>', t(lang, 'helpChangeCwd'));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpPlugins'))}`);
-  console.log(`    ${b('/plugins')}                    ${m(t(lang, 'helpOpenPlugins'))}`);
-  console.log(`    ${b('/plugins list')}               ${m(t(lang, 'helpListPlugins'))}`);
-  console.log(`    ${b('/plugins install <name>')}     ${m(t(lang, 'helpInstallPlugin'))}`);
-  console.log(`    ${b('/plugins uninstall <name>')}   ${m(t(lang, 'helpRemovePlugin'))}`);
-  console.log(`    ${b('/plugins search <query>')}     ${m(t(lang, 'helpSearchPlugins'))}`);
+  sec(t(lang, 'helpPlugins'));
+  cmd('/plugins', t(lang, 'helpOpenPlugins'));
+  cmd('/plugins list', t(lang, 'helpListPlugins'));
+  cmd('/plugins install <name>', t(lang, 'helpInstallPlugin'));
+  cmd('/plugins uninstall <name>', t(lang, 'helpRemovePlugin'));
+  cmd('/plugins search <query>', t(lang, 'helpSearchPlugins'));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpMcpServers'))}`);
-  console.log(`    ${b('/mcp')}                        ${m(t(lang, 'helpOpenMcp'))}`);
-  console.log(`    ${b('/mcp connect <json>')}       ${m(t(lang, 'helpConnectMcp'))}`);
-  console.log(`    ${b('/mcp disconnect <name>')}      ${m(t(lang, 'helpDisconnectMcp'))}`);
-  console.log(`    ${b('/mcp list')}                   ${m(t(lang, 'helpListMcp'))}`);
-  console.log(`    ${b('/mcp tools <name>')}           ${m(t(lang, 'helpListMcpTools'))}`);
+  sec(t(lang, 'helpMcpServers'));
+  cmd('/mcp', t(lang, 'helpOpenMcp'));
+  cmd('/mcp connect <json>', t(lang, 'helpConnectMcp'));
+  cmd('/mcp disconnect <name>', t(lang, 'helpDisconnectMcp'));
+  cmd('/mcp list', t(lang, 'helpListMcp'));
+  cmd('/mcp tools <name>', t(lang, 'helpListMcpTools'));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpToolsGit'))}`);
-  console.log(`    ${b('/git set <provider> <token>')} ${m(t(lang, 'helpGitConfig'))}`);
-  console.log(`    ${b('/git list')}                   ${m(t(lang, 'helpGitList'))}`);
-  console.log(`    ${b('/git remove <provider>')}      ${m(t(lang, 'helpGitRemove'))}`);
-  console.log(`    ${b('/gmail connect')}              ${m(t(lang, 'helpGmailConnect'))}`);
-  console.log(`    ${b('/cwd')}                        ${m(t(lang, 'helpShowCwd'))}`);
+  sec(t(lang, 'helpToolsGit'));
+  cmd('/git set <provider> <token>', t(lang, 'helpGitConfig'));
+  cmd('/git list', t(lang, 'helpGitList'));
+  cmd('/git remove <provider>', t(lang, 'helpGitRemove'));
+  cmd('/gmail connect', t(lang, 'helpGmailConnect'));
+  cmd('/cwd', t(lang, 'helpShowCwd'));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpExport'))}`);
-  console.log(`    ${b('/bg')}                         ${m(t(lang, 'helpDetachBg'))}`);
-  console.log(`    ${b('/transcript')}                 ${m(t(lang, 'helpTranscript'))}`);
-  console.log(`    ${b('/export')}                     ${m(t(lang, 'helpExport'))}`);
+  sec(t(lang, 'helpExport'));
+  cmd('/bg', t(lang, 'helpDetachBg'));
+  cmd('/transcript', t(lang, 'helpTranscript'));
+  cmd('/export', t(lang, 'helpExport'));
 
-  console.log('');
-  console.log(`  ${g(t(lang, 'helpControl'))}`);
-  console.log(`    ${b('/stop')}                       ${m(t(lang, 'helpStop'))} ${m(t(lang, 'helpEscWorks'))}`);
-  console.log(`    ${b('/reset')}                      ${m(t(lang, 'helpResetContext'))}`);
-  console.log(`    ${b('/exit')}                       ${m(t(lang, 'helpExit'))} ${m(t(lang, 'helpCtrlD'))}`);
+  sec(t(lang, 'helpControl'));
+  cmd('/stop', `${t(lang, 'helpStop')} ${m(t(lang, 'helpEscWorks'))}`);
+  cmd('/reset', t(lang, 'helpResetContext'));
+  cmd('/exit', `${t(lang, 'helpExit')} ${m(t(lang, 'helpCtrlD'))}`);
 
   console.log('');
   console.log(`  ${m(line)}`);
   console.log(`  ${m(t(lang, 'providers'))}`);
   for (const provider of providers) {
-    console.log(`    ${b(provider.key)}  ${provider.models.map(model => model.label).join(', ')}`);
+    const names = provider.models.map(model => model.label).join(', ');
+    const wrap = cols - 6;
+    if (names.length <= wrap) {
+      console.log(`    ${b(provider.key)}  ${m(names)}`);
+    } else {
+      console.log(`    ${b(provider.key)}  ${m(names.slice(0, wrap - 3) + '...')}`);
+    }
   }
   console.log('');
 }
@@ -308,6 +317,23 @@ async function runProviderSelector(state, deps) {
 
 async function runProviderModelsSelector(state, deps, providerKey) {
   const es = state.language === 'es';
+
+  if (providerKey === 'zyncloud') {
+    try {
+      const { syncProvider } = require('../providers/catalog');
+      const models = await syncProvider(providerKey);
+      for (const k of Object.keys(MODELS)) {
+        if (MODELS[k]?.provider === providerKey) delete MODELS[k];
+      }
+      for (const m of models) MODELS[m.key] = m;
+      const current = state.activeModel || DEFAULT_MODEL_KEY;
+      const currentIsZyn = MODELS[current]?.provider === providerKey;
+      if (!currentIsZyn && models.length > 0) {
+        state.activeModel = models[0].key;
+      }
+    } catch {}
+  }
+
   const providerGroup = listProvidersFromModels(MODELS).find(p => p.key === providerKey);
   const items = (providerGroup?.models || []).map(m => ({
     key: m.key,
@@ -678,6 +704,9 @@ async function handleLocalCommand(input, state, deps) {
         ['max-file-lines',       'maxFileLines',         'settingMaxFileLines'],
         ['keep-recent',          'keepRecentMessages',   'settingKeepRecent'],
         ['compact-threshold',    'autoCompactThreshold', 'settingCompactThreshold'],
+        ['auto-compact',         'autoCompactEnabled',   'settingAutoCompact'],
+        ['compact-min-msgs',     'compactMinMessages',   'settingCompactMinMessages'],
+        ['max-thinking-lines',   'maxThinkingLines',     'settingMaxThinkingLines'],
         ['provider-attempts',    'providerMaxAttempts',  'settingProviderAttempts'],
         ['retry-delay',          'providerRetryDelayMs', 'settingRetryDelay'],
         ['max-tokens',           'maxTokens',            'settingMaxTokens'],
@@ -714,6 +743,10 @@ async function handleLocalCommand(input, state, deps) {
       'max-file-lines':       { key: 'maxFileLines',         min: 100,    max: 100000,  isFloat: false },
       'keep-recent':          { key: 'keepRecentMessages',   min: 5,      max: 500,     isFloat: false },
       'compact-threshold':    { key: 'autoCompactThreshold', min: 0.1,    max: 1.0,     isFloat: true },
+      'auto-compact':         { key: 'autoCompactEnabled',   min: 0,      max: 1,       isFloat: false },
+      'compact-min-msgs':     { key: 'compactMinMessages',   min: 1,      max: 100,     isFloat: false },
+      'max-thinking-lines':   { key: 'maxThinkingLines',     min: 3,      max: 200,     isFloat: false },
+      'show-thinking':        { key: 'showThinking',          min: 0,      max: 1,       isFloat: false },
       'provider-attempts':    { key: 'providerMaxAttempts',  min: 1,      max: 20,      isFloat: false },
       'retry-delay':          { key: 'providerRetryDelayMs', min: 500,    max: 30000,   isFloat: false },
       'max-tokens':           { key: 'maxTokens',            min: 1024,   max: 200000,  isFloat: false },
@@ -784,6 +817,7 @@ function isProviderConfigured(providerKey) {
     case 'novita': return Boolean(config?.apiKey || hasEnv('NOVITA_API_KEY'));
     case 'chutes': return Boolean(config?.apiKey || hasEnv('CHUTES_API_KEY'));
     case 'inference': return Boolean(config?.apiKey || hasEnv('INFERENCE_API_KEY'));
+    case 'zyncloud': return true;
     default: return true;
   }
 }
@@ -871,6 +905,9 @@ async function configureProviderInteractive(state, deps, providerKey) {
     case 'inference':
       fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
       break;
+    case 'zyncloud':
+      fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
+      break;
     default:
       fields.push({ name: 'apiKey', hidden: true, prompt: `API Key (${skip})` });
       break;
@@ -906,6 +943,11 @@ async function runProvidersFlow(state, deps) {
     try {
       const syncedModels = await syncProvider(provider);
       for (const m of syncedModels) MODELS[m.key] = m;
+      const current = state.activeModel || DEFAULT_MODEL_KEY;
+      const currentIsThis = MODELS[current]?.provider === provider;
+      if (!currentIsThis && syncedModels.length > 0) {
+        state.activeModel = syncedModels[0].key;
+      }
     } catch (_) {
       // sync may fail silently; user can /provider sync later
     }
@@ -1242,16 +1284,58 @@ async function runModelsFlow(state, deps) {
       console.log(t(state.language, 'noHistoryCompact'));
       return true;
     }
+    const lang = state.language || 'en';
     const before = state.history.length;
     const beforeChars = state.history.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-    truncateHistory(state);
-    await saveState(state);
-    const after = state.history.length;
-    if (before === after) {
-      console.log(t(state.language, 'alreadyCompact', { count: before, chars: beforeChars }));
-    } else {
+    try {
+      const { autoCompact } = require('../core/agent');
+      const compactUi = {
+        logEvent: (st, kind, title, detail) => {
+          const sym = kind === 'ok' ? '✓' : kind === 'warn' ? '⚠' : kind === 'error' ? '✗' : '·';
+          console.log(`  ${sym} ${title}${detail ? ': ' + detail : ''}`);
+        },
+        pushAction: () => {},
+        startThinkingIndicator: (st, label) => { console.log(`  ○ ${label}`); return () => {}; },
+        beginThinkingStream: () => {},
+        writeThinkingDelta: () => {},
+        endThinkingStream: () => {},
+        beginAssistantStream: () => {},
+        writeAssistantDelta: () => {},
+        endAssistantStream: () => {},
+        setTokenUsage: () => {},
+        updateLastEventTitle: () => {},
+      };
+      await autoCompact(state, compactUi, { force: true });
+      await saveState(state);
+      const after = state.history.length;
+      if (after === 0 && state.memorySummary) {
+        console.log(t(state.language, 'compacted', { before, after }));
+      }
+    } catch (err) {
+      console.log(`  ${t(lang, 'compactionError')}: ${err.message}`);
+      truncateHistory(state);
+      await saveState(state);
+      const after = state.history.length;
       console.log(t(state.language, 'compacted', { before, after }));
     }
+    return true;
+  }
+
+  if (commandName === 'thinking') {
+    const lang = state.language || 'en';
+    const on = args === 'on';
+    const off = args === 'off';
+    if (!on && !off) {
+      console.log(t(lang, `thinking${state.settings?.showThinking ? 'On' : 'Off'}`));
+      console.log('  /thinking on   ' + t(lang, 'thinkingOn'));
+      console.log('  /thinking off  ' + t(lang, 'thinkingOff'));
+      return true;
+    }
+    state.settings = state.settings || {};
+    state.settings.showThinking = on ? 1 : 0;
+    if (state.settings.showThinking !== 1) delete state.settings.showThinking;
+    await saveState(state);
+    console.log(t(lang, on ? 'thinkingOn' : 'thinkingOff'));
     return true;
   }
 
@@ -1310,12 +1394,13 @@ async function runModelsFlow(state, deps) {
     const [sub, ...rest] = (args || '').split(' ').filter(Boolean);
 
     if (!sub || sub === 'list') {
-      if (!fs.existsSync(pluginsDir)) {
+      const nmDir = path.join(pluginsDir, 'node_modules');
+      if (!fs.existsSync(nmDir)) {
         console.log(t(state.language, 'pluginsNone'));
         return true;
       }
-      const dirs = fs.readdirSync(pluginsDir).filter(d => {
-        try { return fs.statSync(path.join(pluginsDir, d)).isDirectory(); }
+      const dirs = fs.readdirSync(nmDir).filter(d => {
+        try { return fs.statSync(path.join(nmDir, d)).isDirectory() && !d.startsWith('.'); }
         catch { return false; }
       });
       if (dirs.length === 0) {
@@ -1325,7 +1410,7 @@ async function runModelsFlow(state, deps) {
       console.log(t(state.language, 'pluginsInstalled'));
       for (const d of dirs) {
         try {
-          const manifest = JSON.parse(fs.readFileSync(path.join(pluginsDir, d, 'manifest.json'), 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync(path.join(nmDir, d, 'manifest.json'), 'utf8'));
           console.log(`  ${d} v${manifest.version || '?'} — ${manifest.description || t(state.language, 'pluginsNoDescription')} [${manifest.type || 'unknown'}]`);
         } catch {
           console.log(`  ${d} — ${t(state.language, 'pluginsNoManifest')}`);
@@ -1379,7 +1464,8 @@ async function runModelsFlow(state, deps) {
             console.log('  ' + t(state.language, 'pluginsNoManifestNote'));
           }
         } else {
-          execSync(`npm install --prefix "${pluginsDir}" ${name}`, { stdio: 'pipe', timeout: 60000 });
+          const safeName = name.replace(/[^a-z0-9@/._-]/gi, '');
+          execSync(`npm install --prefix "${pluginsDir}" ${safeName}`, { stdio: 'pipe', timeout: 60000 });
           console.log('  ' + t(state.language, 'pluginsInstalledSuccess', { name }));
           const manifestPath = path.join(pluginsDir, 'node_modules', name, 'manifest.json');
           if (fs.existsSync(manifestPath)) {
@@ -1394,6 +1480,11 @@ async function runModelsFlow(state, deps) {
       } catch (err) {
         console.log('  ' + t(state.language, 'pluginsInstallFailed', { error: err.message }));
       }
+      try {
+        const { reloadPlugins } = require('../plugins/index');
+        const result = reloadPlugins();
+        console.log(`  ${t(state.language, 'pluginsReloaded', { count: result.loaded })}`);
+      } catch {}
       return true;
     }
 
@@ -1405,11 +1496,17 @@ async function runModelsFlow(state, deps) {
       }
       console.log('  ' + t(state.language, 'pluginsUninstalling', { name }));
       try {
-        execSync(`npm uninstall --prefix "${pluginsDir}" ${name}`, { stdio: 'pipe', timeout: 30000 });
+        const safeName = name.replace(/[^a-z0-9@/._-]/gi, '');
+        execSync(`npm uninstall --prefix "${pluginsDir}" ${safeName}`, { stdio: 'pipe', timeout: 30000 });
         console.log('  ' + t(state.language, 'pluginsRemoved', { name }));
       } catch (err) {
         console.log('  ' + t(state.language, 'pluginsUninstallFailed', { error: err.message }));
       }
+      try {
+        const { reloadPlugins } = require('../plugins/index');
+        const result = reloadPlugins();
+        console.log(`  ${t(state.language, 'pluginsReloaded', { count: result.loaded })}`);
+      } catch {}
       return true;
     }
 
@@ -1421,7 +1518,8 @@ async function runModelsFlow(state, deps) {
       }
       console.log('  ' + t(state.language, 'pluginsSearching', { query }));
       try {
-        const result = execSync(`npm search "zyn-plugin-${query}" --json 2>/dev/null || npm search "${query}" --json 2>/dev/null`, { stdio: 'pipe', timeout: 30000, encoding: 'utf8' });
+        const safeQuery = query.replace(/[^a-z0-9@/._ -]/gi, '');
+        const result = execSync(`npm search "zyn-plugin-${safeQuery}" --json 2>/dev/null || npm search "${safeQuery}" --json 2>/dev/null`, { stdio: 'pipe', timeout: 30000, encoding: 'utf8' });
         const packages = JSON.parse(result).slice(0, 10);
         if (packages.length === 0) {
           console.log('  ' + t(state.language, 'pluginsNoResults'));
@@ -1547,6 +1645,7 @@ async function runModelsFlow(state, deps) {
         if (!disconnectChoice) return true;
         config.servers[disconnectChoice].connected = false;
         saveMcpConfig(config);
+        try { require('../mcp/client').stopStdioServer(disconnectChoice); } catch {}
         console.log('  ' + t(state.language, 'mcpDisconnectedServer', { name: disconnectChoice }));
         return true;
       }
@@ -1721,6 +1820,7 @@ async function runModelsFlow(state, deps) {
       if (config.servers?.[name]) {
         config.servers[name].connected = false;
         saveMcpConfig(config);
+        try { require('../mcp/client').stopStdioServer(name); } catch {}
         console.log('  ' + t(state.language, 'mcpDisconnectedServer', { name }));
       } else {
         console.log('  ' + t(state.language, 'mcpServerNotFound', { name }));
@@ -1734,20 +1834,58 @@ async function runModelsFlow(state, deps) {
         console.log(t(state.language, 'mcpUsageTools'));
         return true;
       }
-      const config = loadMcpConfig();
-      const srv = config.servers?.[name];
-      if (!srv) {
-        console.log('  ' + t(state.language, 'mcpServerNotFound', { name }));
-        return true;
+      const { discoverMcpTools } = require('../mcp/client');
+      try {
+        const tools = await discoverMcpTools(name);
+        console.log('  ' + t(state.language, 'mcpToolsFrom', { name, url: name }));
+        if (tools.length > 0) {
+          for (const tool of tools) {
+            console.log(`    ${tool.name} — ${tool.description || ''}`);
+          }
+        } else {
+          console.log('  ' + t(state.language, 'mcpToolsNote'));
+        }
+      } catch (err) {
+        console.log('  ' + t(state.language, 'mcpToolsError', { error: err.message }));
       }
-      console.log('  ' + t(state.language, 'mcpToolsFrom', { name, url: srv.url }));
-      console.log('  ' + t(state.language, 'mcpToolsNote'));
       return true;
     }
 
     if (sub === 'import') {
       console.log('  ' + t(state.language, 'mcpAutoDiscover'));
-      console.log('  ' + t(state.language, 'mcpAutoDiscoverNote'));
+      const http = require('http');
+      const knownPorts = [3000, 3001, 3100, 4000, 5000, 8000, 8080, 8888, 9000, 9090];
+      const config = loadMcpConfig();
+      config.servers = config.servers || {};
+      let found = 0;
+      for (const port of knownPorts) {
+        try {
+          await new Promise((resolve, reject) => {
+            const req = http.get(`http://localhost:${port}/mcp`, { timeout: 2000 }, res => {
+              let body = '';
+              res.on('data', c => body += c);
+              res.on('end', () => {
+                if (res.statusCode === 200) {
+                  const name = `auto-local-${port}`;
+                  if (!config.servers[name]) {
+                    config.servers[name] = { transport: 'http', url: `http://localhost:${port}/mcp`, connected: true, addedAt: new Date().toISOString(), autoImported: true };
+                    found++;
+                  }
+                }
+                resolve();
+              });
+            });
+            req.on('error', () => resolve());
+            req.setTimeout(2000, () => { req.destroy(); resolve(); });
+          });
+        } catch {}
+      }
+      if (found > 0) {
+        saveMcpConfig(config);
+        console.log(`  ${found} ${t(state.language, 'mcpAutoFound', { count: found })}`);
+      } else {
+        console.log('  ' + (state.language === 'es' ? 'No se encontraron servidores MCP locales' : 'No local MCP servers found'));
+      }
       console.log('  ' + t(state.language, 'mcpAutoDiscoverHint'));
       return true;
     }

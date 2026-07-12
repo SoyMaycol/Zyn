@@ -5,7 +5,7 @@ const { BUNDLED_MODELS_FILE, BUNDLED_PROVIDERS_FILE, MODELS_FILE, PROVIDERS_FILE
 const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
   'Accept': 'application/json',
-  'User-Agent': 'Zyn/1.0',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
 };
 
 const OPENROUTER_HEADERS = {
@@ -689,6 +689,20 @@ async function fetchInferenceModels(config) {
   ));
 }
 
+async function fetchZyncloudModels(config) {
+  const baseUrl = normalizeBaseUrl(config.baseUrl || 'https://zyn.soymaycol.icu/v1');
+  const apiKey = String(config.apiKey || '').trim();
+  const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+  const data = await fetchJson(`${baseUrl}/models`, { headers });
+  const list = Array.isArray(data?.data) ? data.data : [];
+  return list.map(model => {
+    const label = model.id.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return buildModelRecord(
+      'zyncloud', config, model.id, label, { modelId: model.id, contextLength: 128000 },
+    );
+  });
+}
+
 async function fetchReplicateModels(config) {
   const models = [
     { id: 'meta/meta-llama-3.3-70b-instruct', label: 'Llama 3.3 70B', contextLength: 131072 },
@@ -729,6 +743,7 @@ async function fetchProviderModels(providerKey, config = {}) {
   if (key === 'novita') return fetchNovitaModels(config);
   if (key === 'chutes') return fetchChutesModels(config);
   if (key === 'inference') return fetchInferenceModels(config);
+  if (key === 'zyncloud') return fetchZyncloudModels(config);
   if (key === 'replicate') return fetchReplicateModels(config);
   if (config?.baseUrl) return fetchCustomModels(config);
   throw new Error(`Proveedor no soportado: ${key}. No tiene baseUrl configurada. Usa /provider set ${key} baseUrl <url> primero.`);
@@ -754,9 +769,10 @@ function mergeProviderModels(providerKey, models) {
 
 async function syncProvider(providerKey) {
   const registry = loadProviderRegistry();
-  const config = registry.providers[providerKey];
+  let config = registry.providers[providerKey];
   if (!config) {
-    throw new Error(`Proveedor no configurado: ${providerKey}`);
+    config = { provider: providerKey };
+    registry.providers[providerKey] = config;
   }
   const models = await fetchProviderModels(providerKey, config);
   registry.providers[providerKey] = {
@@ -767,6 +783,16 @@ async function syncProvider(providerKey) {
   };
   saveProviderRegistry(registry);
   mergeProviderModels(providerKey, models);
+
+  if (models.length > 0) {
+    const { MODELS } = require('../config');
+    const syncedKeys = new Set(models.map(m => m.key));
+    const oldKey = global.__zynActiveModel;
+    if (oldKey && MODELS[oldKey]?.provider === providerKey && !syncedKeys.has(oldKey)) {
+      global.__zynActiveModel = models[0].key;
+    }
+  }
+
   return models;
 }
 

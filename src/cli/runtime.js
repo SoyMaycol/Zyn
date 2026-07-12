@@ -105,6 +105,8 @@ async function runSinglePrompt(prompt, options = {}) {
     } catch {
       state.mcpServers = {};
     }
+    try { require('../mcp/client').autoConnectAll(); } catch {}
+    try { require('../plugins/index').loadPlugins(); } catch {}
 
     const { resumed, rehydrated } = loaded;
     if (process.stdout.isTTY) {
@@ -162,6 +164,15 @@ async function runInteractiveChatClassic(options = {}) {
       const failSummary = failed.map(r => `${r.name}: ${r.error || 'unreachable'}`).join(', ');
       logEvent(state, 'warn', `MCP Failed: ${failSummary}`);
       if (process.stdout.isTTY) console.log(`\x1b[33m  \u00b7 MCP\x1b[0m\n    Failed: ${failSummary}`);
+    }
+  } catch {}
+
+  try {
+    const { loadPlugins } = require('../plugins/index');
+    const pluginResult = loadPlugins();
+    if (pluginResult.loaded > 0) {
+      logEvent(state, 'info', `Plugins: ${pluginResult.loaded} loaded, ${pluginResult.tools} tools`);
+      if (process.stdout.isTTY) console.log(`\x1b[32m  \u00b7 Plugins\x1b[0m\n    ${pluginResult.loaded} loaded, ${pluginResult.tools} tools`);
     }
   } catch {}
 
@@ -430,6 +441,11 @@ async function runTest() {
 }
 
 async function main() {
+  const cleanup = () => { try { require('../mcp/client').stopAllStdioServers(); } catch {} };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('exit', cleanup);
+
   const rawArgs = process.argv.slice(2);
 
   if (rawArgs[0] === 'test') {

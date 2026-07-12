@@ -20,6 +20,7 @@ const {
   buildSystemPrompt,
   buildToolErrorMessage,
   buildToolResultMessage,
+  getCompactPrompt,
   parseAgentResponse,
   sanitizeArgsForModel,
   truncateHistory,
@@ -29,7 +30,7 @@ const {
   parseDirectAction,
 } = require('../tools');
 const { appendTranscriptEntry } = require('../utils/transcriptStorage');
-const { estimateHistoryChars, saveState } = require('../utils/sessionStorage');
+const { saveState } = require('../utils/sessionStorage');
 const { normalizeText, shortText } = require('../utils/text');
 const { detectLanguage } = require('../i18n');
 
@@ -72,6 +73,7 @@ async function requestModel(messages, state, ui, options = {}) {
     const stopThinking = ui.startThinkingIndicator(state, attempt === 0 ? label : `${label} (${state.language === 'es' ? 'reintento' : 'retry'})`);
     let answerStarted = false;
     let thinkingStarted = false;
+    let hasFollowedUp = false;
     const controller = new AbortController();
     const onExternalAbort = () => controller.abort();
 
@@ -110,7 +112,21 @@ async function requestModel(messages, state, ui, options = {}) {
           }
           answerChunks += delta;
           const trimmed = answerChunks.trim();
+
+          // Multi-JSON: comment then tool/final in same message
+          if (!streamStarted && trimmed.includes('}\n{')) {
+            const parts = trimmed.split('\n');
+            const lastLine = parts[parts.length - 1].trim();
+            if (lastLine.startsWith('{')) {
+              answerChunks = lastLine;
+              return;
+            }
+          }
+
           if (!streamStarted && trimmed.startsWith('{')) {
+            const isComment = /"type"\s*:\s*"comment"/.test(trimmed);
+            if (isComment) return;
+
             const isToolCall = /"type"\s*:\s*"tool"/.test(trimmed);
             if (isToolCall) {
               const toolMatch = trimmed.match(/"tool"\s*:\s*"([\w-]+)"/);
@@ -170,7 +186,7 @@ async function requestModel(messages, state, ui, options = {}) {
       const rawAnswer = result.answer ?? '';
       const rawThinking = result.thinking || '';
 
-      if (!rawAnswer && rawThinking && result.hasContent === false && !options._isFollowUp) {
+      if (!rawAnswer && rawThinking && result.hasContent === false && !hasFollowedUp) {
         console.error(`[AGENT_DEBUG] Thinking-only response detected (${rawThinking.length} chars). Triggering follow-up.`);
         const lang = state.language || 'es';
         const followUpMessages = [
@@ -180,6 +196,7 @@ async function requestModel(messages, state, ui, options = {}) {
             ? 'Tu razonamiento anterior es correcto. Ahora genera tu respuesta final como JSON: {"type":"final","content":"tu respuesta aqui"} o la tool call correspondiente.'
             : 'Your previous reasoning is correct. Now generate your final answer as JSON: {"type":"final","content":"your answer here"} or the corresponding tool call.' },
         ];
+        hasFollowedUp = true;
         try {
           ui.pushAction(state, 'info', lang === 'es' ? 'Generando respuesta...' : 'Generating answer...');
           const followUp = await chat({
@@ -196,7 +213,7 @@ async function requestModel(messages, state, ui, options = {}) {
                 ui.writeAssistantDelta(state, delta);
               }
             } : null,
-          }, { _isFollowUp: true });
+          });
           if (followUp.answer) {
             if (streamOutput && answerStarted) ui.endAssistantStream(state);
             return { answer: followUp.answer, thinking: rawThinking, usage: followUp.usage || result.usage || null };
@@ -209,6 +226,44 @@ async function requestModel(messages, state, ui, options = {}) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
       if (aborted) throw new Error(state.language === 'es' ? 'Tiempo agotado' : 'Timeout');
+      const is413 = err?.message?.includes('(413)') || err?.message?.includes('Payload Too Large');
+      if (is413 && attempt < maxAttempts - 1) {
+        const lang = state.language || 'es';
+        if (!state.__payloadTruncated) {
+          state.__payloadTruncated = true;
+          console.error(`[AGENT_DEBUG] ${lang === 'es' ? 'Payload demasiado grande, truncando mensajes grandes...' : 'Payload too large, truncating large messages...'}`);
+          const LARGE_THRESHOLD = 1000;
+          const TRUNCATE_TO = 20000;
+          let truncCount = 0;
+          for (let i = 0; i < messages.length; i++) {
+            const m = messages[i];
+            if (typeof m.content === 'string' && m.content.length > LARGE_THRESHOLD) {
+              const prevLen = m.content.length;
+              messages[i] = {
+                ...m,
+                content: `${m.content.slice(0, TRUNCATE_TO)}\n[... ${lang === 'es' ? 'truncado' : 'truncated'} — ${prevLen} chars total, mostrando ${TRUNCATE_TO}. ${lang === 'es' ? 'Lee el archivo en fragmentos pequeños' : 'Read the file in small fragments'}]`,
+              };
+              truncCount++;
+            }
+          }
+          console.error(`[AGENT_DEBUG] ${lang === 'es' ? `Truncados ${truncCount} mensajes` : `Truncated ${truncCount} messages`}`);
+        } else {
+          console.error(`[AGENT_DEBUG] ${lang === 'es' ? 'Payload sigue grande, eliminando ultimo resultado de herramienta...' : 'Payload still too large, removing last tool result...'}`);
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('TOOL_RESULT')) {
+              messages.splice(i, 1);
+              if (i > 0 && messages[i - 1]?.role === 'assistant' && messages[i - 1]?.content?.includes('"type":"tool"')) {
+                messages.splice(i - 1, 1);
+              }
+              break;
+            }
+          }
+        }
+        const backoff = Math.min(retryDelay * Math.pow(2, attempt), 10000);
+        await waitForRetry(backoff, signal);
+        continue;
+      }
       if (!externalAbort && attempt < maxAttempts - 1) {
         const backoff = Math.min(retryDelay * Math.pow(2, attempt), 10000);
         await waitForRetry(backoff, signal);
@@ -225,21 +280,73 @@ async function requestModel(messages, state, ui, options = {}) {
   throw new Error(state.language === 'es' ? 'Proveedor inalcanzable' : 'Provider unreachable');
 }
 
+async function autoCompact(state, ui, options = {}) {
+  const lang = state.language || 'en';
+  if (state.__compacting) return;
+  if (!Array.isArray(state.history) || state.history.length === 0) return;
+
+  if (!options.force) {
+    const autoEnabled = getSetting(state, 'autoCompactEnabled');
+    if (autoEnabled === false || autoEnabled === 0) return;
+
+    const minMsgs = getSetting(state, 'compactMinMessages');
+    if (state.history.length < minMsgs) return;
+
+    const contextLimit = getContextLimit(state.activeModel);
+    const estimatedTokens = estimateContextTokens(state);
+    const compactThreshold = getSetting(state, 'autoCompactThreshold');
+    if (contextLimit <= 0 || estimatedTokens <= contextLimit * compactThreshold) return;
+  }
+
+  state.__compacting = true;
+  try {
+    const compactPrompt = getCompactPrompt(lang);
+    const messages = [{ role: 'system', content: compactPrompt }];
+    if (state.memorySummary) {
+      const memLabel = lang === 'es' ? 'Resumen de memoria anterior' : 'Previous memory summary';
+      messages.push({ role: 'system', content: `${memLabel}:\n${state.memorySummary}` });
+    }
+    for (const hMsg of state.history) {
+      if (hMsg && hMsg.content) messages.push({ ...hMsg });
+    }
+
+    const result = await requestModel(messages, state, ui, {
+      label: lang === 'es' ? 'Compactando' : 'Compacting',
+    });
+
+    const rawAnswer = result.answer || '';
+    let summary = '';
+
+    const enMatch = rawAnswer.match(/<summary>([\s\S]*?)<\/summary>/i);
+    const esMatch = rawAnswer.match(/<resumen>([\s\S]*?)<\/resumen>/i);
+
+    if (enMatch) summary = enMatch[1].trim();
+    else if (esMatch) summary = esMatch[1].trim();
+    else summary = rawAnswer.trim();
+
+    if (summary && summary.length > 100) {
+      state.memorySummary = summary;
+      state.history = [];
+      ui.logEvent(state, 'ok', lang === 'es' ? 'Memoria compactada exitosamente' : 'Memory compacted successfully');
+    } else {
+      ui.logEvent(state, 'warn', lang === 'es' ? 'Resumen demasiado corto, usando truncado simple' : 'Summary too short, using simple truncation');
+      truncateHistory(state);
+    }
+  } catch (err) {
+    ui.logEvent(state, 'warn', lang === 'es' ? 'Error en compactacion, usando truncado simple' : 'Compaction error, using simple truncation');
+    truncateHistory(state);
+  } finally {
+    state.__compacting = false;
+  }
+}
+
 async function persistSessionState(state, ui) {
   const contextLimit = getContextLimit(state.activeModel);
   const estimatedTokens = estimateContextTokens(state);
   const compactThreshold = getSetting(state, 'autoCompactThreshold');
   if (contextLimit > 0 && estimatedTokens > contextLimit * compactThreshold) {
-    if (typeof state.__compacting !== 'boolean' || !state.__compacting) {
-      state.__compacting = true;
-      try {
-        const compactMsg = `Contexto aproximadamente ${estimatedTokens.toLocaleString()}/${contextLimit.toLocaleString()} tokens. Compactando historial automaticamente.`;
-        ui.pushAction(state, 'info', state.language === 'es' ? 'Comprimiendo memoria...' : 'Compacting memory...', compactMsg);
-        truncateHistory(state);
-        ui.pushAction(state, 'ok', state.language === 'es' ? 'Memoria compactada' : 'Memory compacted', `~${countTokens(state.memorySummary)} tokens resumidos, ${state.history.length} mensajes recientes`);
-      } finally {
-        state.__compacting = false;
-      }
+    if (!state.__compacting) {
+      await autoCompact(state, ui);
     }
   }
   await saveState(state);
@@ -293,10 +400,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
   try {
   while (true) {
     if (signal?.aborted) {
-      if (turnMessages.length > 0) {
-        state.history.push(...turnMessages);
-        await persistSessionState(state, ui);
-      }
       throw new Error('Aborted');
     }
 
@@ -321,10 +424,6 @@ async function runAgentTurn(input, state, ui, options = {}) {
     });
 
     if (signal?.aborted) {
-      if (turnMessages.length > 0) {
-        state.history.push(...turnMessages);
-        await persistSessionState(state, ui);
-      }
       throw new Error('Aborted');
     }
 
@@ -334,7 +433,17 @@ async function runAgentTurn(input, state, ui, options = {}) {
     }
     let parsed = parseAgentResponse(rawAnswer || '');
 
-    if (parsed.type === 'tool' && !KNOWN_TOOLS.has(parsed.tool)) {
+    if (parsed._comments && parsed._comments.length > 0) {
+      for (const comment of parsed._comments) {
+        if (typeof ui.logEvent === 'function') {
+          ui.logEvent(state, 'comment', comment);
+        } else {
+          console.log(`\n  › ${comment}`);
+        }
+      }
+    }
+
+    if (parsed.tool && !KNOWN_TOOLS.has(parsed.tool)) {
       const invalidToolMsg = turnLanguage === 'en'
         ? `The tool "${parsed.tool}" does not exist. Available tools: ${[...KNOWN_TOOLS].join(', ')}. Use ONE of these exact names.`
         : `La herramienta "${parsed.tool}" no existe. Herramientas disponibles: ${[...KNOWN_TOOLS].join(', ')}. Usa UNO de estos nombres exactos.`;
@@ -388,12 +497,10 @@ async function runAgentTurn(input, state, ui, options = {}) {
     }
   }
   } catch (err) {
-    if (turnMessages.length > 1 && err?.message !== 'Aborted') {
-      state.history.push(...turnMessages);
-      await persistSessionState(state, ui);
-    }
+    state.history.push(...turnMessages);
+    await persistSessionState(state, ui);
     throw err;
   }
 }
 
-module.exports = { runAgentTurn };
+module.exports = { runAgentTurn, autoCompact };

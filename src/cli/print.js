@@ -112,12 +112,13 @@ function pushAction(state, kind, title, detail = '') {
 }
 
 const EVENT_SYMBOLS = {
-  info:  { sym: 'ⓘ', color: C.gray },
-  think: { sym: '○', color: C.gray },
-  tool:  { sym: '⚒', color: C.purple },
-  ok:    { sym: '✓', color: C.green },
-  warn:  { sym: '⚠', color: C.yellow },
-  error: { sym: '✗', color: C.red },
+  info:    { sym: 'ⓘ', color: C.gray },
+  think:   { sym: '○', color: C.gray },
+  comment: { sym: '✎', color: C.accent },
+  tool:    { sym: '⚒', color: C.purple },
+  ok:      { sym: '✓', color: C.green },
+  warn:    { sym: '⚠', color: C.yellow },
+  error:   { sym: '✗', color: C.red },
 };
 
 function logEvent(state, kind, title, detail = '') {

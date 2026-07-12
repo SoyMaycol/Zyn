@@ -27,6 +27,8 @@ function createOpenAICompatible(name, defaultBaseUrl, envKey, defaultMaxTokens =
     try {
       const headers = {
         'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+        'Accept': 'text/event-stream, application/json',
         ...defaultHeaders,
       };
       if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { render, Box, Text, Static, useInput, useApp, useStdout } from 'ink';
+import { render, Box, Text, useInput, useApp, useStdout } from 'ink';
 import { createRequire } from 'module';
 import { EventEmitter } from 'events';
 
@@ -354,6 +354,19 @@ class UIStore extends EventEmitter {
     this._streamingActive = false;
     this._lastThinkingEmit = 0;
     this._lastAnswerEmit = 0;
+    this.showThinking = false;
+  }
+
+  setShowThinking(val) {
+    this.showThinking = !!val;
+    const expand = this.showThinking;
+    this.items = this.items.map(it => it.type === 'thinking' ? { ...it, expanded: expand, id: String(++this._idCounter) } : it);
+    this._emit();
+  }
+
+  toggleAllThinking(expand) {
+    this.items = this.items.map(it => it.type === 'thinking' ? { ...it, expanded: expand, id: String(++this._idCounter) } : it);
+    this._emit();
   }
 
   addItem(item) {
@@ -391,7 +404,7 @@ class UIStore extends EventEmitter {
     if (!text) return;
     this.thinkingHistory.push({ text, elapsed, timestamp: Date.now() });
     if (this.thinkingHistory.length > 20) this.thinkingHistory.shift();
-    this.addItem({ type: 'thinking', text, elapsed });
+    this.addItem({ type: 'thinking', text, elapsed, expanded: this.showThinking });
   }
 
   beginAnswer() {
@@ -413,7 +426,21 @@ class UIStore extends EventEmitter {
   endAnswer() {
     if (!this.liveAnswer) return;
     this._lastAnswerEmit = 0;
-    this.addItem({ type: 'answer', text: this.liveAnswer.text });
+    const text = this.liveAnswer.text;
+    const trimmed = (text || '').trim();
+    let skip = false;
+    if (trimmed) {
+      try {
+        const parsed = parseAgentResponse(trimmed);
+        if (parsed?.type === 'tool') {
+          skip = true;
+        } else if (parsed?.type === 'final' && typeof parsed.content === 'string') {
+          const c = parsed.content.trim();
+          skip = !c || c.startsWith('{') || c.startsWith('[');
+        }
+      } catch {}
+    }
+    if (!skip) this.addItem({ type: 'answer', text });
     this.liveAnswer = null;
     this._streamingActive = false;
   }
@@ -701,7 +728,7 @@ function useDimensions() {
 
 function parseInline(text) {
   const parts = [];
-  const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(_(.+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))/g;
+  const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(_(.+?)_)|(`([^`]+?)`)|(\[([^\]]+)\]\(([^)]+)\))|((?:https?:\/\/)[^\s<>"']+)/g;
   let lastIndex = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
@@ -713,6 +740,7 @@ function parseInline(text) {
     else if (match[6]) parts.push({ t: 'italic', v: match[6] });
     else if (match[8]) parts.push({ t: 'code', v: match[8] });
     else if (match[10] && match[11]) parts.push({ t: 'link', text: match[10], url: match[11] });
+    else if (match[12]) parts.push({ t: 'link', text: match[12], url: match[12] });
     lastIndex = regex.lastIndex;
   }
   if (lastIndex < text.length) {
@@ -733,10 +761,16 @@ function normalizeAssistantDisplayText(text) {
     return '';
   }
   if (parsed?.type === 'final' && typeof parsed.content === 'string' && parsed.content.trim()) {
-    return parsed.content.trim().replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    const content = parsed.content.trim();
+    if (content.startsWith('{') || content.startsWith('[')) return '';
+    return content.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
   }
 
   return trimmed.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+}
+
+function makeOsc8Link(text, url) {
+  return `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 }
 
 function InlineLine({ text, color }) {
@@ -748,8 +782,8 @@ function InlineLine({ text, color }) {
       if (p.t === 'italic') return h(Text, { key: String(i), color: T.textMuted, italic: true }, p.v);
       if (p.t === 'code') return h(Text, { key: String(i), color: T.cyan, backgroundColor: T.codeBg }, ' ' + p.v + ' ');
       if (p.t === 'link') return h(Box, { key: String(i), flexWrap: 'wrap' },
-        h(Text, { color: T.accent, underline: true }, p.text),
-        h(Text, { color: T.textMuted }, ' (' + p.url + ')'),
+        h(Text, { color: T.accent, underline: true }, makeOsc8Link(p.text, p.url)),
+        h(Text, { color: T.textMuted }, ' (' + makeOsc8Link(p.url, p.url) + ')'),
       );
       return h(Text, { key: String(i), color: base }, p.v);
     }),
@@ -1065,6 +1099,7 @@ function EventLine({ kind, title, detail }) {
   const cfg = {
     info:    { sym: '\u00b7', color: T.textGhost },
     think:   { sym: '\u25d0', color: T.textGhost },
+    comment: { sym: '\u203a', color: T.accent },
     tool:    { sym: '\u2933', color: T.purple },
     ok:      { sym: '>', color: T.green },
     warn:    { sym: '\u25b2', color: T.amber },
@@ -1074,11 +1109,13 @@ function EventLine({ kind, title, detail }) {
 
   const cleanTitle = String(title || '').trim();
   const detailLines = String(detail || '').split('\n').map(line => line.replace(/\t/g, '  ').replace(/\s+$/g, '')).filter(Boolean);
+  const titleColor = kind === 'tool' ? T.textDim : kind === 'comment' ? T.accent : T.textMuted;
+  const isBold = kind === 'comment';
 
   return h(Box, { paddingLeft: 3, flexDirection: 'column' },
     h(Box, { gap: 1 },
       h(Text, { color }, sym),
-      h(Text, { color: kind === 'tool' ? T.textDim : T.textMuted, wrap: 'wrap' }, cleanTitle),
+      h(Text, { color: titleColor, bold: isBold, wrap: 'wrap' }, cleanTitle),
     ),
     detailLines.length
       ? h(Box, { paddingLeft: 2, flexDirection: 'column' },
@@ -1106,7 +1143,8 @@ function UserMessage({ text }) {
   );
 }
 
-function ThinkingBlock({ text, elapsed, live, width }) {
+function ThinkingBlock({ text, elapsed, live, width, expanded: initialExpanded }) {
+  const [expanded, setExpanded] = useState(!!initialExpanded);
   const displayLines = React.useMemo(() => {
     const allLines = text.split('\n').filter(l => l.trim());
     const total = allLines.length;
@@ -1123,17 +1161,45 @@ function ThinkingBlock({ text, elapsed, live, width }) {
     return () => clearInterval(t);
   }, [live]);
 
+  useEffect(() => {
+    setExpanded(!!initialExpanded);
+  }, [initialExpanded]);
+
   const frames = T.spinFrames || SPIN_FRAMES;
   const ms = T.spinMs || SPIN_MS;
   const pulseChar = live ? frames[Math.floor(Date.now() / ms) % frames.length] : '\u25d0';
 
-  const label = live
-    ? pulseChar + '  ' + uiText('Thinking...', 'Pensando...')
-    : '\u25d0  ' + uiText('Thought for ', 'Pensó durante ') + elapsed + 's';
+  const lineCount = lines.length + (more > 0 ? 1 : 0);
 
+  // Live thinking always shows normally (streaming)
+  if (live) {
+    return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
+      h(Box, { gap: 1 },
+        h(Text, { color: T.textGhost }, pulseChar),
+        h(Text, { color: T.textGhost }, uiText('Thinking...', 'Pensando...')),
+      ),
+      lines.length > 0
+        ? h(Box, { flexDirection: 'column', paddingLeft: 1 },
+            ...lines.map((line, i) =>
+              h(Text, { key: String(i), color: T.textMuted, wrap: 'wrap' }, line),
+            ),
+            more > 0 ? h(Text, { color: T.textGhost }, '\u00b7\u00b7\u00b7 ' + more + ' ' + uiText('more lines', 'líneas más')) : null,
+          )
+        : null,
+    );
+  }
+
+  // Stored thinking: collapsed by default, toggle all via Ctrl+T
   return h(Box, { flexDirection: 'column', paddingLeft: 3, marginTop: 1 },
-    h(Text, { color: T.textGhost }, label),
-    lines.length > 0
+    h(Box, { gap: 1 },
+      h(Text, { color: T.textGhost }, pulseChar),
+      h(Text, { color: T.textGhost },
+        expanded
+          ? (uiText('Thought for ', 'Pensó durante ') + elapsed + 's')
+          : (uiText('Thinking', 'Pensamiento') + ' \u2014 ' + lineCount + ' ' + uiText('lines', 'líneas'))
+      ),
+    ),
+    expanded && lines.length > 0
       ? h(Box, { flexDirection: 'column', paddingLeft: 1 },
           ...lines.map((line, i) =>
             h(Text, { key: String(i), color: T.textMuted, wrap: 'wrap' }, line),
@@ -1372,7 +1438,7 @@ function StaticItem({ item, width }) {
     case 'banner':   return h(Banner,        { model: item.model, resumed: item.resumed, width, cwd: item.cwd });
     case 'divider':  return h(Box, { paddingLeft: 2 }, h(Text, { color: T.textInvis }, ' '));
     case 'user':     return h(UserMessage,   { text: item.text });
-    case 'thinking': return h(ThinkingBlock, { text: item.text, elapsed: item.elapsed, width });
+    case 'thinking': return h(ThinkingBlock, { text: item.text, elapsed: item.elapsed, width, expanded: item.expanded });
     case 'answer':   return h(AnswerBlock,   { text: item.text, width });
     case 'event':    return h(EventLine,     { kind: item.kind, title: item.title, detail: item.detail });
     case 'system':   return h(SystemMsg,     { text: item.text });
@@ -1722,6 +1788,18 @@ function App({ store, state, onSubmit }) {
       exit();
       return;
     }
+    if (key.ctrl && input === 't') {
+      state.settings = state.settings || {};
+      const newVal = !state.settings.showThinking;
+      state.settings.showThinking = newVal ? 1 : 0;
+      if (!newVal) delete state.settings.showThinking;
+      store.setShowThinking(newVal);
+      try {
+        const { saveState } = require('../utils/sessionStorage');
+        saveState(state);
+      } catch {}
+      return;
+    }
     if (key.escape) {
       if (store.selectRequest) {
         store.cancelSelect();
@@ -1863,8 +1941,8 @@ function App({ store, state, onSubmit }) {
   }
 
   return h(Box, { flexDirection: 'column', width: '100%', height: '100%' },
-    h(Box, { flexDirection: 'column', flexGrow: 1, overflowY: 'hidden' },
-      h(Static, { items: store.items }, (item) =>
+    h(Box, { flexDirection: 'column', flexGrow: 1, scrollable: true, mouse: true },
+      store.items.map(item =>
         h(Box, { key: item.id, flexDirection: 'column' },
           h(StaticItem, { item, width }),
         ),
@@ -1918,6 +1996,7 @@ export async function startTUI(options = {}) {
   T = getTheme(state.theme || 'dark');
   const store = new UIStore();
   globalStore = store;
+  store.setShowThinking(state.settings?.showThinking);
 
   const saveStateSafe = () => {
     try {
@@ -1957,9 +2036,10 @@ export async function startTUI(options = {}) {
       }
     } catch {}
   };
-  process.on('SIGINT', () => { saveStateSafe(); process.exit(0); });
-  process.on('SIGTERM', () => { saveStateSafe(); process.exit(0); });
-  process.on('exit', () => { saveStateSafe(); });
+  const mcpCleanup = () => { try { require('../mcp/client').stopAllStdioServers(); } catch {} };
+  process.on('SIGINT', () => { mcpCleanup(); saveStateSafe(); process.exit(0); });
+  process.on('SIGTERM', () => { mcpCleanup(); saveStateSafe(); process.exit(0); });
+  process.on('exit', () => { mcpCleanup(); saveStateSafe(); });
 
   state.rl = null;
   state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
@@ -1990,6 +2070,14 @@ export async function startTUI(options = {}) {
     if (failed.length > 0) {
       const failSummary = failed.map(r => `${r.name}: ${r.error || 'unreachable'}`).join(', ');
       store.addEvent('warn', 'MCP', uiText(`Failed: ${failSummary}`, `Fallidos: ${failSummary}`));
+    }
+  } catch {}
+
+  try {
+    const { loadPlugins } = require('../plugins/index');
+    const pluginResult = loadPlugins();
+    if (pluginResult.loaded > 0) {
+      store.addEvent('info', 'Plugins', uiText(`${pluginResult.loaded} loaded, ${pluginResult.tools} tools`, `${pluginResult.loaded} cargados, ${pluginResult.tools} herramientas`));
     }
   } catch {}
 
@@ -2156,9 +2244,15 @@ export async function startTUI(options = {}) {
 
     if (input === '/settings' || input === '/settings show' || input.startsWith('/settings ')) {
       const args = input.slice(10).trim();
-      const { DEFAULT_SETTINGS, getSetting } = require('../config');
+      const { DEFAULT_SETTINGS, getSetting, estimateContextTokens, getContextLimit } = require('../config');
       const lang = state.language || 'es';
       state.settings = state.settings || {};
+      const refreshTokenDisplay = () => {
+        const est = estimateContextTokens(state);
+        const lim = getContextLimit(state.activeModel);
+        store.setTokenEstimate(est, lim);
+        store.setShowThinking(state.settings?.showThinking);
+      };
 
       const SETTINGS_LIST = [
         { key: 'maxToolSteps',         name: 'max-tool-steps',    isFloat: false, min: 1,      max: 500,     env: 'ZYN_MAX_TOOL_STEPS',         i18nKey: 'settingMaxToolSteps' },
@@ -2168,6 +2262,10 @@ export async function startTUI(options = {}) {
         { key: 'maxFileLines',         name: 'max-file-lines',    isFloat: false, min: 100,    max: 100000,  env: 'ZYN_MAX_FILE_LINES',          i18nKey: 'settingMaxFileLines' },
         { key: 'keepRecentMessages',   name: 'keep-recent',       isFloat: false, min: 5,      max: 500,     env: '',                            i18nKey: 'settingKeepRecent' },
         { key: 'autoCompactThreshold', name: 'compact-threshold', isFloat: true,  min: 0.1,    max: 1.0,     env: '',                            i18nKey: 'settingCompactThreshold' },
+        { key: 'autoCompactEnabled',   name: 'auto-compact',      isFloat: false, min: 0,      max: 1,       env: '',                            i18nKey: 'settingAutoCompact' },
+        { key: 'compactMinMessages',   name: 'compact-min-msgs',  isFloat: false, min: 1,      max: 100,     env: '',                            i18nKey: 'settingCompactMinMessages' },
+        { key: 'maxThinkingLines',     name: 'max-thinking-lines',isFloat: false, min: 3,      max: 200,     env: '',                            i18nKey: 'settingMaxThinkingLines' },
+        { key: 'showThinking',         name: 'show-thinking',     isFloat: false, min: 0,      max: 1,       env: '',                            i18nKey: 'settingShowThinking' },
         { key: 'providerMaxAttempts',  name: 'provider-attempts', isFloat: false, min: 1,      max: 20,      env: '',                            i18nKey: 'settingProviderAttempts' },
         { key: 'providerRetryDelayMs', name: 'retry-delay',       isFloat: false, min: 500,    max: 30000,   env: 'ZYN_PROVIDER_TIMEOUT_RETRY_DELAY_MS', i18nKey: 'settingRetryDelay' },
         { key: 'maxTokens',            name: 'max-tokens',        isFloat: false, min: 1024,   max: 200000,  env: '',                            i18nKey: 'settingMaxTokens' },
@@ -2177,6 +2275,7 @@ export async function startTUI(options = {}) {
         state.settings = {};
         const { saveState } = require('../utils/sessionStorage');
         await saveState(state);
+        refreshTokenDisplay();
         store.addEvent('ok', t(lang, 'settingsTitle'), t(lang, 'settingsResetDone'));
         return;
       }
@@ -2213,6 +2312,7 @@ export async function startTUI(options = {}) {
         delete state.settings[selected.key];
         const { saveState } = require('../utils/sessionStorage');
         await saveState(state);
+        refreshTokenDisplay();
         store.addEvent('ok', t(lang, selected.i18nKey), t(lang, 'settingsDefault'));
         return;
       }
@@ -2230,6 +2330,7 @@ export async function startTUI(options = {}) {
       state.settings[selected.key] = parsed;
       const { saveState } = require('../utils/sessionStorage');
       await saveState(state);
+      refreshTokenDisplay();
       store.addEvent('ok', t(lang, selected.i18nKey), `${parsed} ${t(lang, 'settingsSaved')}`);
       return;
     }
@@ -2305,6 +2406,47 @@ export async function startTUI(options = {}) {
       return;
     }
 
+    if (input === '/compact') {
+      const lang = state.language || 'en';
+      const { estimateContextTokens, getContextLimit } = require('../config');
+      const ctxLimit = getContextLimit(state.activeModel);
+      const est = estimateContextTokens(state);
+      const pct = ctxLimit > 0 ? Math.round(est / ctxLimit * 100) : 0;
+      const memSize = Array.isArray(state.history) ? state.history.length : 0;
+
+      store.addEvent('info', lang === 'es' ? 'Compactando memoria...' : 'Compacting memory...',
+        lang === 'es'
+          ? `Comprimiendo ${memSize} mensajes (~${(est/1000).toFixed(0)}K/${(ctxLimit/1000).toFixed(0)}K tokens, ${pct}%)`
+          : `Compressing ${memSize} messages (~${(est/1000).toFixed(0)}K/${(ctxLimit/1000).toFixed(0)}K tokens, ${pct}%)`);
+
+      store.setSpinner(lang === 'es' ? 'Compactando...' : 'Compacting...');
+      const ui = getUiBindings(store, state);
+      const { autoCompact } = require('../core/agent');
+      const { saveState } = require('../utils/sessionStorage');
+      try {
+        await autoCompact(state, ui, { force: true });
+        await saveState(state);
+        store.setSpinner(null);
+        const { estimateContextTokens, getContextLimit } = require('../config');
+        store.setTokenEstimate(estimateContextTokens(state), getContextLimit(state.activeModel));
+      } catch (err) {
+        store.setSpinner(null);
+        store.addEvent('error', lang === 'es' ? 'Error al compactar' : 'Compaction error', err.message);
+      }
+      return;
+    }
+
+    if (input === '/thinking on' || input === '/thinking off') {
+      const on = input === '/thinking on';
+      state.settings = state.settings || {};
+      state.settings.showThinking = on ? 1 : 0;
+      store.setShowThinking(on);
+      const { saveState } = require('../utils/sessionStorage');
+      await saveState(state);
+      store.addEvent('ok', uiText('Thinking display: ON', 'Pensamiento: ACTIVADO'));
+      return;
+    }
+
     if (input.startsWith('/')) {
       const commandName = input.split(' ')[0].slice(1).toLowerCase();
       const lines = [];
@@ -2376,7 +2518,12 @@ export async function startTUI(options = {}) {
       }
       if (typeof ui.syncTokenEstimate === 'function') ui.syncTokenEstimate();
     } catch (err) {
-      store.addEvent('error', 'error', err.message);
+      const aborted = err?.message === 'Aborted' || err?.message?.includes('agotado') || err?.message?.includes('Timeout');
+      store.addEvent('error', aborted ? 'warn' : 'error', err.message);
+      store.conversationHistory.unshift({ user: input, assistant: aborted ? '(interrumpido)' : `(error: ${err.message})`, timestamp: Date.now() });
+      if (store.conversationHistory.length > 100) store.conversationHistory.pop();
+      store.conversationRedo = [];
+      store._emit();
     } finally {
       console.error = origError;
       state.abortCurrentTurn = null;

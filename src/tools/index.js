@@ -29,10 +29,26 @@ function getMcpToolDefinitions() {
   return _mcpToolDefs;
 }
 function refreshMcpTools() {
+  for (const name of [...REGISTERED_TOOLS]) {
+    if (name.startsWith('mcp_')) REGISTERED_TOOLS.delete(name);
+  }
   _mcpToolDefs = getMcpToolDefinitions();
   for (const t of _mcpToolDefs) {
     REGISTERED_TOOLS.add(t.name);
   }
+}
+
+function refreshPluginTools() {
+  for (const name of [...REGISTERED_TOOLS]) {
+    if (name.startsWith('plugin_')) REGISTERED_TOOLS.delete(name);
+  }
+  try {
+    const { getPluginToolDefinitions } = require('../plugins/index');
+    const defs = getPluginToolDefinitions();
+    for (const t of defs) {
+      REGISTERED_TOOLS.add(t.name);
+    }
+  } catch {}
 }
 
 function t(lang, es, en) {
@@ -1014,8 +1030,12 @@ async function fetchUrlTool(args, state, paint) {
       parts.push(body);
     }
   } else {
+    const limitBytes = Number(args.limit) || 0;
+    const bodyText = limitBytes > 0 && body.length > limitBytes
+      ? `${body.slice(0, limitBytes)}\n\n[... ${body.length - limitBytes} caracteres omitidos por limite]`
+      : body;
     parts.push('');
-    parts.push(body);
+    parts.push(bodyText);
   }
 
   return truncateText(parts.join('\n'));
@@ -1586,6 +1606,16 @@ async function executeToolCall(call, state, ui, options = {}) {
           }
           break;
         }
+        if (call.tool && call.tool.startsWith('plugin_')) {
+          try {
+            const { executePluginToolCall } = require('../plugins/index');
+            const pluginResult = await executePluginToolCall(call.tool, call.args || {});
+            result = typeof pluginResult === 'string' ? pluginResult : JSON.stringify(pluginResult, null, 2);
+          } catch (pluginErr) {
+            throw new Error(`Plugin tool error: ${pluginErr.message}`);
+          }
+          break;
+        }
         throw new Error(t(state?.language, `Herramienta no soportada: ${call.tool}`, `Unsupported tool: ${call.tool}`));
     }
   } catch (err) {
@@ -1619,8 +1649,9 @@ function parseDirectAction(input) {
   const createRepoMatch = text.match(/^(?:crea|crear|create)\s+(?:un\s+)?(?:repo|repositorio)\s+(?:en\s+)?github\s+([a-z0-9._-]+)$/i);
   if (createRepoMatch) {
     return {
-      tool: 'git_api_request',
+      tool: 'git',
       args: {
+        action: 'api',
         provider: 'github',
         method: 'POST',
         path: '/user/repos',
@@ -1797,6 +1828,7 @@ module.exports = {
   parseDirectAction,
   printTools,
   refreshMcpTools,
+  refreshPluginTools,
 };
 
 

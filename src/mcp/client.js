@@ -124,6 +124,16 @@ async function stopStdioServer(name) {
   _stdioProcesses.delete(name);
 }
 
+function stopAllStdioServers() {
+  for (const [name] of _stdioProcesses) {
+    const proc = _stdioProcesses.get(name);
+    if (proc && !proc.killed) {
+      try { proc.kill('SIGTERM'); } catch {}
+    }
+    _stdioProcesses.delete(name);
+  }
+}
+
 function parseJsonResponse(body, fallback = {}) {
   if (!body) return fallback;
   const trimmed = body.trim();
@@ -175,7 +185,7 @@ async function callMcpTool(serverName, toolName, args) {
   const headers = { 'Content-Type': 'application/json', ...(srv.headers || {}) };
   let response;
   try {
-    if ((srv.protocol || srv.format) === 'jsonrpc' || /\/mcp\/?$/.test(url)) {
+    if (srv.protocol === 'jsonrpc' || srv.format === 'jsonrpc' || /\/mcp\/?$/.test(url)) {
       return await streamableMcpRequest(srv, 'tools/call', { name: toolName, arguments: args });
     }
     response = await httpRequest(`${url}/tools/call`, {
@@ -253,7 +263,7 @@ async function discoverMcpTools(serverName) {
   const headers = { ...(srv.headers || {}) };
   let response;
   try {
-    if ((srv.protocol || srv.format) === 'jsonrpc' || /\/mcp\/?$/.test(url)) {
+    if (srv.protocol === 'jsonrpc' || srv.format === 'jsonrpc' || /\/mcp\/?$/.test(url)) {
       try {
         await streamableMcpRequest(srv, 'initialize', {
           protocolVersion: '2024-11-05',
@@ -323,4 +333,5 @@ module.exports = {
   autoConnectAll,
   startStdioServer,
   stopStdioServer,
+  stopAllStdioServers,
 };

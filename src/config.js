@@ -23,6 +23,7 @@ const BUILTIN_MODELS = {
   'mimo': { label: 'Mimo 2.5', provider: 'zen', zenModel: 'mimo-v2.5-free', contextLength: 128000 },
   'north-mini': { label: 'North Mini Code', provider: 'zen', zenModel: 'north-mini-code-free', contextLength: 128000 },
   'deepseek-zen': { label: 'DeepSeek V4 Flash (Zen)', provider: 'zen', zenModel: 'deepseek-v4-flash-free', contextLength: 128000 },
+  'hy3-free': { label: 'Hy3 Free', provider: 'zen', zenModel: 'hy3-free', contextLength: 128000 },
 
   // ===== Qwen API (Alibaba Cloud) =====
   'qwen-plus': { label: 'Qwen Plus', provider: 'qwenapi', qwenapiModel: 'qwen-plus', contextLength: 131072 },
@@ -519,6 +520,10 @@ const BUILTIN_MODELS = {
   'replicate-llama-3.3-70b': { label: 'Llama 3.3 70B (Replicate)', provider: 'replicate', modelId: 'meta/meta-llama-3.3-70b-instruct', contextLength: 131072 },
   'replicate-llama-3.1-405b': { label: 'Llama 3.1 405B (Replicate)', provider: 'replicate', modelId: 'meta/meta-llama-3.1-405b-instruct', contextLength: 131072 },
   'replicate-llama-3.1-8b': { label: 'Llama 3.1 8B (Replicate)', provider: 'replicate', modelId: 'meta/meta-llama-3.1-8b-instruct', contextLength: 131072 },
+
+  // ===== Zyn Cloud =====
+  'zyncloud-minimax-m3-thinking': { label: 'Minimax M3 Thinking', provider: 'zyncloud', modelId: 'minimax-m3-thinking', contextLength: 128000 },
+  'zyncloud-minimax-m3': { label: 'Minimax M3', provider: 'zyncloud', modelId: 'minimax-m3', contextLength: 128000 },
 };
 
 const SUPPORTED_MODEL_PROVIDERS = new Set([
@@ -526,7 +531,7 @@ const SUPPORTED_MODEL_PROVIDERS = new Set([
   'openai', 'anthropic', 'groq', 'together', 'openrouter', 'mistral',
   'xai', 'cohere', 'fireworks', 'perplexity', 'ollama', 'ollamaCloud',
   'github', 'azure', 'bedrock', 'vertex', 'replicate', 'cloudflare',
-  'lmstudio', 'novita', 'chutes', 'inference',
+  'lmstudio', 'novita', 'chutes', 'inference', 'zyncloud',
 ]);
 const GEMINI_MODEL_WARNING = '';
 
@@ -593,7 +598,7 @@ const MODELS = {
   ...loadExternalModels(),
 };
 
-const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'nemotron';
+const DEFAULT_MODEL_KEY = process.env.ZYN_DEFAULT_MODEL || 'zyncloud-minimax-m3';
 const DEFAULT_LANGUAGE = normalizeLanguage(process.env.ZYN_DEFAULT_LANG || process.env.ZYN_LANGUAGE || process.env.LANG || 'en');
 
 const HUGGINGFACE_TOKEN = process.env.ZYN_HUGGINGFACE_TOKEN || process.env.HF_TOKEN || '';
@@ -607,7 +612,7 @@ const MAX_HISTORY_CHARS = Number(process.env.ZYN_MAX_HISTORY_CHARS || 200000);
 const MAX_FILE_LINES = Number(process.env.ZYN_MAX_FILE_LINES || 10000);
 const KEEP_RECENT_MESSAGES = 50;
 const MAX_OUTPUT_CHARS = Number(process.env.ZYN_MAX_OUTPUT_CHARS || 50000);
-const AUTO_COMPACT_THRESHOLD = 0.85;
+const AUTO_COMPACT_THRESHOLD = 0.75;
 
 const DEFAULT_CONTEXT_LIMIT = 128000;
 
@@ -648,6 +653,10 @@ const DEFAULT_SETTINGS = {
   maxFileLines: MAX_FILE_LINES,
   keepRecentMessages: KEEP_RECENT_MESSAGES,
   autoCompactThreshold: AUTO_COMPACT_THRESHOLD,
+  autoCompactEnabled: true,
+  compactMinMessages: 5,
+  maxThinkingLines: 30,
+  showThinking: false,
   providerMaxAttempts: PROVIDER_TIMEOUT_MAX_ATTEMPTS,
   providerRetryDelayMs: PROVIDER_TIMEOUT_RETRY_DELAY_MS,
   maxTokens: 16384,

@@ -20,6 +20,7 @@ const { lmstudio } = require('./lmstudio/index');
 const { novita } = require('./novita/index');
 const { chutes } = require('./chutes/index');
 const { inference } = require('./inference/index');
+const { zyncloud } = require('./zyncloud/index');
 const { DEFAULT_MODEL_KEY, MODELS } = require('../config');
 const { describeProviderConfig } = require('./catalog');
 
@@ -120,6 +121,8 @@ async function runProvider(provider, messages, model, onChunk, options = {}) {
       return chutes(messages, model.modelId || model.chutesModel, onChunk, { ...options, config: providerConfig });
     case 'inference':
       return inference(messages, model.modelId || model.inferenceModel, onChunk, { ...options, config: providerConfig });
+    case 'zyncloud':
+      return zyncloud(messages, model.modelId || model.zyncloudModel, onChunk, { ...options, config: providerConfig });
     case 'custom':
       return custom(messages, model, onChunk, { ...options, config: providerConfig });
     default:

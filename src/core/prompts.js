@@ -5,6 +5,7 @@ const {
   TOOL_DEFINITIONS,
   getMcpToolDefinitions: getMcpToolDefsFromTools,
   refreshMcpTools,
+  refreshPluginTools,
 } = require('../tools');
 const { listProvidersFromModels, MODELS, DEFAULT_MODEL_KEY, MAX_HISTORY_CHARS, MAX_OUTPUT_CHARS, KEEP_RECENT_MESSAGES, countTokens, stripBase64Images, getSetting } = require('../config');
 const { detectLanguage, normalizeLanguage, languageLabel } = require('../i18n');
@@ -79,14 +80,19 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
   });
 
   refreshMcpTools();
+  refreshPluginTools();
   const mcpDefs = getMcpToolDefsFromTools();
   const mcpToolNames = mcpDefs.map(t => t.name);
   for (const name of mcpToolNames) KNOWN_TOOLS.add(name);
-  for (const name of KNOWN_TOOLS) {
+  for (const name of [...KNOWN_TOOLS]) {
     if (!mcpToolNames.includes(name) && name.startsWith('mcp_')) {
       KNOWN_TOOLS.delete(name);
     }
   }
+
+  const { getPluginToolDefinitions } = require('../plugins/index');
+  const pluginDefs = getPluginToolDefinitions();
+  for (const t of pluginDefs) KNOWN_TOOLS.add(t.name);
 
   const skillsIndex = buildSkillsIndexPrompt();
   const providerGroups = listProvidersFromModels(MODELS)
@@ -99,10 +105,88 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       : `\n# MCP TOOLS\nExternal tools connected via MCP. Use the exact name.\n${mcpDefs.map(t => `  ${t.name} — ${t.description}`).join('\n')}\n`)
     : '';
 
+  const pluginToolsPrompt = pluginDefs.length > 0
+    ? (language === 'es'
+      ? `\n# PLUGIN TOOLS\nHerramientas de plugins instalados. Usa el nombre exacto.\n${pluginDefs.map(t => `  ${t.name} — ${t.description}`).join('\n')}\n`
+      : `\n# PLUGIN TOOLS\nTools from installed plugins. Use the exact name.\n${pluginDefs.map(t => `  ${t.name} — ${t.description}`).join('\n')}\n`)
+    : '';
+
   const parts = [
     ...(language === 'es' ? [
-      '# RESPUESTA — SOLO JSON, NADA MAS',
-      'Tu respuesta es UN OBJETO JSON. Sin texto antes ni despues. Sin explicaciones. Sin pensamientos.',
+      '# REGLA ABSOLUTA — RESPUESTA FINAL JSON',
+      '',
+      'SI LA CONSULTA DEL USUARIO NO REQUIERE USAR HERRAMIENTAS (es solo informacion, saludo, opinion,',
+      'concepto, definicion, matematica, traduccion, explicacion, etc.), ENTONCES:',
+      '',
+      'RESPONDE ESTRICTA Y OBLIGATORIAMENTE CON: {"type":"final","content":"tu respuesta aqui"}',
+      '',
+      'NO USES herramientas. NO hagas tool calls. NO investigues. Solo responde directamente.',
+      'El usuario quiere una respuesta rapida, no que ejecutes comandos ni busques en internet.',
+      '',
+      'SOLO usa herramientas si el usuario EXPLICITAMENTE pide: crear/editar archivos, ejecutar',
+      'comandos, buscar en internet, instalar paquetes, etc.',
+      '',
+      '# FORMATO DE RESPUESTA',
+      '',
+      'Siempre respondes con UNO O MAS objetos JSON separados por salto de linea.',
+      'El ULTIMO JSON es tu accion (tool call o final). Los anteriores son comentarios.',
+      '',
+      'Para usar una herramienta:',
+      '  {"type":"tool","tool":"NOMBRE","args":{...}}',
+      '',
+      'Para responder al usuario directamente (CUANDO SEA SOLO INFORMACION):',
+      '  {"type":"final","content":"Tu respuesta aqui"}',
+      '',
+      'COMENTARIOS VOLUNTARIOS — DEBES comentar tu progreso, no trabajar en silencio:',
+      '  {"type":"comment","content":"Voy a revisar el archivo de configuracion primero"}',
+      '  {"type":"tool","tool":"read_file","args":{"path":"config.json"}}',
+      '',
+      '  El comentario se muestra al usuario. Es OBLIGATORIO comentar durante el trabajo,',
+      '  no solo al final. Di que vas a hacer, muestra resultados parciales, etc.',
+      '',
+      '  Los comentarios NO son tecnicos ni descripciones de herramienta.',
+      '  Buenos: "Voy a revisar los datos primero", "Un momento, revisando..."',
+      '  Malos: "📁 Leyendo configuración..." (no emojis de accion), "🔍 Buscando..."',
+      '',
+      '  Los comentarios pueden ser LARGOS con formato (usando \\n):',
+      '  {"type":"comment","content":"Encontre estos resultados:\\n\\n- CPU: 45%\\n- RAM: 2.1Gi\\n\\nAhora revisare el disco"}',
+      '  {"type":"tool","tool":"run_command","args":{"command":"df -h"}}',
+      '',
+      '  REGLA: comment NUNCA es el ultimo JSON. Despues de comment SIEMPRE va tool o final.',
+      '  Si muestras resultados parciales, usa comment y luego continua con tool o final.',
+      '',
+      '# FORMATO DINAMICO EN RESPUESTAS (bilingue)',
+      '',
+      'Usa estos formatos DENTRO de "content" en type="final".',
+      'El sistema renderiza markdown automaticamente:',
+      '',
+      '  **texto** o **text** = negrita / bold',
+      '  *texto* o *text* = italica / italic',
+      '  `codigo` o `code` = inline code',
+      '  ```lenguaje ... ``` = code block',
+      '  - item / 1. item = listas / lists',
+      '  > cita / quote = blockquote',
+      '  --- = separador horizontal / horizontal rule',
+      '',
+      'Para presentar DATOS EN LISTA (cuando el usuario pide "lista" o "lista dinamica"):',
+      '',
+      '  ## Titulo de seccion / Section title',
+      '  Descripcion breve / Brief description.',
+      '',
+      '  - **Categoria / Category:** valor con `detalle` y explicacion',
+      '  - **Otra / Another:** otro valor',
+      '',
+      '  Para tablas / For tables:',
+      '  | Columna / Column | Columna / Column |',
+      '  |---------|---------|',
+      '  | valor   | valor   |',
+      '',
+      '  Usa emojis con moderacion solo para mejorar legibilidad:',
+      '  ⚠ importante / important, ✅ completado / done, ❌ error, ℹ nota / note, 📊 datos / data',
+      '  NO uses emojis en cada linea. Solo en titulos de seccion o puntos clave.',
+      '',
+      '  Las listas extensas se renderizan como scrollable. No limites el contenido.',
+      '  Si el usuario pide "lista dinamica", usa el formato de secciones + bullet points.',
       '',
       '# MEMORIA — GUARDA AUTOMATICAMENTE',
       'Despues de CADA interaccion, evalua si debes guardar algo en memoria:',
@@ -113,7 +197,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       'Guarda SIEMPRE que haya algo worth remembering. No esperes a que el usuario pida.',
       'Ejemplo: {"type":"tool","tool":"memory","args":{"action":"save","key":"bug:import","value":"El archivo src/index.js tenia una import circular"}}',
       '',
-      'Usar herramienta:',
+      'HERRAMIENTAS DISPONIBLES:',
       '{"type":"tool","tool":"NOMBRE","args":{...}}',
       'Ejemplos:',
       '  {"type":"tool","tool":"write_file","args":{"path":"index.html","content":"<h1>Hola</h1>"}}',
@@ -121,9 +205,6 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  {"type":"tool","tool":"web_search","args":{"query":"clima madrid"}}',
       '  {"type":"tool","tool":"read_file","args":{"path":"package.json"}}',
       '  {"type":"tool","tool":"list_dir","args":{"path":"src"}}',
-      '',
-      'Responder al usuario:',
-      '{"type":"final","content":"Tu respuesta aqui"}',
       '',
       'REGLAS:',
       '- SOLO usa nombres de herramientas de la seccion "# TOOLS".',
@@ -148,14 +229,12 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  "Voy a ejecutar el comando..." y luego el JSON',
       '  Explicaciones antes o despues del JSON',
       '',
-      'DESPUES DE EJECUTAR UNA HERRAMIENTA:',
-      '  SIEMPRE genera un {"type":"final","content":"..."} como TU SIGUIENTE RESPUESTA.',
-      '  NUNCA termines sin generar un final despues de ejecutar tools.',
-      '  El usuario necesita ver tu respuesta, no solo el resultado de la tool.',
-      '  Ejemplo correcto: tool call → TOOL_RESULT → {"type":"final","content":"Listo! Instale express."}',
-      '  Ejemplo MAL: tool call → TOOL_RESULT → (silencio/vacio)',
+      'FLUJO DE TRABAJO:',
+      '  tool call → TOOL_RESULT → (comment + tool call en un mensaje) → TOOL_RESULT → ... → {"type":"final","content":"..."}',
+      '  SIEMPRE termina con final. NUNCA dejes la conversacion sin respuesta final.',
+      '  Los comments van en el MISMO mensaje que tu siguiente accion, separados por salto de linea.',
       '',
-      'Tu respuesta DEBE SER UNICAMENTE el JSON. Sin <>, sin ```, sin texto.',
+      'Tu respuesta DEBE SER UNICAMENTE JSON(s). Sin <>, sin ```, sin texto fuera del JSON.',
       '',
       '# CLASIFICACION — ACCION vs INFORMACION',
       '',
@@ -165,8 +244,9 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  "busca" / "buscar" / "el clima" → ACCION, nunca asumas datos actuales',
       '',
       'INFORMACION = responde directo (type="final"):',
-      '  definiciones, conceptos, matematicas, saludos, opinion',
-      '  "que es X" / "como funciona Y" / "hola" → INFORMACION',
+      '  definiciones, conceptos, matematicas, saludos, opinion, explicaciones',
+      '  "que es X" / "como funciona Y" / "hola" / "dime sobre Z" → INFORMACION',
+      '  REGLA ABSOLUTA: Si solo es informacion, NO uses herramientas. Responde directo.',
       '',
       'PREGUNTAR AL USUARIO = usa ask_user (type="tool"):',
       '  cuando necesites una decision, preferencia o input del usuario',
@@ -179,7 +259,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  IMPORTANTE: DESPUES de recibir la respuesta de ask_user, SIEMPRE genera una respuesta completa al usuario con la información que pidió. NUNCA termines después de ask_user.',
       '',
       'REGLA: Si necesitas datos actuales o del sistema del usuario → ACCION.',
-      'Si puedes responder de memoria → INFORMACION.',
+      'Si puedes responder de memoria → INFORMACION → responde directo con final.',
       'Si necesitas que el usuario decida algo → ask_user.',
       'Si el usuario te pide que recuerdes algo → memory save.',
       '',
@@ -189,11 +269,81 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  cuando el usuario te cuente algo personal o relevante sobre su trabajo',
       '  cuando aprendas algo que te ayude a ayudar mejor al usuario en el futuro',
       '  REGLA: Guarda en memoria SIEMPRE que encuentres algo worth remembering. No esperes a que el usuario pida.',
-      '',
-      'Nunca describas lo que vas a hacer. Solo responde el JSON.',
     ] : [
-      '# RESPONSE — ONLY JSON, NOTHING ELSE',
-      'Your response is A SINGLE JSON OBJECT. No text before or after. No explanations. No thoughts.',
+      '# ABSOLUTE RULE — FINAL JSON RESPONSE',
+      '',
+      'IF THE USER\'S QUERY DOES NOT REQUIRE USING TOOLS (just information, greeting, opinion,',
+      'concept, definition, math, translation, explanation, etc.), THEN:',
+      '',
+      'YOU MUST STRICTLY AND OBLIGATORILY RESPOND WITH: {"type":"final","content":"your answer here"}',
+      '',
+      'DO NOT use tools. DO NOT make tool calls. DO NOT research. Just respond directly.',
+      'The user wants a quick answer, not for you to execute commands or search the internet.',
+      '',
+      'Only use tools if the user EXPLICITLY asks to: create/edit files, run commands,',
+      'search the internet, install packages, etc.',
+      '',
+      '# RESPONSE FORMAT',
+      '',
+      'You always respond with ONE OR MORE JSON objects, each on their own line.',
+      'The LAST JSON is your action (tool call or final). Previous ones are comments.',
+      '',
+      'To use a tool:',
+      '  {"type":"tool","tool":"NAME","args":{...}}',
+      '',
+      'VOLUNTARY COMMENTS — You MUST comment on your progress, do NOT work silently:',
+      '  {"type":"comment","content":"Let me check the config file first"}',
+      '  {"type":"tool","tool":"read_file","args":{"path":"config.json"}}',
+      '',
+      '  Comments show to the user. You MUST comment during work, not just at the end.',
+      '  Say what you are about to do, show partial results, etc.',
+      '',
+      '  Comments are NATURAL language, not technical descriptions.',
+      '  GOOD: "Let me check the data first", "One moment, let me verify"',
+      '  BAD: "📁 Reading configuration..." (no action emojis), "🔍 Searching..."',
+      '',
+      '  Comments can be LONG with formatting (using \\n):',
+      '  {"type":"comment","content":"Found these results:\\n\\n- CPU: 45%\\n- RAM: 2.1Gi\\n\\nNow checking disk"}',
+      '  {"type":"tool","tool":"run_command","args":{"command":"df -h"}}',
+      '',
+      '  RULE: comment is NEVER the last JSON. After comment, ALWAYS follow with tool or final.',
+      '  If you show partial results, use comment then continue with tool or final.',
+      '',
+      'To reply to the user directly (WHEN IT IS JUST INFORMATION):',
+      '  {"type":"final","content":"Your answer here"}',
+      '',
+      '# DYNAMIC FORMAT IN RESPONSES',
+      '',
+      'Use these formats INSIDE "content" in type="final".',
+      'The system renders markdown automatically:',
+      '',
+      '  **text** = bold',
+      '  *text* = italic',
+      '  `text` = inline code',
+      '  ```language ... ``` = code block',
+      '  - item / 1. item = lists',
+      '  > text = blockquote',
+      '  --- = horizontal rule',
+      '',
+      'For presenting DATA AS LIST (when the user asks for "list" or "dynamic list"):',
+      '',
+      '  ## Section title',
+      '  Brief description.',
+      '',
+      '  - **Category:** value with `detail` and explanation',
+      '  - **Another category:** another value',
+      '',
+      '  For tables:',
+      '  | Column | Column |',
+      '  |--------|--------|',
+      '  | value  | value  |',
+      '',
+      '  Use emojis sparingly, only for readability:',
+      '  ⚠ important, ✅ done, ❌ error, ℹ note, 📊 data',
+      '  DO NOT use emojis on every line. Only section titles or key points.',
+      '',
+      '  Long lists render as scrollable. Do not limit content.',
+      '  If the user asks for "dynamic list", use sections + bullet points format.',
       '',
       '# MEMORY — SAVE AUTOMATICALLY',
       'After EACH interaction, evaluate if you should save to memory:',
@@ -204,7 +354,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       'ALWAYS save when there is something worth remembering. Don\'t wait for the user to ask.',
       'Example: {"type":"tool","tool":"memory","args":{"action":"save","key":"bug:import","value":"The file src/index.js had a circular import"}}',
       '',
-      'Use a tool:',
+      'AVAILABLE TOOLS:',
       '{"type":"tool","tool":"NAME","args":{...}}',
       'Examples:',
       '  {"type":"tool","tool":"write_file","args":{"path":"index.html","content":"<h1>Hello</h1>"}}',
@@ -212,9 +362,6 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  {"type":"tool","tool":"web_search","args":{"query":"weather london"}}',
       '  {"type":"tool","tool":"read_file","args":{"path":"package.json"}}',
       '  {"type":"tool","tool":"list_dir","args":{"path":"src"}}',
-      '',
-      'Reply to user:',
-      '{"type":"final","content":"Your answer here"}',
       '',
       'RULES:',
       '- ONLY use tool names from the "# TOOLS" section below.',
@@ -239,14 +386,12 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
       '  "I will run the command..." followed by the JSON',
       '  Explanations before or after the JSON',
       '',
-      'AFTER EXECUTING ANY TOOL:',
-      '  ALWAYS generate a {"type":"final","content":"..."} as your NEXT RESPONSE.',
-      '  NEVER stop without generating a final after running tools.',
-      '  The user needs to see your answer, not just the tool result.',
-      '  Correct flow: tool call → TOOL_RESULT → {"type":"final","content":"Done! I installed express."}',
-      '  WRONG: tool call → TOOL_RESULT → (silence/empty)',
+      'WORKFLOW:',
+      '  tool call → TOOL_RESULT → (comment + tool call in one message) → TOOL_RESULT → ... → {"type":"final","content":"..."}',
+      '  ALWAYS end with final. NEVER leave the conversation without a final answer.',
+      '  Comments go in the SAME message as your next action, separated by newline.',
       '',
-      'Your response MUST BE ONLY the JSON. No <>, no ```, no text.',
+      'Your response MUST BE ONLY JSON object(s). No <>, no ```, no text outside JSON.',
       '',
       '# CLASSIFICATION — ACTION vs INFORMATION',
       '',
@@ -306,6 +451,7 @@ function buildSystemPrompt(cwd, state = {}, options = {}) {
     ]),
     '',
     mcpToolsPrompt,
+    pluginToolsPrompt,
     (() => {
       let mcpServersSection = '';
       try {
@@ -633,6 +779,35 @@ function extractSimpleArgsTool(text, tool) {
 function parseAgentResponse(raw) {
   const text = normalizeText(raw);
 
+  // Support multiple JSONs separated by newlines (comment + action)
+  const comments = [];
+  const multiMatch = text.match(/^\{.*?\}\s*\n\s*\{/s);
+  if (multiMatch) {
+    const parts = text.split(/\n(?=\{)/).map(s => s.trim()).filter(Boolean);
+    for (let i = 0; i < parts.length - 1; i++) {
+      try {
+        const p = JSON.parse(parts[i]);
+        if (p?.type === 'comment' && typeof p.content === 'string') {
+          comments.push(p.content);
+        }
+      } catch {}
+    }
+    const last = parts[parts.length - 1];
+    const result = parseSingleAgentResponse(last);
+    if (result) {
+      result._comments = comments;
+      return result;
+    }
+  }
+
+  const result = parseSingleAgentResponse(text);
+  if (result) {
+    result._comments = comments.length > 0 ? comments : undefined;
+  }
+  return result || { type: 'final', content: text || (raw ? String(raw).trim() : '') };
+}
+
+function parseSingleAgentResponse(text) {
   try {
     const parsed = JSON.parse(text);
     const result = classifyParsed(parsed);
@@ -663,7 +838,7 @@ function parseAgentResponse(raw) {
   const fuzzy = fuzzyExtractTool(text);
   if (fuzzy) return fuzzy;
 
-  return { type: 'final', content: text || (raw ? String(raw).trim() : '') };
+  return null;
 }
 
 function sanitizeArgsForModel(parsed) {
@@ -755,7 +930,11 @@ function buildToolResultMessage(parsed, result, language = 'es') {
 }
 
 function buildToolErrorMessage(parsed, errorMessage, language = 'es') {
-  const toolNames = TOOL_DEFINITIONS.map(t => t.name).join(', ');
+  const builtinNames = TOOL_DEFINITIONS.map(t => t.name);
+  const mcpNames = getMcpToolDefsFromTools().map(t => t.name);
+  let pluginNames = [];
+  try { pluginNames = require('../plugins/index').getPluginToolDefinitions().map(t => t.name); } catch {}
+  const toolNames = [...builtinNames, ...mcpNames, ...pluginNames].join(', ');
   if (language === 'en') {
     return [
       `The tool "${parsed.tool}" could not be executed (invalid name or not available).`,
@@ -772,12 +951,117 @@ function buildToolErrorMessage(parsed, errorMessage, language = 'es') {
   ].join('\n');
 }
 
+function getCompactPrompt(language) {
+  const isEn = language === 'en';
+  return [
+    isEn
+      ? 'Your task is to create a detailed summary of the conversation so far, paying close attention to the user\'s explicit requests and your previous actions.'
+      : 'Tu tarea es crear un resumen detallado de la conversación hasta ahora, prestando mucha atención a las solicitudes explícitas del usuario y a tus acciones previas.',
+    '',
+    isEn
+      ? 'This summary must be exhaustive in capturing technical details, code patterns, and architectural decisions that would be essential to continue development work without losing context.'
+      : 'Este resumen debe ser exhaustivo al capturar detalles técnicos, patrones de código y decisiones arquitectónicas que serían esenciales para continuar el trabajo de desarrollo sin perder el contexto.',
+    '',
+    isEn
+      ? 'Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts and ensure you have covered all necessary points. In your analysis process:'
+      : 'Antes de proporcionar tu resumen final, envuelve tu análisis en etiquetas <analysis> para organizar tus pensamientos y asegurarte de que has cubierto todos los puntos necesarios. En tu proceso de análisis:',
+    '',
+    '1. ' + (isEn
+      ? 'Analyze each message and section of the conversation chronologically. For each section, thoroughly identify:'
+      : 'Analiza cronológicamente cada mensaje y sección de la conversación. Para cada sección, identifica a fondo:'),
+    '   ' + (isEn
+      ? '- The user\'s explicit requests and intentions'
+      : '- Las solicitudes e intenciones explícitas del usuario'),
+    '   ' + (isEn
+      ? '- Your approach to addressing the user\'s requests'
+      : '- Tu enfoque para abordar las solicitudes del usuario'),
+    '   ' + (isEn
+      ? '- Key decisions, technical concepts, and code patterns'
+      : '- Decisiones clave, conceptos técnicos y patrones de código'),
+    '   ' + (isEn
+      ? '- Specific details like filenames, complete code snippets, function signatures, file edits, etc.'
+      : '- Detalles específicos como nombres de archivos, fragmentos de código completos, firmas de funciones, ediciones de archivos, etc.'),
+    '2. ' + (isEn
+      ? 'Double-check technical accuracy and completeness, thoroughly addressing each required element.'
+      : 'Verifica dos veces la precisión y la integridad técnica, abordando a fondo cada elemento requerido.'),
+    '',
+    isEn
+      ? 'Your summary MUST include the following sections:'
+      : 'Tu resumen DEBE incluir las siguientes secciones:',
+    '',
+    '1. ' + (isEn
+      ? 'Primary Request and Intention: Capture in detail all of the user\'s explicit requests and intentions.'
+      : 'Solicitud e Intención Primaria: Captura en detalle todas las solicitudes e intenciones explícitas del usuario'),
+    '2. ' + (isEn
+      ? 'Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.'
+      : 'Conceptos Técnicos Clave: Enumera todos los conceptos técnicos, tecnologías y marcos importantes discutidos.'),
+    '3. ' + (isEn
+      ? 'Files and Code Sections: List specific files and code sections examined, modified, or created. Pay special attention to the most recent messages and include complete code snippets when applicable. Include a summary of why this file read or edit is important.'
+      : 'Archivos y Secciones de Código: Enumera archivos específicos y secciones de código examinadas, modificadas o creadas. Presta especial atención a los mensajes más recientes e incluye fragmentos de código completos cuando sea aplicable e incluye un resumen de por qué esta lectura o edición de archivo es importante.'),
+    '4. ' + (isEn
+      ? 'Problem Resolution: Document resolved issues and any ongoing troubleshooting efforts.'
+      : 'Resolución de Problemas: Documenta los problemas resueltos y cualquier esfuerzo de solución de problemas en curso.'),
+    '5. ' + (isEn
+      ? 'Pending Tasks: Describe any pending tasks you have been explicitly asked to work on.'
+      : 'Tareas Pendientes: Describe cualquier tarea pendiente en la que se te haya pedido explícitamente que trabajes.'),
+    '6. ' + (isEn
+      ? 'Current Work: Describe in detail precisely what was being worked on immediately before this summary request, paying special attention to the most recent messages from both the user and assistant. Include filenames and code snippets when applicable.'
+      : 'Trabajo Actual: Describe en detalle precisamente en qué se estaba trabajando inmediatamente antes de esta solicitud de resumen, prestando especial atención a los mensajes más recientes tanto del usuario como del asistente. Incluye nombres de archivos y fragmentos de código cuando sea aplicable.'),
+    '7. ' + (isEn
+      ? 'Optional Next Step: List the next step you will take that is related to the most recent work you were doing. IMPORTANT: ensure this step is DIRECTLY aligned with the user\'s explicit requests and the task you were working on immediately before this summary request. If your last task was concluded, then only list next steps if they are explicitly aligned with the user\'s request. Do not start tangential requests without first confirming with the user.'
+      : 'Próximo Paso Opcional: Enumera el próximo paso que tomarás que esté relacionado con el trabajo más reciente que estabas haciendo. IMPORTANTE: asegúrate de que este paso esté DIRECTAMENTE en línea con las solicitudes explícitas del usuario y la tarea en la que estabas trabajando inmediatamente antes de esta solicitud de resumen. Si tu última tarea fue concluida, entonces solo enumera los próximos pasos si están explícitamente en línea con la solicitud de los usuarios. No comiences con solicitudes tangenciales sin confirmar primero con el usuario.'),
+    '8. ' + (isEn
+      ? 'If there is a next step, include direct quotes from the most recent conversation showing exactly what task you were working on and where you left off. This must be verbatim to ensure no deviation in task interpretation.'
+      : 'Si hay un próximo paso, incluye citas directas de la conversación más reciente que muestren exactamente en qué tarea estabas trabajando y dónde te quedaste. Esto debe ser textual para asegurar que no haya desviaciones en la interpretación de la tarea.'),
+    '',
+    isEn
+      ? 'Output ONLY the <analysis> and <summary> sections. Use these exact tags:'
+      : 'Genera SOLO las secciones <analisis> y <resumen>. Usa estas etiquetas exactas:',
+    '',
+    isEn ? '<analysis>' : '<analisis>',
+    isEn
+      ? '[Your thought process, ensuring all points are thoroughly and accurately covered]'
+      : '[Tu proceso de pensamiento, asegurando que todos los puntos estén cubiertos a fondo y con precisión]',
+    isEn ? '</analysis>' : '</analisis>',
+    '',
+    isEn ? '<summary>' : '<resumen>',
+    '1. ' + (isEn ? 'Primary Request and Intention:' : 'Solicitud e Intención Primaria:'),
+    isEn ? '   [Detailed description]' : '   [Descripción detallada]',
+    '',
+    '2. ' + (isEn ? 'Key Technical Concepts:' : 'Conceptos Técnicos Clave:'),
+    '   - [Concept 1]',
+    '   - [Concept 2]',
+    '',
+    '3. ' + (isEn ? 'Files and Code Sections:' : 'Archivos y Secciones de Código:'),
+    '   - [Filename 1]',
+    '   ' + (isEn ? '  - [Summary of why this file is important]' : '  - [Resumen de por qué este archivo es importante]'),
+    '   ' + (isEn ? '  - [Summary of changes made, if any]' : '  - [Resumen de los cambios realizados, si los hay]'),
+    '   ' + (isEn ? '  - [Important Code Snippet]' : '  - [Fragmento de Código Importante]'),
+    '',
+    '4. ' + (isEn ? 'Problem Resolution:' : 'Resolución de Problemas:'),
+    isEn ? '   [Description of resolved issues and ongoing troubleshooting]' : '   [Descripción de los problemas resueltos y la solución de problemas en curso]',
+    '',
+    '5. ' + (isEn ? 'Pending Tasks:' : 'Tareas Pendientes:'),
+    '   - [Task 1]',
+    '   - [Task 2]',
+    '',
+    '6. ' + (isEn ? 'Current Work:' : 'Trabajo Actual:'),
+    isEn ? '   [Precise description of current work]' : '   [Descripción precisa del trabajo actual]',
+    '',
+    '7. ' + (isEn ? 'Optional Next Step:' : 'Próximo Paso Opcional:'),
+    isEn ? '   [Optional next step to take]' : '   [Próximo paso opcional a tomar]',
+    '',
+    isEn ? '</summary>' : '</resumen>',
+  ].join('\n');
+}
+
 module.exports = {
   KNOWN_TOOLS,
   buildConversationMessages,
   buildSystemPrompt,
   buildToolErrorMessage,
   buildToolResultMessage,
+  getCompactPrompt,
   parseAgentResponse,
   sanitizeArgsForModel,
   truncateHistory,

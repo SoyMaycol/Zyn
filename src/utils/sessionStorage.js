@@ -237,6 +237,7 @@ async function saveState(state) {
     language: state.language || DEFAULT_LANGUAGE,
     personaPrompt: state.personaPrompt || '',
     theme: state.theme || 'dark',
+    settings: state.settings || {},
   });
   await setCurrentSessionId(state.sessionId);
   await savePersistentConfig(state);
@@ -252,6 +253,7 @@ async function applyPersistentConfig(state) {
   state.language = persisted.language || state.language;
   state.personaPrompt = persisted.personaPrompt || state.personaPrompt || '';
   state.theme = persisted.theme || state.theme || 'dark';
+  state.settings = { ...state.settings, ...(persisted.settings || {}) };
   return true;
 }
 
@@ -280,6 +282,7 @@ async function loadSessionState(sessionId, rl) {
     sessionId,
     sessionPath: filePath,
   });
+  await applyPersistentConfig(state);
   return state;
 }
 
