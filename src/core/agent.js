@@ -91,7 +91,7 @@ async function requestModel(messages, state, ui, options = {}) {
       let answerChunks = '';
       let streamStarted = false;
       let suppressFinalStream = false;
-      let jsonFinalAlreadyHandled = false;
+      let assistantRendered = false;
       const result = await chat({
         messages,
         modelKey: state?.activeModel || DEFAULT_MODEL_KEY,
@@ -155,7 +155,7 @@ async function requestModel(messages, state, ui, options = {}) {
                 answerStarted = true;
                 suppressFinalStream = true;
                 if (streamOutput) {
-                  jsonFinalAlreadyHandled = true;
+                  assistantRendered = true;
                   ui.writeAssistantDelta(state, contentMatch[1]);
                 }
                 answerChunks = '';
@@ -175,12 +175,13 @@ async function requestModel(messages, state, ui, options = {}) {
             return;
           }
           if (streamStarted && answerStarted && streamOutput && !suppressFinalStream) {
+            assistantRendered = true;
             ui.writeAssistantDelta(state, delta);
           }
         },
       });
       if (streamOutput && streamStarted) {
-        ui.endAssistantStream(state);
+        assistantRendered = Boolean(ui.endAssistantStream(state)) || assistantRendered;
       }
       ui.pushAction(state, 'ok', state.language === 'es' ? 'Respuesta recibida' : 'Answer received');
       const rawAnswer = result.answer ?? '';
@@ -215,13 +216,15 @@ async function requestModel(messages, state, ui, options = {}) {
             } : null,
           });
           if (followUp.answer) {
-            if (streamOutput && answerStarted) ui.endAssistantStream(state);
-            return { answer: followUp.answer, thinking: rawThinking, usage: followUp.usage || result.usage || null };
+            if (streamOutput && answerStarted) {
+              assistantRendered = Boolean(ui.endAssistantStream(state)) || assistantRendered;
+            }
+            return { answer: followUp.answer, thinking: rawThinking, usage: followUp.usage || result.usage || null, rendered: assistantRendered };
           }
         } catch {}
       }
 
-      return { answer: rawAnswer, thinking: rawThinking, usage: result.usage || null, jsonFinalAlreadyHandled };
+      return { answer: rawAnswer, thinking: rawThinking, usage: result.usage || null, rendered: assistantRendered };
     } catch (err) {
       const externalAbort = Boolean(signal?.aborted);
       const aborted = controller.signal.aborted || err?.name === 'AbortError';
@@ -427,7 +430,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
       throw new Error('Aborted');
     }
 
-    const { answer: rawAnswer, usage: rawUsage, jsonFinalAlreadyHandled: jsonHandled } = raw || {};
+    const { answer: rawAnswer, usage: rawUsage, rendered: assistantRendered = false } = raw || {};
     if (rawUsage && typeof ui.setTokenUsage === 'function') {
       ui.setTokenUsage(rawUsage);
     }
@@ -470,7 +473,7 @@ async function runAgentTurn(input, state, ui, options = {}) {
       state.history.push(...turnMessages);
       await appendTranscriptEntry(state.sessionId, { type: 'assistant', content: safeContent });
       await persistSessionState(state, ui);
-      return { content: safeContent, rendered: jsonHandled ? true : useStream };
+      return { content: safeContent, rendered: Boolean(assistantRendered) };
     }
 
     turnMessages.push({ role: 'assistant', content: JSON.stringify({ type: 'tool', tool: parsed.tool, args: sanitizeArgsForModel(parsed) }) });

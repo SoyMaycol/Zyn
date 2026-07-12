@@ -424,7 +424,7 @@ class UIStore extends EventEmitter {
   }
 
   endAnswer() {
-    if (!this.liveAnswer) return;
+    if (!this.liveAnswer) return false;
     this._lastAnswerEmit = 0;
     const text = this.liveAnswer.text;
     const trimmed = (text || '').trim();
@@ -440,9 +440,14 @@ class UIStore extends EventEmitter {
         }
       } catch {}
     }
-    if (!skip) this.addItem({ type: 'answer', text });
+    let added = false;
+    if (!skip) {
+      this.addItem({ type: 'answer', text });
+      added = true;
+    }
     this.liveAnswer = null;
     this._streamingActive = false;
+    return added;
   }
 
   _updateTokenEstimate(delta) {
