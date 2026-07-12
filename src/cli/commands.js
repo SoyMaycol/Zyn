@@ -953,21 +953,7 @@ async function runProvidersFlow(state, deps) {
     }
   }
 
-  // Paso 2: Zyn Cloud admite API key opcional al seleccionarlo en /providers
-  if (provider === 'zyncloud') {
-    const currentConfig = describeProviderConfig(provider) || {};
-    const apiKey = await deps.askInput({
-      title: t(state.language, 'providerApiKeyOptional', { name: 'Zyn Cloud' }),
-      prompt: t(state.language, 'providerApiKeyOptional', { name: 'Zyn Cloud' }),
-      hidden: true,
-      defaultValue: currentConfig.apiKey || '',
-    });
-    if (apiKey && apiKey !== currentConfig.apiKey) {
-      setProviderField(provider, 'apiKey', apiKey);
-    }
-  }
-
-  // Paso 3: Si es opcional y no configurado, preguntar si configurar
+  // Paso 2: Si es opcional y no configurado, preguntar si configurar
   if (!isProviderConfigured(provider)) {
     const configure = await deps.askConfirm({
       title: t(state.language, 'providerConfigureTitle', { provider }),
@@ -978,7 +964,7 @@ async function runProvidersFlow(state, deps) {
     }
   }
 
-  // Paso 4: Mostrar modelos del proveedor
+  // Paso 3: Mostrar modelos del proveedor
   const model = await runProviderModelsSelector(state, deps, provider);
   if (model) {
     await switchActiveModel(state, deps, model);

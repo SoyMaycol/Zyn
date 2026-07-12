@@ -30,7 +30,6 @@ function getTuiLang() {
 function uiText(en, es) {
   return getTuiLang() === 'es' ? es : en;
 }
-const MAX_THINKING_LINES = 30;
 const SPIN_MS = 80;
 const THINKING_THROTTLE_MS = 200;
 
@@ -907,28 +906,64 @@ function parseMarkdownBlocks(text) {
   return blocks;
 }
 
+function splitLongToken(token, limit) {
+  const parts = [];
+  const text = String(token || '');
+  for (let i = 0; i < text.length; i += limit) parts.push(text.slice(i, i + limit));
+  return parts.length ? parts : [''];
+}
+
 function wrapText(text, maxWidth) {
   const limit = Math.max(8, maxWidth || 80);
-  const words = String(text || '').split(/\s+/).filter(Boolean);
   const lines = [];
-  let current = '';
+  const raw = String(text || '').split('\n');
 
-  if (words.length === 0) return [''];
-
-  for (const word of words) {
-    if (!current) {
-      current = word;
+  for (const rawLine of raw) {
+    if (!rawLine.length) {
+      lines.push('');
       continue;
     }
-    if ((current + ' ' + word).length <= limit) {
-      current += ' ' + word;
-    } else {
-      lines.push(current);
-      current = word;
+
+    const tokens = rawLine.match(/\s+|[^\s]+/g) || [rawLine];
+    let current = '';
+
+    const flush = () => {
+      if (current.length > 0) {
+        lines.push(current);
+        current = '';
+      }
+    };
+
+    for (const token of tokens) {
+      if (/^\s+$/.test(token)) {
+        if (!current) continue;
+        if ((current + token).length <= limit) {
+          current += token;
+        } else {
+          flush();
+        }
+        continue;
+      }
+
+      const chunks = token.length > limit ? splitLongToken(token, limit) : [token];
+      for (const chunk of chunks) {
+        if (!current) {
+          current = chunk;
+          continue;
+        }
+        if ((current + chunk).length <= limit) {
+          current += chunk;
+        } else {
+          flush();
+          current = chunk;
+        }
+      }
     }
+
+    flush();
   }
-  if (current) lines.push(current);
-  return lines;
+
+  return lines.length ? lines : [''];
 }
 
 function splitTableCells(row) {
@@ -962,7 +997,7 @@ function CodeBlock({ lang, code, width }) {
 function MarkdownContent({ text, width, live }) {
   const contentWidth = Math.max(24, (width || 80) - 8);
   if (live) {
-    const lines = text.split('\n').slice(-200);
+    const lines = text.split('\n');
     return h(Box, { flexDirection: 'column' },
       ...lines.map((line, i) =>
         h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line || ' '),
@@ -1131,9 +1166,7 @@ function EventLine({ kind, title, detail }) {
 }
 
 function UserMessage({ text }) {
-  const rawLines = String(text || '').split('\n');
-  const lines = rawLines.slice(0, 40);
-  const more = rawLines.length - lines.length;
+  const lines = String(text || '').split('\n');
   return h(Box, { paddingLeft: 3, paddingRight: 3, marginTop: 1, marginBottom: 0, flexDirection: 'row' },
     h(Box, { flexDirection: 'column' },
       h(Box, { gap: 1, marginBottom: 0 },
@@ -1142,20 +1175,17 @@ function UserMessage({ text }) {
       ),
       h(Box, { paddingLeft: 2, flexDirection: 'column' },
         ...lines.map((line, i) => h(Text, { key: String(i), color: T.text, wrap: 'wrap' }, line)),
-        more > 0 ? h(Text, { color: T.textGhost }, `... ${more} ${uiText('more lines', 'líneas más')}`) : null,
       ),
     ),
   );
 }
 
+
 function ThinkingBlock({ text, elapsed, live, width, expanded: initialExpanded }) {
   const [expanded, setExpanded] = useState(!!initialExpanded);
   const displayLines = React.useMemo(() => {
-    const allLines = text.split('\n').filter(l => l.trim());
-    const total = allLines.length;
-    const maxLines = MAX_THINKING_LINES;
-    const lines = allLines.slice(-maxLines);
-    return { lines, more: total - lines.length };
+    const lines = text.split('\n').filter(l => l.trim());
+    return { lines, more: 0 };
   }, [text, live]);
   const { lines, more } = displayLines;
 
@@ -1174,7 +1204,7 @@ function ThinkingBlock({ text, elapsed, live, width, expanded: initialExpanded }
   const ms = T.spinMs || SPIN_MS;
   const pulseChar = live ? frames[Math.floor(Date.now() / ms) % frames.length] : '\u25d0';
 
-  const lineCount = lines.length + (more > 0 ? 1 : 0);
+  const lineCount = lines.length;
 
   // Live thinking always shows normally (streaming)
   if (live) {
@@ -2047,7 +2077,17 @@ export async function startTUI(options = {}) {
   process.on('exit', () => { mcpCleanup(); saveStateSafe(); });
 
   state.rl = null;
-  state.tuiConfirm = (title, detail) => store.requestConfirm(title, detail);
+  state.tuiConfirm = (title, detail) => store.requestSelect({
+    title,
+    subtitle: detail || '',
+    items: [
+      { key: true, label: uiText('Yes', 'Sí') },
+      { key: false, label: uiText('No', 'No') },
+    ],
+    initialIndex: 1,
+    getLabel: (item) => item.label,
+    getValue: (item) => item.key,
+  });
   state.tuiSelect = (options) => store.requestSelect(options);
   state.tuiInput = (options) => store.requestInput(options);
   state.tuiAskUser = (question, allItems, customLabel) => store.requestAskUser(question, allItems, customLabel);

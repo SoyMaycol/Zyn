@@ -190,6 +190,23 @@ async function classicConfirm({ title, detail }) {
   }
 }
 
+async function confirmAsSelect(state, options) {
+  const title = options?.title || 'Confirm';
+  const detail = options?.detail || '';
+  const choice = await askSelect(state, null, {
+    title,
+    subtitle: detail,
+    items: [
+      { key: true, label: 'Yes' },
+      { key: false, label: 'No' },
+    ],
+    initialIndex: 1,
+    getLabel: (item) => item.label,
+    getValue: (item) => item.key,
+  });
+  return choice === true;
+}
+
 function askSelect(state, deps, options) {
   if (state && typeof state.tuiSelect === 'function') {
     return state.tuiSelect(options);
@@ -205,6 +222,9 @@ function askInput(state, deps, options) {
 }
 
 function askConfirm(state, deps, options) {
+  if (state && typeof state.tuiSelect === 'function') {
+    return confirmAsSelect(state, options);
+  }
   if (state && typeof state.tuiConfirm === 'function') {
     return state.tuiConfirm(options.title, options.detail || '');
   }
