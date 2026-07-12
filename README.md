@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <b>Terminal AI agent with 28+ providers, 217+ models, plugin system, MCP support, and zero vendor lock-in.</b>
+  <b>Terminal AI agent with 27 providers, 414 models, plugin system, MCP support, and zero vendor lock-in.</b>
 </p>
 
 <p align="center">
@@ -92,8 +92,8 @@ https://github.com/user-attachments/assets/a66690d6-db83-4d5a-8482-d0af98a8b7e4
 
 ### Providers & Models
 
-- **28+ providers** — OpenAI, Anthropic, Google Gemini, Groq, Together, OpenRouter, Mistral, xAI, Cohere, Fireworks, Perplexity, Ollama, GitHub Models, Azure, AWS Bedrock, Vertex AI, Cloudflare, LM Studio, Novita, Chutes, Inference.net, Replicate, DeepSeek, HuggingFace, Zen, Qwen, Custom
-- **217+ verified models** — real model IDs, no fake entries
+- **27 providers** — OpenAI, Anthropic, Google Gemini, Groq, Together, OpenRouter, Mistral, xAI, Cohere, Fireworks, Perplexity, Ollama, GitHub Models, Azure, AWS Bedrock, Vertex AI, Cloudflare, LM Studio, Novita, Chutes, Inference.net, Replicate, DeepSeek, HuggingFace, Zen, Qwen, Zyn Cloud, Custom
+- **414 built-in models** — real model IDs, no fake entries
 - **Dynamic model picker** — `/models` opens interactive selector
 - **Custom model IDs** — type any model ID (with warning if not registered)
 - **Auto-discovery** — `/provider sync` fetches latest model lists
@@ -145,7 +145,7 @@ https://github.com/user-attachments/assets/a66690d6-db83-4d5a-8482-d0af98a8b7e4
 | Command | Description |
 |---------|-------------|
 | `/models` | Model picker |
-| `/providers` | Provider selector |
+| `/providers` | Provider selector (prompts for an optional Zyn Cloud API key) |
 | `/provider set <name> <field> <value>` | Set provider config |
 | `/provider remove <name>` | Remove provider |
 | `/provider sync <name>` | Fetch latest models |
@@ -193,7 +193,7 @@ https://github.com/user-attachments/assets/a66690d6-db83-4d5a-8482-d0af98a8b7e4
 
 ## Providers & Models
 
-Zyn connects to 28+ LLM providers. Configure with `/providers`, then pick a model with `/models`.
+Zyn connects to 27 LLM providers. Configure with `/providers`, then pick a model with `/models`.
 
 **Free options (no API key):**
 - Zen (Nemotron, Mimo) — default, works out of the box
@@ -205,10 +205,14 @@ Zyn connects to 28+ LLM providers. Configure with `/providers`, then pick a mode
 - Groq — Llama 3.3, Mixtral (fast inference)
 - Together — DeepSeek, Llama, Qwen models
 - OpenRouter — access to multiple providers
+- Zyn Cloud — OpenAI-compatible endpoint; API key is optional and can be entered from `/providers`
 
 ```bash
 # Configure a provider
 /provider set openai apiKey sk-xxx
+
+# Optional: save a Zyn Cloud key
+/provider set zyncloud apiKey sk-xxx
 
 # Pick a model
 /models
@@ -347,7 +351,7 @@ zyn/
 │   ├── providers/
 │   │   ├── scraperClient.js  # Provider routing, chat dispatch
 │   │   ├── catalog.js        # Model/provider catalog
-│   │   └── *.js              # Provider implementations (28+)
+│   │   └── *.js              # Provider implementations (27+)
 │   ├── utils/
 │   │   ├── sessionStorage.js # Session state, history, memory
 │   │   └── transcriptStorage.js # Transcript logging
