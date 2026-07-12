@@ -1,0 +1,9 @@
+node_modules/
+.tmp
+data/chat/sessions/
+data/chat/transcripts/
+data/chat/exports/
+data/chat/background/
+data/chat/current-session.json
+*.log
+.env
