@@ -1,4 +1,4 @@
-# AGENTS.md — Zyn Agent
+# copilot-instructions.md — Zyn Agent
 
 This file is the working guide for AI coding agents contributing to **Zyn**. It describes what the project is, how the repository is organized, where the real runtime state lives, and how to safely extend the agent, providers, plugins, MCP servers, skills, CLI, TUI, and web UI.
 
