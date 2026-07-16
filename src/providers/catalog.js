@@ -9,7 +9,7 @@ const DEFAULT_HEADERS = {
 };
 
 const OPENROUTER_HEADERS = {
-  'HTTP-Referer': 'https://zyn.soymaycol.icu',
+  'HTTP-Referer': 'https://github.com/SoyMaycol/Zyn',
   'X-OpenRouter-Title': 'Zyn Agent',
   'X-OpenRouter-Categories': 'cli-agent,programming-app',
 };
